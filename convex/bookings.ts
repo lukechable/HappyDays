@@ -67,7 +67,12 @@ export const clinikoInvoices = action({
     await ctx.runQuery(internal.bookings.requireStaff, {});
     const since = new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
     const invoices = await cliniko.listInvoices(since);
-    return invoices.map((i) => ({ id: i.id, number: i.number, patientId: cliniko.idFromLink(i.patient), patientName: i.patient_name ?? "", issueDate: i.issue_date, closedAt: i.closed_at ?? null, status: i.status_description ?? String(i.status), total: Number(i.total_amount) || 0, net: Number(i.net_amount ?? i.total_amount) || 0, clinikoUrl: cliniko.clinikoWebUrl(`/invoices/${i.id}`), payUrl: i.online_payment_url }));
+    // Invoices carry only a patient link. Resolve names for the unique patients, most recent first, capped so a
+    // long period still loads quickly; the rest fall back to the id with a link to the record.
+    const ids = Array.from(new Set(invoices.map((i) => cliniko.idFromLink(i.patient)).filter((x): x is string => !!x))).slice(0, 60);
+    const names = new Map<string, string>();
+    await Promise.all(ids.map(async (id) => { try { const p = await cliniko.getPatient(id); names.set(id, `${p.preferred_first_name || p.first_name} ${p.last_name}`); } catch { /* archived or no access */ } }));
+    return invoices.map((i) => ({ id: i.id, number: i.number, patientId: cliniko.idFromLink(i.patient), patientName: i.patient_name ?? names.get(cliniko.idFromLink(i.patient) ?? "") ?? "", issueDate: i.issue_date, closedAt: i.closed_at ?? null, status: i.status_description ?? String(i.status), total: Number(i.total_amount) || 0, net: Number(i.net_amount ?? i.total_amount) || 0, clinikoUrl: cliniko.clinikoWebUrl(`/invoices/${i.id}`), payUrl: i.online_payment_url }));
   },
 });
 
