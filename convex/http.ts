@@ -57,7 +57,11 @@ http.route({
   handler: httpAction(async (ctx, req) => {
     const b = (await req.json().catch(() => ({}))) as { code?: string; pin?: string; fileId?: string; ip?: string; userAgent?: string };
     if (!b.code) return Response.json({ ok: false, reason: "unknown" }, { status: 400 });
-    const r = await ctx.runMutation(internal.files.publicRedeem, { code: b.code, pin: b.pin, fileId: b.fileId as Id<"files"> | undefined, ip: b.ip, userAgent: b.userAgent });
+    // The Next server forwards the visitor's address; anyone else calling this route gets their own address recorded.
+    const trustedProxy = !!process.env.DOWNLOAD_PROXY_SECRET && req.headers.get("x-proxy-secret") === process.env.DOWNLOAD_PROXY_SECRET;
+    const ip = trustedProxy ? b.ip : (req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? undefined);
+    const userAgent = (trustedProxy ? b.userAgent : req.headers.get("user-agent")) ?? undefined;
+    const r = await ctx.runMutation(internal.files.publicRedeem, { code: b.code, pin: b.pin, fileId: b.fileId as Id<"files"> | undefined, ip, userAgent: userAgent?.slice(0, 200) });
     return Response.json(r);
   }),
 });

@@ -90,13 +90,22 @@ export const list = query({
     const users = new Map((await ctx.db.query("users").collect()).map((u) => [u._id, firstName(u)]));
     const lists = new Map((await ctx.db.query("taskLists").collect()).map((l) => [l._id, l]));
     const account = await ctx.db.query("googleAccounts").withIndex("by_user", (x) => x.eq("userId", user._id)).first();
+    const subsByParent = new Map<string, Doc<"tasks">[]>();
+    const commentCounts = new Map<string, number>();
+    await Promise.all(rows.map(async (t) => {
+      const [subs, comments] = await Promise.all([ctx.db.query("tasks").withIndex("by_parent", (x) => x.eq("parentId", t._id)).collect(), ctx.db.query("taskComments").withIndex("by_task", (x) => x.eq("taskId", t._id)).collect()]);
+      subsByParent.set(t._id, subs); commentCounts.set(t._id, comments.length);
+    }));
+    const matterCache = new Map<string, Doc<"matters"> | null>();
+    const threadCache = new Map<string, Doc<"threads"> | null>();
     const out: TaskView[] = [];
     for (const t of rows) {
-      const subs = await ctx.db.query("tasks").withIndex("by_parent", (x) => x.eq("parentId", t._id)).collect();
-      const comments = await ctx.db.query("taskComments").withIndex("by_task", (x) => x.eq("taskId", t._id)).collect();
-      const matter = t.matterId ? await ctx.db.get(t.matterId) : null;
-      const thread = t.sourceThreadId ? await ctx.db.get(t.sourceThreadId) : null;
-      out.push({ ...t, assignee: t.assigneeId ? users.get(t.assigneeId) : undefined, creator: users.get(t.creatorId) ?? "?", subtasks: subs.map((s) => ({ _id: s._id, title: s.title, status: s.status, order: s.order })).sort((a, b) => a.order - b.order), commentCount: comments.length, listName: t.listId ? lists.get(t.listId)?.name : undefined, listColor: t.listId ? lists.get(t.listId)?.color : undefined, matterName: matter?.name, threadSubject: thread?.subject, gmailThreadId: thread && account ? thread.mailboxes.find((m) => m.accountId === account._id)?.gmailThreadId : undefined });
+      const subs = subsByParent.get(t._id) ?? [];
+      if (t.matterId && !matterCache.has(t.matterId)) matterCache.set(t.matterId, await ctx.db.get(t.matterId));
+      if (t.sourceThreadId && !threadCache.has(t.sourceThreadId)) threadCache.set(t.sourceThreadId, await ctx.db.get(t.sourceThreadId));
+      const matter = t.matterId ? matterCache.get(t.matterId) : null;
+      const thread = t.sourceThreadId ? threadCache.get(t.sourceThreadId) : null;
+      out.push({ ...t, assignee: t.assigneeId ? users.get(t.assigneeId) : undefined, creator: users.get(t.creatorId) ?? "?", subtasks: subs.map((s) => ({ _id: s._id, title: s.title, status: s.status, order: s.order })).sort((a, b) => a.order - b.order), commentCount: commentCounts.get(t._id) ?? 0, listName: t.listId ? lists.get(t.listId)?.name : undefined, listColor: t.listId ? lists.get(t.listId)?.color : undefined, matterName: matter?.name, threadSubject: thread?.subject, gmailThreadId: thread && account ? thread.mailboxes.find((m) => m.accountId === account._id)?.gmailThreadId : undefined });
     }
     const pr = { high: 0, medium: 1, low: 2, none: 3 };
     out.sort((a, b) => (a.status === "done" ? 1 : 0) - (b.status === "done" ? 1 : 0) || (a.dueAt ?? Infinity) - (b.dueAt ?? Infinity) || pr[a.priority] - pr[b.priority] || a.order - b.order);

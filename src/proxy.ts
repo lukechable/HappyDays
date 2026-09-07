@@ -27,8 +27,9 @@ export default function proxy(request: NextRequest, event: Parameters<typeof wit
 function publicUrl(url: string, headers: Headers): string {
   const configured = process.env.NEXT_PUBLIC_SITE_URL;
   const u = new URL(url);
+  if (configured) { try { const c = new URL(configured); return `${c.origin}${u.pathname}${u.search}`; } catch { /* fall through */ } }
   const host = headers.get("x-forwarded-host") ?? headers.get("host");
-  const proto = headers.get("x-forwarded-proto") ?? (configured?.startsWith("https") ? "https" : u.protocol.replace(":", ""));
+  const proto = headers.get("x-forwarded-proto") ?? u.protocol.replace(":", "");
   return host ? `${proto}://${host}${u.pathname}${u.search}` : url;
 }
 

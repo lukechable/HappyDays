@@ -12,11 +12,10 @@ export const list = query({
     await requireUser(ctx);
     const rows = (await ctx.db.query("matters").collect()).filter((m) => includeClosed || m.status !== "closed").sort((a, b) => b.updatedAt - a.updatedAt);
     const out = [];
-    for (const m of rows) {
-      const links = await ctx.db.query("matterLinks").withIndex("by_matter", (q) => q.eq("matterId", m._id)).collect();
-      const invoices = await ctx.db.query("stripeInvoices").withIndex("by_matter", (q) => q.eq("matterId", m._id)).collect();
-      const tasks = await ctx.db.query("tasks").withIndex("by_matter", (q) => q.eq("matterId", m._id)).collect();
-      out.push({ ...m, counts: { threads: links.filter((l) => l.kind === "thread").length, files: links.filter((l) => l.kind === "file").length, tasks: tasks.filter((t) => t.status !== "done").length, invoices: invoices.length }, paid: invoices.some((i) => i.status === "paid"), unpaidCents: invoices.filter((i) => i.status !== "paid" && i.status !== "void").reduce((s, i) => s + i.amountDueCents, 0) });
+    const extras = await Promise.all(rows.map(async (m) => { const [links, invoices, tasks] = await Promise.all([ctx.db.query("matterLinks").withIndex("by_matter", (q) => q.eq("matterId", m._id)).collect(), ctx.db.query("stripeInvoices").withIndex("by_matter", (q) => q.eq("matterId", m._id)).collect(), ctx.db.query("tasks").withIndex("by_matter", (q) => q.eq("matterId", m._id)).collect()]); return { links, invoices, tasks }; }));
+    for (const [i, m] of rows.entries()) {
+      const { links, invoices, tasks } = extras[i];
+      out.push({ ...m, counts: { threads: links.filter((l) => l.kind === "thread").length, files: links.filter((l) => l.kind === "file").length, tasks: tasks.filter((t) => t.status !== "done").length, invoices: invoices.length }, paid: invoices.some((i) => i.status === "paid"), unpaidCents: invoices.filter((i) => i.status === "open" || i.status === "uncollectible").reduce((s, i) => s + Math.max(0, i.amountDueCents - i.amountPaidCents), 0) });
     }
     return out;
   },
@@ -78,6 +77,7 @@ export const markDelivered = mutation({
     const user = await requireUser(ctx);
     const m = await ctx.db.get(id);
     if (!m) return;
+    if (m.status === "closed" && !undo) throw new Error("This matter is closed. Reopen it before marking the report delivered.");
     if (undo) { await ctx.db.patch(id, { reportDeliveredAt: undefined, reportDeliveredVia: undefined, reportDeliveredBy: undefined, status: m.status === "delivered" ? "report_due" : m.status, updatedAt: Date.now() }); return; }
     await ctx.db.patch(id, { reportDeliveredAt: Date.now(), reportDeliveredVia: via, reportDeliveredBy: user._id, status: "delivered", updatedAt: Date.now() });
     await audit(ctx, { userId: user._id, action: "matter.delivered", subjectKind: "matter", subjectId: id, detail: via });

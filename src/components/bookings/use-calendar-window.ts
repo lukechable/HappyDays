@@ -19,7 +19,12 @@ const listeners = new Set<() => void>();
 const EMPTY: Slot = { phase: "idle" };
 const RECHECK_AFTER_MS = 30_000;
 const get = (key: string) => store.get(key) ?? EMPTY;
-const set = (key: string, patch: Partial<Slot>) => { store.set(key, { ...get(key), ...patch }); listeners.forEach((l) => l()); };
+const MAX_ENTRIES = 12;
+const set = (key: string, patch: Partial<Slot>) => {
+  const cur = get(key); store.delete(key); store.set(key, { ...cur, ...patch });
+  while (store.size > MAX_ENTRIES) { const oldest = store.keys().next().value; if (oldest === undefined) break; store.delete(oldest); }
+  listeners.forEach((l) => l());
+};
 const subscribe = (l: () => void) => { listeners.add(l); return () => { listeners.delete(l); }; };
 
 export function useCalendarWindow(win: Window | null) {

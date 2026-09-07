@@ -39,7 +39,7 @@ export function MessageFrame({ html, text, cidMap, showImagesDefault }: { html?:
           <Button size="xs" variant="outline" onClick={() => setShowImages(true)}>Show images</Button>
         </div>
       )}
-      <iframe ref={ref} title="Message" className="hd-mail-frame" style={{ height }} sandbox="allow-popups allow-popups-to-escape-sandbox allow-same-origin" srcDoc={srcDoc} />
+      <iframe ref={ref} title="Message" className="hd-mail-frame" style={{ height }} sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox" srcDoc={srcDoc} />
     </div>
   );
 }

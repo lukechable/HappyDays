@@ -44,7 +44,7 @@ export const table = query({
       };
     });
     const payments = await ctx.db.query("stripePayments").withIndex("by_created").order("desc").take(100);
-    return { rows, payments, counts: { paidNotDelivered: rows.filter((r) => r.flag === "paid_not_delivered").length, deliveredUnpaid: rows.filter((r) => r.flag === "delivered_unpaid").length, outstandingCents: rows.filter((r) => ["open", "sent", "uncollectible"].includes(r.status) || (r.status !== "paid" && r.status !== "void" && r.status !== "draft")).reduce((s, r) => s + (r.status === "paid" ? 0 : r.amountCents), 0) } };
+    return { rows, payments, counts: { paidNotDelivered: rows.filter((r) => r.flag === "paid_not_delivered").length, deliveredUnpaid: rows.filter((r) => r.flag === "delivered_unpaid").length, outstandingCents: invoices.filter((i) => i.status === "open" || i.status === "uncollectible").reduce((s, i) => s + Math.max(0, i.amountDueCents - i.amountPaidCents), 0) } };
   },
 });
 

@@ -232,7 +232,8 @@ export type Outgoing = {
   extraHeaders?: Record<string, string>;
 };
 
-const fmtAddr = (a: Address) => (a.name && a.name !== a.email ? `${encodeHeaderWord(a.name)} <${a.email}>` : a.email);
+const cleanEmail = (e: string) => { const v = e.replace(/[\r\n\s<>]/g, ""); if (!/^[^@]+@[^@]+$/.test(v)) throw new GmailError(`Invalid address: ${e}`, 400); return v; };
+const fmtAddr = (a: Address) => (a.name && a.name !== a.email ? `${encodeHeaderWord(a.name.replace(/[\r\n]/g, " "))} <${cleanEmail(a.email)}>` : cleanEmail(a.email));
 const encodeHeaderWord = (s: string) => (/^[\x20-\x7e]*$/.test(s) ? (/[",]/.test(s) ? `"${s.replace(/"/g, '\\"')}"` : s) : `=?UTF-8?B?${btoa(unescape(encodeURIComponent(s)))}?=`);
 const b64lines = (s: string) => s.replace(/.{76}/g, "$&\r\n");
 const toBase64 = (s: string) => btoa(unescape(encodeURIComponent(s)));

@@ -116,7 +116,8 @@ export const annotate = internalMutation({
   handler: async (ctx, { threadId, ...patch }) => { await ctx.db.patch(threadId, patch); },
 });
 
-const merge = (template: string, vars: Record<string, string>) => template.replace(/\{\{\s*([a-z_]+)\s*\}\}/gi, (_, k: string) => vars[k.toLowerCase()] ?? "");
+const escapeHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+const merge = (template: string, vars: Record<string, string>) => template.replace(/\{\{\s*([a-z_]+)\s*\}\}/gi, (_, k: string) => escapeHtml(vars[k.toLowerCase()] ?? ""));
 
 function withinHours(hours: Hours | undefined, at: number): boolean {
   const tz = hours?.tz ?? "Australia/Melbourne";

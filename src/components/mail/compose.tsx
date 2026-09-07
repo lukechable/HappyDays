@@ -14,6 +14,7 @@ import { api } from "../../../convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { cn, errorMessage } from "@/lib/utils";
 import { bytes } from "@/lib/format";
+import { sanitiseForEditor } from "@/lib/sanitise";
 import type { Address } from "../../../convex/lib/gmail";
 
 export type ComposeDraft = {
@@ -146,7 +147,7 @@ export function Compose({ draft, onClose, onSent, signatureHtml, signatureAbove 
     try {
       const html = await suggest({ subject: draft.subject, from: draft.sourceFrom ?? "", text: draft.sourceText });
       if (!html) { toast.error("Claude declined to draft this one."); return; }
-      editor.chain().focus("start").insertContent(html).run(); dirty.current = true;
+      editor.chain().focus("start").insertContent(sanitiseForEditor(html)).run(); dirty.current = true;
     } catch (e) { toast.error(errorMessage(e)); }
     finally { setBusy(null); }
   };

@@ -312,11 +312,20 @@ export const startPublicBooking = action({
     const start = new Date(a.startsAt);
     const end = new Date(start.getTime() + pricing.durationMinutes * 60_000);
     const holdMinutes = 15;
+    const open = await ctx.runQuery(internal.bookings.pendingForEmail, { email: a.patient.email.toLowerCase() });
+    if (open >= 5) throw new Error("Too many booking attempts for this email address. Please try again in an hour or call the practice.");
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(a.patient.email) || !a.patient.firstName.trim() || !a.patient.lastName.trim()) throw new Error("Please enter your name and a valid email address.");
+    if (Number.isNaN(start.getTime()) || start.getTime() < Date.now()) throw new Error("That time has passed. Pick another.");
     const sessionId = await ctx.runMutation(internal.bookings.createSession, { businessId: a.businessId, practitionerId: a.practitionerId, appointmentTypeId: a.appointmentTypeId, startsAt: start.toISOString(), endsAt: end.toISOString(), patient: a.patient, amountCents: amount, mode: pricing.mode, expiresAt: Date.now() + holdMinutes * 60_000 });
     const checkout = await ctx.runAction(internal.stripe.createBookingCheckout, { bookingSessionId: sessionId, amountCents: amount, description: `${pricing.name}${pricing.mode === "deposit" ? " (deposit)" : ""} — ${start.toLocaleString("en-AU", { timeZone: "Australia/Melbourne", dateStyle: "medium", timeStyle: "short" })}`, customerEmail: a.patient.email, customerName: `${a.patient.firstName} ${a.patient.lastName}`, successUrl: `${a.origin}/book/done?session=${sessionId}`, cancelUrl: `${a.origin}/book?cancelled=1`, expiresAt: Date.now() + holdMinutes * 60_000 });
     await ctx.runMutation(internal.bookings.attachCheckout, { bookingSessionId: sessionId, stripeCheckoutSessionId: checkout.id });
     return { url: checkout.url };
   },
+});
+
+export const pendingForEmail = internalQuery({
+  args: { email: v.string() },
+  handler: async (ctx, { email }) => (await ctx.db.query("bookingSessions").withIndex("by_status", (q) => q.eq("status", "pending").gt("expiresAt", Date.now() - 3_600_000)).collect()).filter((s) => s.patient.email.toLowerCase() === email).length,
 });
 
 export const createSession = internalMutation({
@@ -337,6 +346,8 @@ export const completePaid = internalAction({
   handler: async (ctx, a) => {
     const s = await ctx.runQuery(internal.bookings.sessionById, { id: a.bookingSessionId });
     if (!s || s.status === "booked") return;
+    // Stripe delivers at least once: if the appointment already exists from an earlier attempt, just finish.
+    if (s.clinikoAppointmentId) { await ctx.runMutation(internal.bookings.finishSession, { id: s._id, status: "booked", clinikoAppointmentId: s.clinikoAppointmentId, clinikoPatientId: s.clinikoPatientId }); return; }
     await ctx.runMutation(internal.bookings.finishSession, { id: s._id, status: "paid", stripePaymentIntentId: a.stripePaymentIntentId });
     try {
       let patientId = s.clinikoPatientId;
@@ -344,8 +355,11 @@ export const completePaid = internalAction({
         const matches = await cliniko.searchPatients(s.patient.email).catch(() => [] as cliniko.Patient[]);
         const hit = matches.find((p) => p.email?.toLowerCase() === s.patient.email.toLowerCase() && !p.archived_at);
         patientId = hit?.id ?? (await cliniko.createPatient({ first_name: s.patient.firstName, last_name: s.patient.lastName, email: s.patient.email, date_of_birth: s.patient.dob, patient_phone_numbers: s.patient.phone ? [{ number: s.patient.phone, phone_type: "Mobile" }] : undefined, notes: s.patient.notes })).id;
+        // Remember the patient now so a retry after an appointment failure never creates a second record.
+        await ctx.runMutation(internal.bookings.finishSession, { id: s._id, status: "paid", clinikoPatientId: patientId });
       }
       const appt = await cliniko.createAppointment({ appointment_type_id: s.appointmentTypeId, business_id: s.businessId, practitioner_id: s.practitionerId, patient_id: patientId, starts_at: s.startsAt, ends_at: s.endsAt, notes: `Booked and paid online via Happy Days (${s.mode === "deposit" ? "deposit" : "full fee"} $${(s.amountCents / 100).toFixed(2)}, Stripe ${a.stripeCheckoutSessionId}).${s.patient.notes ? `\n${s.patient.notes}` : ""}`, online_booking_policy_accepted: true });
+      // Record the appointment id before anything else that could fail (intake form, email).
       await ctx.runMutation(internal.bookings.finishSession, { id: s._id, status: "booked", clinikoPatientId: patientId, clinikoAppointmentId: appt.id });
       // Intake form: if a template is chosen in Settings, create the form against this appointment and email its link.
       const templateId = (await ctx.runQuery(internal.settings.getInternal, { key: "cliniko.intakeFormTemplateId" })) as string | null;
