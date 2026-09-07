@@ -58,6 +58,7 @@ export const idFromLink = (link?: { links: { self: string } }) => (link ? link.l
 
 export const listBusinesses = () => all<Business>("/businesses", "businesses");
 export const listPractitioners = () => all<Practitioner>("/practitioners", "practitioners");
+export const getPractitioner = (id: string) => call<Practitioner>(`/practitioners/${id}`);
 export const listAppointmentTypes = () => all<AppointmentType>("/appointment_types", "appointment_types");
 export const listAppointmentTypesForPractitioner = (practitionerId: string) => all<AppointmentType>(`/practitioners/${practitionerId}/appointment_types`, "appointment_types");
 export const getPatient = (id: string) => call<Patient>(`/patients/${id}`);
