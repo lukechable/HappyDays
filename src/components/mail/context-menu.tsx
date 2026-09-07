@@ -23,7 +23,7 @@ export function ContextMenu({ x, y, onClose, children, width = 240 }: { x: numbe
   const left = Math.max(8, Math.min(x, vw - width - 8));
   const top = Math.max(8, Math.min(y, vh - 380));
   return (
-    <div ref={ref} role="menu" style={{ left, top, width }} className="hd-pop fixed z-50 max-h-[calc(100vh-16px)] overflow-hidden rounded-xl bg-card p-1 text-sm shadow-float ring-1 ring-black/10 dark:ring-white/10" onContextMenu={(e) => e.preventDefault()}>
+    <div ref={ref} role="menu" style={{ left, top, width }} className="hd-pop fixed z-50 max-h-[calc(100vh_-_16px)] overflow-hidden rounded-xl bg-card p-1 text-sm shadow-float ring-1 ring-black/10 dark:ring-white/10" onContextMenu={(e) => e.preventDefault()}>
       {children}
     </div>
   );

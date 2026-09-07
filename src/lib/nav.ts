@@ -5,13 +5,15 @@
  */
 export type NavItem = { href: string; label: string; badge?: "assigned" | "tasks" | "overdue" | "notifications" | "paidNotDelivered"; blurb: string; exact?: boolean };
 export type NavGroup = { label: string; items: NavItem[] };
-
 export const NAV: NavGroup[] = [
   {
-    label: "Today",
+    label: "Cliniko",
     items: [
       { href: "/", label: "Dashboard", exact: true, blurb: "Today's appointments, overdue mail, tasks due and money at a glance." },
       { href: "/bookings", label: "Appointments", exact: true, blurb: "The Cliniko appointments calendar, read live. Drag to reschedule, click to book." },
+      { href: "/bookings/patients", label: "Patients", blurb: "Search Cliniko patients; open a record, its appointments and files." },
+      { href: "/bookings/appointment-types", label: "Appointment Types", blurb: "Every Cliniko appointment type with its colour, length and online price." },
+      { href: "/bookings/payments", label: "Payments", blurb: "Cliniko invoices and Stripe payments side by side." },
     ],
   },
   {
@@ -29,14 +31,6 @@ export const NAV: NavGroup[] = [
     items: [
       { href: "/court/affidavits", label: "Affidavit Requests", blurb: "Affidavits solicitors have asked for: who wants them, when they are due, where each one is up to." },
       { href: "/court/appearances", label: "Court Appearances", blurb: "Hearings, mentions and trials you must attend, with the court, the matter and the date." },
-    ],
-  },
-  {
-    label: "Cliniko",
-    items: [
-      { href: "/bookings/patients", label: "Patients", blurb: "Search Cliniko patients; open a record, its appointments and files." },
-      { href: "/bookings/appointment-types", label: "Appointment Types", blurb: "Every Cliniko appointment type with its colour, length and online price." },
-      { href: "/bookings/payments", label: "Payments", blurb: "Cliniko invoices and Stripe payments side by side." },
     ],
   },
   {
@@ -62,15 +56,12 @@ export const NAV: NavGroup[] = [
   },
   { label: "Settings", items: [{ href: "/settings", label: "Settings", blurb: "Google, Cliniko, Stripe, signatures, tags, auto-replies." }] },
 ];
-
 export const NAV_ITEMS = NAV.flatMap((g) => g.items);
 const pathOf = (href: string) => href.split("?")[0];
-
 export function navItemFor(pathname: string, search: string): NavItem {
   const full = `${pathname}${search}`;
   return NAV_ITEMS.find((i) => i.href === full) ?? NAV_ITEMS.filter((i) => !i.exact && pathname.startsWith(pathOf(i.href)) && !i.href.includes("?")).sort((a, b) => b.href.length - a.href.length)[0] ?? NAV_ITEMS.find((i) => pathOf(i.href) === pathname) ?? NAV_ITEMS[0];
 }
-
 export function isActive(item: NavItem, pathname: string, search: string): boolean {
   if (item.exact) return pathname === pathOf(item.href) && (item.href.includes("?") || !search.includes("view="));
   if (item.href.includes("?")) return `${pathname}${search}` === item.href || (`${pathname}${search}`).startsWith(item.href);
