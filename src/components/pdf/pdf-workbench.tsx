@@ -4,6 +4,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { replaceSearch, replaceUrl } from "@/lib/shallow";
 import { useMutation, useQuery } from "convex/react";
 import { DndContext, closestCenter, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, arrayMove, rectSortingStrategy, useSortable } from "@dnd-kit/sortable";
@@ -49,7 +50,7 @@ export function PdfWorkbench() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const setTab = (t: Tab) => { const p = new URLSearchParams(params.toString()); p.set("tab", t); router.replace(`/pdf?${p}`); };
+  const setTab = (t: Tab) => replaceSearch("/pdf", { tab: t });
 
   const load = async (bytes: Uint8Array, n: string, src: Id<"files"> | null) => { try { setPdf(await openPdf(bytes)); setName(n); setSourceId(src); setError(null); } catch (e) { setError(errorMessage(e)); } };
   useEffect(() => {
@@ -78,7 +79,7 @@ export function PdfWorkbench() {
         <div className="flex gap-1 rounded-full bg-muted p-0.5 text-xs">{(["pages", "markup", "requests"] as const).map((t) => <button key={t} type="button" onClick={() => setTab(t)} className={cn("h-7 rounded-full px-3", tab === t ? "bg-card shadow-xs" : "text-fg-tertiary hover:text-foreground")}>{t === "pages" ? "Pages" : t === "markup" ? "Mark up & sign" : "Signature requests"}</button>)}</div>
         {pdf && tab !== "requests" && <span className="truncate text-sm font-medium">{name}<span className="num ml-2 text-xs text-fg-tertiary">{pdf.pageCount} pages</span></span>}
         <span className="ml-auto" />
-        {tab !== "requests" && <><Button size="sm" variant="outline" onClick={() => inputRef.current?.click()}><Upload className="size-3.5" />Open PDF</Button><input ref={inputRef} type="file" accept="application/pdf" hidden onChange={async (e) => { const f = e.target.files?.[0]; if (f) await load(new Uint8Array(await f.arrayBuffer()), f.name, null); e.target.value = ""; }} /><FilePicker onPick={(id) => router.replace(`/pdf?file=${id}&tab=${tab}`)} /></>}
+        {tab !== "requests" && <><Button size="sm" variant="outline" onClick={() => inputRef.current?.click()}><Upload className="size-3.5" />Open PDF</Button><input ref={inputRef} type="file" accept="application/pdf" hidden onChange={async (e) => { const f = e.target.files?.[0]; if (f) await load(new Uint8Array(await f.arrayBuffer()), f.name, null); e.target.value = ""; }} /><FilePicker onPick={(id) => replaceUrl(`/pdf?file=${id}&tab=${tab}`)} /></>}
         {busy && <span className="text-xs text-fg-tertiary">{busy}…</span>}
       </div>
       {error && <p className="px-4 py-2 text-sm text-error">{error}</p>}

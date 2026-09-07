@@ -122,7 +122,7 @@ function Rail({ me, pathname, search, className }: { me: Me; pathname: string; s
                 const n = i.badge ? badges[i.badge] ?? 0 : 0;
                 const alert = i.badge === "overdue" || i.badge === "paidNotDelivered";
                 return (
-                  <Link key={i.href} href={i.href} aria-current={active ? "page" : undefined} className={cn("hd-press flex items-center justify-between gap-2 rounded-lg px-2 py-[5px] text-[13px] leading-tight outline-none focus-visible:ring-2 focus-visible:ring-white/60", active ? "bg-white/[0.1] text-white" : "text-white/70 hover:bg-white/[0.06] hover:text-white")}>
+                  <Link key={i.href} href={i.href} prefetch aria-current={active ? "page" : undefined} className={cn("hd-press flex items-center justify-between gap-2 rounded-lg px-2 py-[5px] text-[13px] leading-tight outline-none focus-visible:ring-2 focus-visible:ring-white/60", active ? "bg-white/[0.1] text-white" : "text-white/70 hover:bg-white/[0.06] hover:text-white")}>
                     <span className="truncate">{i.label}</span>
                     {n > 0 && <span className={cn("hd-pop num rounded-full px-1.5 text-[10.5px] font-semibold leading-4", alert ? "bg-error/90 text-white" : "bg-gold text-[#1a1a19]")}>{n > 99 ? "99+" : n}</span>}
                   </Link>
