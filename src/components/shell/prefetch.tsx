@@ -11,12 +11,16 @@ import { useLive } from "@/lib/hooks";
 import { EMPTY_SLOT, fetchLive, readLive, subscribeLive, writeLive, type Slot } from "@/lib/live-cache";
 import { mailStore, threadText } from "@/lib/mail-store";
 import type { Me } from "@/components/shell/app-shell";
+import { NAV_ITEMS } from "@/lib/nav";
 
 type InboxList = { items: ListItem[]; nextToken?: string; missing: number };
 /** The key MailPage derives for the plain inbox (JSON.stringify drops the undefined labelId and q). */
 const INBOX_KEY = `mail:list:${JSON.stringify({ view: "inbox", labelId: undefined, q: undefined, connected: true })}`;
-/** Screens people go to next. The rail's links prefetch these too, but not on phones, where the rail lives in a sheet. */
-const WARM_ROUTES = ["/mail", "/tasks", "/bookings"];
+/**
+ * Every rail destination, including the mail views. The rail's own links prefetch these when they are on screen, but
+ * below the desktop breakpoint the rail lives in a sheet and never enters the viewport, so the shell asks for them here.
+ */
+const WARM_ROUTES = NAV_ITEMS.map((i) => i.href);
 
 /**
  * Warms what the next click needs, right after sign-in, so Mail and Bookings open at once. Renders nothing.
