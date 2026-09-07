@@ -47,6 +47,9 @@ function inkOn(hex: string): string {
 
 type Appt = { id: string; startsAt: string; endsAt: string; notes?: string; cancelledAt: string | null; didNotArrive: boolean; arrived: boolean; telehealthUrl?: string; patientId?: string; patientName: string; typeId?: string; typeName: string; color?: string; practitionerId?: string; practitionerName: string; clinikoUrl: string; patientUrl?: string };
 type Block = { id: string; startsAt: string; endsAt: string; practitionerId?: string; notes?: string };
+type WeeklyHours = { practitionerId: string; dayOfWeek: number; startsAt: string; endsAt: string };
+/** Regular hours for a column's day: the practitioner's own in day view, everyone's in week view, as Cliniko does. */
+const hoursFor = (hours: WeeklyHours[], day: Date, practitionerId?: string): Block[] => hours.filter((h) => h.dayOfWeek === day.getDay() && (!practitionerId || h.practitionerId === practitionerId)).map((h, i) => { const at = (t: string) => { const [hh, mm] = t.split(":").map(Number); const d = new Date(day); d.setHours(hh, mm, 0, 0); return d.toISOString(); }; return { id: `w${i}-${h.practitionerId}`, startsAt: at(h.startsAt), endsAt: at(h.endsAt), practitionerId: h.practitionerId }; });
 type Group = { id: string; startsAt: string; endsAt: string; notes?: string; typeName: string; color?: string; practitionerId?: string; practitionerName: string; attendees?: number; maxAttendees?: number; clinikoUrl: string };
 
 const HOUR_PX = 64;
@@ -139,16 +142,16 @@ export function CalendarPage() {
             <div className="sticky top-0 z-10 bg-background" />
             {columns.map((c) => <div key={c.key} className={cn("sticky top-0 z-10 border-b border-l border-border bg-background px-2 py-1.5 text-center text-xs font-medium", c.day.toDateString() === new Date(now).toDateString() && "bg-[#faf1c8] shadow-[inset_0_0_0_1px_#d9c17a] dark:bg-[#4a4320] dark:shadow-[inset_0_0_0_1px_#8a7a3a]")}>{c.label}</div>)}
             <div className="relative" style={{ height: (DAY_END - DAY_START) * HOUR_PX }}>
-              {Array.from({ length: DAY_END - DAY_START }, (_, i) => <div key={i} className="num absolute right-2 -translate-y-1/2 text-[10.5px] text-fg-quaternary" style={{ top: i * HOUR_PX }}>{i + DAY_START > 12 ? `${i + DAY_START - 12}pm` : i + DAY_START === 12 ? "12pm" : `${i + DAY_START}am`}</div>)}
+              {Array.from({ length: DAY_END - DAY_START }, (_, i) => <div key={i} className="num absolute right-2 pt-0.5 text-[10.5px] text-fg-quaternary" style={{ top: i * HOUR_PX }}>{i + DAY_START > 12 ? `${i + DAY_START - 12}pm` : i + DAY_START === 12 ? "12pm" : `${i + DAY_START}am`}</div>)}
             </div>
             {columns.map((c) => {
               const appts = (live.data?.appointments ?? []).filter((a) => inColumn(a, c));
-              const avail = (live.data?.availability ?? []).filter((b: Block) => inColumn(b, c));
+              const avail = [...hoursFor(((live.data as { weeklyHours?: WeeklyHours[] } | undefined)?.weeklyHours ?? []), c.day, c.practitionerId), ...(live.data?.availability ?? []).filter((b: Block) => inColumn(b, c))];
               const unavail = (live.data?.unavailable ?? []).filter((b: Block) => inColumn(b, c));
               const groups = ((live.data?.groups ?? []) as Group[]).filter((g) => inColumn(g, c));
               const isToday = c.day.toDateString() === new Date(now).toDateString();
               return (
-                <div key={c.key} className={cn("relative border-l border-border bg-muted/70", busy && "opacity-60")} style={{ height: (DAY_END - DAY_START) * HOUR_PX }} onDragOver={(e) => e.preventDefault()} onDrop={(e) => void onDrop(e, c)} onClick={(e) => onEmptyClick(e, c)}>
+                <div key={c.key} className={cn("relative border-l border-border bg-muted", busy && "opacity-60")} style={{ height: (DAY_END - DAY_START) * HOUR_PX }} onDragOver={(e) => e.preventDefault()} onDrop={(e) => void onDrop(e, c)} onClick={(e) => onEmptyClick(e, c)}>
                   {/* As in Cliniko: the day is grey, and only the hours the practitioner works are white. */}
                   {avail.map((b) => <div key={`a${b.id}`} className="absolute inset-x-0 bg-background" style={{ top: yFor(b.startsAt), height: hFor(b.startsAt, b.endsAt) }} />)}
                   <div className="pointer-events-none absolute inset-0" style={{ backgroundImage: `repeating-linear-gradient(to bottom, transparent 0, transparent ${HOUR_PX - 1}px, var(--border) ${HOUR_PX - 1}px, var(--border) ${HOUR_PX}px)` }} aria-hidden="true" />
