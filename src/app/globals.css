@@ -282,6 +282,12 @@
 .hd-enter { animation: hd-enter .22s cubic-bezier(.22,1,.36,1) both; }
 .hd-rise-up { animation: hd-rise-up .26s cubic-bezier(.22,1,.36,1) both; }
 .hd-pop { animation: hd-pop .18s cubic-bezier(.22,1,.36,1) both; }
+/* Mail reading pane: the pane slides in from the side it moved to, and the toolbar glyph's divider turns to match. */
+@keyframes hd-slide-left { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: none; } }
+@keyframes hd-slide-up { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+.hd-slide-left { animation: hd-slide-left .26s cubic-bezier(.22,1,.36,1) both; }
+.hd-slide-up { animation: hd-slide-up .26s cubic-bezier(.22,1,.36,1) both; }
+.hd-pane-divider { transform-origin: 12px 12px; transition: transform .28s cubic-bezier(.22,1,.36,1); }
 .hd-lift { transition: transform .18s cubic-bezier(.22,1,.36,1), box-shadow .18s cubic-bezier(.22,1,.36,1); }
 .hd-lift:hover { transform: translateY(-1px); box-shadow: 0 6px 18px 0 var(--shadow-m-c), 0 1px 2px 0 var(--shadow-s-c); }
 .hd-lift:active { transform: translateY(0); transition-duration: .08s; }
@@ -289,6 +295,7 @@
 .hd-press { transition: transform .12s cubic-bezier(.22,1,.36,1), background-color .12s ease, color .12s ease, box-shadow .12s ease; }
 .hd-press:active { transform: scale(.97); }
 @media (prefers-reduced-motion: reduce) {
-  .hd-enter, .hd-rise-up, .hd-pop { animation: none; }
+  .hd-enter, .hd-rise-up, .hd-pop, .hd-slide-left, .hd-slide-up { animation: none; }
+  .hd-pane-divider { transition: none; }
   .hd-lift, .hd-lift:hover, .hd-lift:active, .hd-press, .hd-press:active { transition: none; transform: none; }
 }

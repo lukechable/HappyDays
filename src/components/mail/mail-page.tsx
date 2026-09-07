@@ -6,7 +6,7 @@ import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
 import { useAction, useMutation } from "convex/react";
 import { useQuery } from "convex-helpers/react/cache/hooks";
-import { PenSquare, Search, RefreshCw, Archive, Trash2, MailOpen, Tag as TagIcon, X, Star, Inbox as InboxIcon, ShieldAlert, FolderInput, PanelBottom, PanelRight } from "lucide-react";
+import { PenSquare, Search, RefreshCw, Archive, Trash2, MailOpen, Tag as TagIcon, X, Star, Inbox as InboxIcon, ShieldAlert, FolderInput } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../../../convex/_generated/api";
 import type { ListItem, MessageView } from "../../../convex/mail";
@@ -323,13 +323,13 @@ export function MailPage() {
           </div>
         )}
         <Button size="sm" variant="ghost" onClick={() => { reload(); refreshLabels(); }} aria-label="Refresh" title="Refresh"><RefreshCw className={cn("size-3.5", listLoading && "animate-spin")} /></Button>
-        <Button size="sm" variant="ghost" className="hidden lg:inline-flex" onClick={togglePane} aria-label={pane === "below" ? "Move the reading pane to the right" : "Move the reading pane below the list"} title={pane === "below" ? "Reading pane: below the list. Click for right." : "Reading pane: on the right. Click for below."}>{pane === "below" ? <PanelBottom className="size-3.5" /> : <PanelRight className="size-3.5" />}</Button>
+        <Button size="sm" variant="ghost" className="hd-press hidden lg:inline-flex" onClick={togglePane} aria-label={pane === "below" ? "Move the reading pane to the right" : "Move the reading pane below the list"} title={pane === "below" ? "Reading pane: below the list. Click for right." : "Reading pane: on the right. Click for below."}><ReadingPaneIcon pane={pane} /></Button>
       </div>
 
       <div className={cn("grid min-h-0 flex-1 grid-cols-1", pane === "right" ? "lg:grid-cols-[200px_minmax(320px,400px)_minmax(0,1fr)]" : "lg:grid-cols-[200px_minmax(0,1fr)]")}>
         <aside className="hidden min-h-0 border-r border-border bg-surface-2/60 lg:block"><FolderList view={view} labelId={labelId} labels={labels} badges={{ overdue: me?.badges.overdue ?? 0, assigned: me?.badges.assigned ?? 0 }} onSelect={(v, l) => { setParams({ view: v === "inbox" ? undefined : v, label: l, q: undefined, thread: undefined }); }} onLabelsChanged={refreshLabels} onDropThreads={onDropThreads} /></aside>
         <div className={cn("contents", pane === "below" && "lg:flex lg:min-h-0 lg:flex-col")}>
-        <section className={cn("flex min-h-0 flex-col", pane === "right" ? "border-r border-border" : "lg:h-[45%] lg:shrink-0 lg:border-b lg:border-border", selectedId && "hidden lg:flex")}>
+        <section key={`list-${pane}`} className={cn("flex min-h-0 flex-col", pane === "right" ? "border-r border-border" : "lg:h-[45%] lg:shrink-0 lg:border-b lg:border-border", selectedId && "hidden lg:flex")}>
           <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-1.5">
             <span className="truncate text-[13px] font-medium">{title}</span>
             {missing > 0 && <span className="text-[11px] text-fg-tertiary" title="These threads exist only in the other mailbox">{missing} not in your mailbox</span>}
@@ -344,7 +344,7 @@ export function MailPage() {
             <ThreadList items={items} meta={meta} selectedId={selectedId} focusedIndex={focused} checked={checked} onOpen={open} onToggleCheck={toggleCheck} onStar={(i) => act([i.gmailThreadId], i.starred ? "unstar" : "star")} loading={listLoading || appending} error={listError} hasMore={!!nextToken} onMore={() => void loadMore()} emptyText={EMPTY_TEXT[view] ?? "Nothing here."} myFirst={me?.first} labels={labels} onContextMenu={onContextMenu} onDragStart={onDragStart} />
           </div>
         </section>
-        <section className={cn("min-h-0 bg-surface/60", pane === "below" && "lg:flex-1", !selectedId && "hidden lg:block")}>
+        <section key={`pane-${pane}`} className={cn("min-h-0 bg-surface/60", pane === "below" ? "hd-slide-up lg:flex-1" : "hd-slide-left", !selectedId && "hidden lg:block")}>
           <ThreadView thread={selectedId ? thread : undefined} meta={selectedId ? meta[selectedId] : undefined} labels={labels ?? []} loading={threadLoading} error={threadError} myFirst={me?.first} showImagesDefault={me?.prefs.showImages ?? false} onAction={(op, payload) => selectedId && act([selectedId], op, payload)} onReply={startCompose} onClose={closeThread} />
         </section>
         </div>
@@ -370,5 +370,19 @@ export function MailPage() {
       {view === "search" && q && <span className="sr-only">Showing Gmail results for {q}</span>}
       <TagIcon className="hidden" />
     </div>
+  );
+}
+
+/**
+ * The split-panel glyph from the Claude desktop app: a rounded square with one divider. The divider turns a
+ * quarter turn between upright (reading pane on the right) and flat (reading pane below), so the icon always shows
+ * the layout that is on screen and the change reads as one motion.
+ */
+function ReadingPaneIcon({ pane }: { pane: "below" | "right" }) {
+  return (
+    <svg viewBox="0 0 24 24" className="size-3.5" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="3" y="3" width="18" height="18" rx="3.5" />
+      <line x1="12" y1="3" x2="12" y2="21" className="hd-pane-divider" style={{ transform: pane === "below" ? "rotate(90deg)" : "rotate(0deg)" }} />
+    </svg>
   );
 }
