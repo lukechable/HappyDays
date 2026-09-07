@@ -6,7 +6,7 @@ import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
 import { useAction, useMutation } from "convex/react";
 import { useQuery } from "convex-helpers/react/cache/hooks";
-import { PenSquare, Search, RefreshCw, Archive, Trash2, MailOpen, Tag as TagIcon, X, Star, Inbox as InboxIcon, ShieldAlert, FolderInput } from "lucide-react";
+import { PenSquare, Search, RefreshCw, Archive, Trash2, MailOpen, Tag as TagIcon, X, Star, Inbox as InboxIcon, ShieldAlert, FolderInput, ListFilter } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../../../convex/_generated/api";
 import type { ListItem, MessageView } from "../../../convex/mail";
@@ -15,6 +15,7 @@ import { FolderList, SMART_TABS, DRAG_MIME, type DropTarget, type Label, type Vi
 import { ContextMenu, MenuItem, MenuSeparator, MenuHeading } from "./context-menu";
 import { ThreadList } from "./thread-list";
 import { ThreadView, type ThreadData } from "./thread-view";
+import { FilterDialog } from "./filter-dialog";
 import type { ComposeDraft } from "./compose";
 import { quoteHtml, textToHtml, sanitiseForEditor } from "@/lib/sanitise";
 import { Button } from "@/components/ui/button";
@@ -228,6 +229,7 @@ export function MailPage() {
   };
   const [menu, setMenu] = useState<{ x: number; y: number; ids: string[]; item: ListItem } | null>(null);
   const [menuQ, setMenuQ] = useState("");
+  const [filterFor, setFilterFor] = useState<{ ids: string[]; item: ListItem } | null>(null);
   const closeMenu = useCallback(() => setMenu(null), []);
   const onContextMenu = (e: React.MouseEvent, item: ListItem) => {
     e.preventDefault();
@@ -362,10 +364,12 @@ export function MailPage() {
           {menu.item.labelIds.includes("INBOX") ? <MenuItem icon={Archive} onSelect={() => { void act(menu.ids, "archive"); closeMenu(); }} shortcut="e">Archive</MenuItem> : <MenuItem icon={InboxIcon} onSelect={() => { void act(menu.ids, "unarchive"); closeMenu(); }}>Move to inbox</MenuItem>}
           <MenuItem icon={Star} onSelect={() => { void act(menu.ids, menu.item.starred ? "unstar" : "star"); closeMenu(); }} shortcut="s">{menu.item.starred ? "Unstar" : "Star"}</MenuItem>
           <MenuItem icon={MailOpen} onSelect={() => { void act(menu.ids, "unread"); closeMenu(); }} shortcut="u">Mark unread</MenuItem>
+          <MenuItem icon={ListFilter} onSelect={() => { setFilterFor({ ids: menu.ids, item: menu.item }); closeMenu(); }}>Filter messages like these…</MenuItem>
           <MenuItem icon={ShieldAlert} onSelect={() => { void act(menu.ids, "spam"); closeMenu(); }}>Report spam</MenuItem>
           <MenuItem icon={Trash2} onSelect={() => { void act(menu.ids, "trash"); closeMenu(); }} shortcut="#" danger>{view === "trash" ? "Delete forever" : "Move to trash"}</MenuItem>
         </ContextMenu>
       )}
+      {filterFor && <FilterDialog item={filterFor.item} ids={filterFor.ids} myEmail={me?.email} folders={(labels ?? []).filter((l) => l.type === "user" && !l.hidden).sort((a, b) => a.name.localeCompare(b.name))} onSearch={(fq) => { setSearchText(fq); setParams({ view: "search", q: fq, thread: undefined, label: undefined }); }} onMove={moveTo} onClose={() => setFilterFor(null)} />}
       {compose && signatures !== undefined && <Compose key={`${compose.mode}-${compose.inReplyTo ?? compose.draftId ?? "new"}`} draft={compose} signatureHtml={defaultSignature} signatureAbove={me?.prefs.signatureAbove ?? true} onClose={() => setCompose(null)} onSent={(r) => { const matterId = compose.matterId; setCompose(null); reload(); if (selectedId) getThread({ gmailThreadId: selectedId }).then(setThread).catch(() => undefined); if (matterId && r.attachments > 0) toast("Was that the report?", { description: "Mark the matter’s report as delivered by email.", action: { label: "Yes, delivered", onClick: () => reportSent({ matterId: matterId as Id<"matters"> }).then(() => toast.success("Marked delivered")).catch((e: unknown) => toast.error(errorMessage(e))) } }); }} />}
       {view === "search" && q && <span className="sr-only">Showing Gmail results for {q}</span>}
       <TagIcon className="hidden" />
