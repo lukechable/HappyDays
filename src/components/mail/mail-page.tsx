@@ -4,12 +4,13 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAction, useMutation, useQuery } from "convex/react";
-import { PenSquare, Search, RefreshCw, Archive, Trash2, MailOpen, Tag as TagIcon, X } from "lucide-react";
+import { PenSquare, Search, RefreshCw, Archive, Trash2, MailOpen, Tag as TagIcon, X, Star, Inbox as InboxIcon, ShieldAlert, FolderInput } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../../../convex/_generated/api";
 import type { ListItem, MessageView } from "../../../convex/mail";
 import type { Id } from "../../../convex/_generated/dataModel";
-import { FolderList, SMART_TABS, type Label, type ViewKey } from "./folder-list";
+import { FolderList, SMART_TABS, DRAG_MIME, type DropTarget, type Label, type ViewKey } from "./folder-list";
+import { ContextMenu, MenuItem, MenuSeparator, MenuHeading } from "./context-menu";
 import { ThreadList } from "./thread-list";
 import { ThreadView, type ThreadData } from "./thread-view";
 import { Compose, type ComposeDraft } from "./compose";
@@ -180,11 +181,55 @@ export function MailPage() {
       else if (op === "unstar") await modify({ gmailThreadIds: ids, remove: ["STARRED"] });
       else if (op === "unread") await modify({ gmailThreadIds: ids, add: ["UNREAD"] });
       else if (op === "spam") await modify({ gmailThreadIds: ids, add: ["SPAM"], remove: ["INBOX"] });
-      else if (op === "labels" && payload) { await modify({ gmailThreadIds: ids, add: payload.add, remove: payload.remove }); if (thread && ids.includes(thread.gmailThreadId)) setThread({ ...thread, labelIds: [...thread.labelIds.filter((l) => !payload.remove.includes(l)), ...payload.add] }); if (view === "label" && labelId && payload.remove.includes(labelId)) setItems((cur) => cur.filter((i) => !ids.includes(i.gmailThreadId))); refreshLabels(); }
+      else if (op === "labels" && payload) {
+        await modify({ gmailThreadIds: ids, add: payload.add, remove: payload.remove });
+        if (thread && ids.includes(thread.gmailThreadId)) setThread({ ...thread, labelIds: [...thread.labelIds.filter((l) => !payload.remove.includes(l)), ...payload.add] });
+        const leaves = (view === "label" && labelId && payload.remove.includes(labelId)) || (payload.remove.includes("INBOX") && (view === "inbox" || view === "unread" || view.startsWith("smart:")));
+        if (leaves) { setItems((cur) => cur.filter((i) => !ids.includes(i.gmailThreadId))); if (ids.includes(selectedId ?? "")) closeThread(); }
+        else setItems((cur) => cur.map((i) => (ids.includes(i.gmailThreadId) ? { ...i, labelIds: [...i.labelIds.filter((l) => !payload.remove.includes(l)), ...payload.add] } : i)));
+        refreshLabels();
+      }
       setChecked(new Set());
       if (op === "trash" && view === "trash") toast.success("Deleted forever");
     } catch (e) { setList(prev); toast.error(errorMessage(e)); }
   };
+
+  /** "Move to folder": add the label and take the conversation out of the inbox, the way Gmail's Move to works. */
+  const moveTo = async (ids: string[], label: Label) => {
+    await act(ids, "labels", { add: [label.id], remove: ["INBOX"] });
+    toast.success(ids.length === 1 ? `Moved to ${label.name}` : `Moved ${ids.length} conversations to ${label.name}`);
+  };
+  const onDropThreads = (target: DropTarget, ids: string[]) => {
+    if (target.labelId) { const l = labels?.find((x) => x.id === target.labelId); if (l) void moveTo(ids, l); return; }
+    switch (target.view) {
+      case "inbox": void act(ids, "unarchive"); break;
+      case "starred": void act(ids, "star"); break;
+      case "archive": void act(ids, "archive"); break;
+      case "spam": void act(ids, "spam"); break;
+      case "trash": void act(ids, "trash"); break;
+    }
+  };
+  const onDragStart = (e: React.DragEvent, item: ListItem) => {
+    const ids = checked.has(item.gmailThreadId) ? Array.from(checked) : [item.gmailThreadId];
+    e.dataTransfer.setData(DRAG_MIME, JSON.stringify(ids));
+    e.dataTransfer.effectAllowed = "move";
+    const ghost = document.createElement("div");
+    ghost.className = "fixed left-[-9999px] top-0 max-w-[280px] truncate rounded-lg bg-foreground px-3 py-1.5 text-xs font-medium text-background shadow-float";
+    ghost.textContent = ids.length === 1 ? item.subject || "(no subject)" : `${ids.length} conversations`;
+    document.body.appendChild(ghost);
+    e.dataTransfer.setDragImage(ghost, 14, 14);
+    setTimeout(() => ghost.remove(), 0);
+  };
+  const [menu, setMenu] = useState<{ x: number; y: number; ids: string[]; item: ListItem } | null>(null);
+  const [menuQ, setMenuQ] = useState("");
+  const closeMenu = useCallback(() => setMenu(null), []);
+  const onContextMenu = (e: React.MouseEvent, item: ListItem) => {
+    e.preventDefault();
+    const ids = checked.has(item.gmailThreadId) ? Array.from(checked) : [item.gmailThreadId];
+    setMenuQ("");
+    setMenu({ x: e.clientX, y: e.clientY, ids, item });
+  };
+  const menuFolders = (labels ?? []).filter((l) => l.type === "user" && !l.hidden && l.name.toLowerCase().includes(menuQ.toLowerCase())).sort((a, b) => a.name.localeCompare(b.name));
 
   const startCompose = (mode: "reply" | "replyAll" | "forward", m: MessageView) => {
     if (!thread || !me) return;
@@ -272,7 +317,7 @@ export function MailPage() {
       </div>
 
       <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[200px_minmax(320px,400px)_minmax(0,1fr)]">
-        <aside className="hidden min-h-0 border-r border-border bg-surface-2/60 lg:block"><FolderList view={view} labelId={labelId} labels={labels} badges={{ overdue: me?.badges.overdue ?? 0, assigned: me?.badges.assigned ?? 0 }} onSelect={(v, l) => { setParams({ view: v === "inbox" ? undefined : v, label: l, q: undefined, thread: undefined }); }} onLabelsChanged={refreshLabels} /></aside>
+        <aside className="hidden min-h-0 border-r border-border bg-surface-2/60 lg:block"><FolderList view={view} labelId={labelId} labels={labels} badges={{ overdue: me?.badges.overdue ?? 0, assigned: me?.badges.assigned ?? 0 }} onSelect={(v, l) => { setParams({ view: v === "inbox" ? undefined : v, label: l, q: undefined, thread: undefined }); }} onLabelsChanged={refreshLabels} onDropThreads={onDropThreads} /></aside>
         <section className={cn("flex min-h-0 flex-col border-r border-border", selectedId && "hidden lg:flex")}>
           <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-1.5">
             <span className="truncate text-[13px] font-medium">{title}</span>
@@ -285,7 +330,7 @@ export function MailPage() {
             </div>
           )}
           <div className="min-h-0 flex-1">
-            <ThreadList items={items} meta={meta} selectedId={selectedId} focusedIndex={focused} checked={checked} onOpen={open} onToggleCheck={toggleCheck} onStar={(i) => act([i.gmailThreadId], i.starred ? "unstar" : "star")} loading={listLoading || appending} error={listError} hasMore={!!nextToken} onMore={() => void loadMore()} emptyText={EMPTY_TEXT[view] ?? "Nothing here."} myFirst={me?.first} />
+            <ThreadList items={items} meta={meta} selectedId={selectedId} focusedIndex={focused} checked={checked} onOpen={open} onToggleCheck={toggleCheck} onStar={(i) => act([i.gmailThreadId], i.starred ? "unstar" : "star")} loading={listLoading || appending} error={listError} hasMore={!!nextToken} onMore={() => void loadMore()} emptyText={EMPTY_TEXT[view] ?? "Nothing here."} myFirst={me?.first} labels={labels} onContextMenu={onContextMenu} onDragStart={onDragStart} />
           </div>
         </section>
         <section className={cn("min-h-0 bg-surface/60", !selectedId && "hidden lg:block")}>
@@ -293,6 +338,22 @@ export function MailPage() {
         </section>
       </div>
 
+      {menu && (
+        <ContextMenu x={menu.x} y={menu.y} onClose={closeMenu}>
+          <MenuHeading>{menu.ids.length === 1 ? "Conversation" : `${menu.ids.length} conversations`}</MenuHeading>
+          <div className="px-1 pb-1"><input autoFocus value={menuQ} onChange={(e) => setMenuQ(e.target.value)} placeholder="Move to folder…" className="h-7 w-full rounded-md border border-input bg-card px-2 text-xs" onKeyDown={(e) => { if (e.key === "Enter" && menuFolders[0]) { void moveTo(menu.ids, menuFolders[0]); closeMenu(); } }} /></div>
+          <div className="max-h-44 overflow-y-auto [scrollbar-width:thin]">
+            {menuFolders.length === 0 && <p className="px-2 py-1.5 text-xs text-fg-tertiary">{labels?.some((l) => l.type === "user") ? "No folder matches." : "No folders yet."}</p>}
+            {menuFolders.map((l) => <MenuItem key={l.id} icon={FolderInput} onSelect={() => { void moveTo(menu.ids, l); closeMenu(); }}><span className="inline-flex items-center gap-1.5"><span className="inline-block size-2 rounded-full" style={{ background: l.color?.backgroundColor ?? "var(--fg-quaternary)" }} />{l.name}</span></MenuItem>)}
+          </div>
+          <MenuSeparator />
+          {menu.item.labelIds.includes("INBOX") ? <MenuItem icon={Archive} onSelect={() => { void act(menu.ids, "archive"); closeMenu(); }} shortcut="e">Archive</MenuItem> : <MenuItem icon={InboxIcon} onSelect={() => { void act(menu.ids, "unarchive"); closeMenu(); }}>Move to inbox</MenuItem>}
+          <MenuItem icon={Star} onSelect={() => { void act(menu.ids, menu.item.starred ? "unstar" : "star"); closeMenu(); }} shortcut="s">{menu.item.starred ? "Unstar" : "Star"}</MenuItem>
+          <MenuItem icon={MailOpen} onSelect={() => { void act(menu.ids, "unread"); closeMenu(); }} shortcut="u">Mark unread</MenuItem>
+          <MenuItem icon={ShieldAlert} onSelect={() => { void act(menu.ids, "spam"); closeMenu(); }}>Report spam</MenuItem>
+          <MenuItem icon={Trash2} onSelect={() => { void act(menu.ids, "trash"); closeMenu(); }} shortcut="#" danger>{view === "trash" ? "Delete forever" : "Move to trash"}</MenuItem>
+        </ContextMenu>
+      )}
       {compose && signatures !== undefined && <Compose key={`${compose.mode}-${compose.inReplyTo ?? compose.draftId ?? "new"}`} draft={compose} signatureHtml={defaultSignature} signatureAbove={me?.prefs.signatureAbove ?? true} onClose={() => setCompose(null)} onSent={(r) => { const matterId = compose.matterId; setCompose(null); reload(); if (selectedId) getThread({ gmailThreadId: selectedId }).then(setThread).catch(() => undefined); if (matterId && r.attachments > 0) toast("Was that the report?", { description: "Mark the matter’s report as delivered by email.", action: { label: "Yes, delivered", onClick: () => reportSent({ matterId: matterId as Id<"matters"> }).then(() => toast.success("Marked delivered")).catch((e: unknown) => toast.error(errorMessage(e))) } }); }} />}
       {view === "search" && q && <span className="sr-only">Showing Gmail results for {q}</span>}
       <TagIcon className="hidden" />
