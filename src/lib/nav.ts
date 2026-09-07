@@ -32,7 +32,7 @@ export const NAV: NavGroup[] = [
     ],
   },
   {
-    label: "Cliniko Link",
+    label: "Cliniko",
     items: [
       { href: "/bookings/patients", label: "Patients", blurb: "Search Cliniko patients; open a record, its appointments and files." },
       { href: "/bookings/appointment-types", label: "Appointment Types", blurb: "Every Cliniko appointment type with its colour, length and online price." },

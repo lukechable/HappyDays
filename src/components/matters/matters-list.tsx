@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { aud, ago, day } from "@/lib/format";
 import { ExportMenu } from "@/components/export/export-menu";
 import { errorMessage } from "@/lib/utils";
+import { SubpoenaExport } from "./subpoena-export";
 
 /** Court matters: the spine that emails, tasks, files, invoices and the subpoena export hang off. */
 export function MattersList() {
@@ -20,9 +21,10 @@ export function MattersList() {
   const matters = useQuery(api.matters.list, { includeClosed });
   const save = useMutation(api.matters.save);
   const [draft, setDraft] = useState<{ name: string; courtFileNo: string; court: string; parties: string } | null>(null);
+  const [exporting, setExporting] = useState(false);
   return (
     <div className="space-y-5">
-      <PageHeader title="Subpoena export" blurb="One record per court matter. Link emails from Mail, tasks from Tasks, files and invoices here, then export the lot for a subpoena." actions={<><ExportMenu disabled={!matters?.length} table={() => ({ title: "Matters", subtitle: `${matters?.length ?? 0} matters${includeClosed ? " including closed" : ""}`, filename: `matters-${new Date().toISOString().slice(0, 10)}`, columns: [{ key: "name", label: "Matter" }, { key: "file", label: "Court file" }, { key: "court", label: "Court" }, { key: "parties", label: "Parties" }, { key: "status", label: "Status" }, { key: "emails", label: "Emails", align: "right" as const }, { key: "tasks", label: "Open tasks", align: "right" as const }, { key: "files", label: "Files", align: "right" as const }, { key: "invoices", label: "Invoices", align: "right" as const }, { key: "paid", label: "Paid" }, { key: "owing", label: "Owing", align: "right" as const }, { key: "delivered", label: "Report delivered" }], rows: (matters ?? []).map((m) => ({ name: m.name, file: m.courtFileNo ?? "", court: m.court ?? "", parties: m.parties.join("; "), status: m.status.replace("_", " "), emails: m.counts.threads, tasks: m.counts.tasks, files: m.counts.files, invoices: m.counts.invoices, paid: m.paid ? "yes" : "", owing: (m.unpaidCents / 100).toFixed(2), delivered: m.reportDeliveredAt ? day(m.reportDeliveredAt) : "" })) })} /><label className="flex items-center gap-1.5 text-xs text-fg-tertiary"><input type="checkbox" className="size-3.5 accent-foreground" checked={includeClosed} onChange={(e) => setIncludeClosed(e.target.checked)} />show closed</label><Button onClick={() => setDraft({ name: "", courtFileNo: "", court: "", parties: "" })}>New matter</Button></>} />
+      <PageHeader title="Subpoena export" blurb="One record per court matter. Link emails from Mail, tasks from Tasks, files and invoices here, then export the lot for a subpoena." actions={<><ExportMenu disabled={!matters?.length} table={() => ({ title: "Matters", subtitle: `${matters?.length ?? 0} matters${includeClosed ? " including closed" : ""}`, filename: `matters-${new Date().toISOString().slice(0, 10)}`, columns: [{ key: "name", label: "Matter" }, { key: "file", label: "Court file" }, { key: "court", label: "Court" }, { key: "parties", label: "Parties" }, { key: "status", label: "Status" }, { key: "emails", label: "Emails", align: "right" as const }, { key: "tasks", label: "Open tasks", align: "right" as const }, { key: "files", label: "Files", align: "right" as const }, { key: "invoices", label: "Invoices", align: "right" as const }, { key: "paid", label: "Paid" }, { key: "owing", label: "Owing", align: "right" as const }, { key: "delivered", label: "Report delivered" }], rows: (matters ?? []).map((m) => ({ name: m.name, file: m.courtFileNo ?? "", court: m.court ?? "", parties: m.parties.join("; "), status: m.status.replace("_", " "), emails: m.counts.threads, tasks: m.counts.tasks, files: m.counts.files, invoices: m.counts.invoices, paid: m.paid ? "yes" : "", owing: (m.unpaidCents / 100).toFixed(2), delivered: m.reportDeliveredAt ? day(m.reportDeliveredAt) : "" })) })} /><label className="flex items-center gap-1.5 text-xs text-fg-tertiary"><input type="checkbox" className="size-3.5 accent-foreground" checked={includeClosed} onChange={(e) => setIncludeClosed(e.target.checked)} />show closed</label><Button variant="outline" onClick={() => setDraft({ name: "", courtFileNo: "", court: "", parties: "" })}>Add matter</Button><Button onClick={() => setExporting(true)}>New export</Button></>} />
       {draft && (
         <Panel title="New matter" dense>
           <form className="grid gap-3 sm:grid-cols-2" onSubmit={async (e) => { e.preventDefault(); try { await save({ name: draft.name, courtFileNo: draft.courtFileNo || undefined, court: draft.court || undefined, parties: draft.parties.split(/[;\n]/).map((p) => p.trim()).filter(Boolean), clinikoPatientIds: [] }); setDraft(null); toast.success("Matter created"); } catch (err) { toast.error(errorMessage(err)); } }}>
@@ -52,6 +54,7 @@ export function MattersList() {
           </DataTable>
         )}
       </Panel>
+      {exporting && <SubpoenaExport pickSource onClose={() => setExporting(false)} />}
     </div>
   );
 }
