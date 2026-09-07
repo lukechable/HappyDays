@@ -9,7 +9,8 @@
 !.env.example
 
 # Dependencies / build
-node_modules/
+# no trailing slash: a symlink named node_modules must be ignored too
+node_modules
 .next/
 out/
 build/
