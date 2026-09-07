@@ -21,7 +21,7 @@ function parseJson<T>(s: string, fallback: T): T {
 
 export const classifyEmail = internalAction({
   args: { subject: v.string(), from: v.string(), text: v.string(), tags: v.array(v.object({ id: v.string(), name: v.string(), hint: v.string() })) },
-  handler: async (_ctx, { subject, from, text, tags }): Promise<{ summary: string; tagIds: string[]; category: "primary" | "newsletter" | "notification" | "receipt" | "calendar" | "social" }> => {
+  handler: async (_ctx, { subject, from, text, tags }): Promise<{ summary: string; tagIds: string[]; category: "primary" | "newsletter" | "notification" | "receipt" | "calendar" | "social"; intent: "reschedule" | "other"; rescheduleFrom: string | null; rescheduleTo: string | null }> => {
     const tagList = tags.map((t) => `- id "${t.id}": ${t.name}${t.hint ? ` — ${t.hint}` : ""}`).join("\n");
     const res = await client().beta.messages.create({
       model: MODEL,
@@ -30,13 +30,14 @@ export const classifyEmail = internalAction({
       fallbacks: "default",
       output_config: { effort: "low" },
       system: "You triage email for a small Australian family-assessment psychology practice (Barbara Fraser & Associates). Be factual and brief. Reply with JSON only.",
-      messages: [{ role: "user", content: `Subject: ${subject}\nFrom: ${from}\n\n${text}\n\n---\nAvailable tags:\n${tagList || "(none)"}\n\nReturn JSON: {"summary": "<one sentence, max 20 words, what the sender wants>", "tagIds": [<ids of tags that clearly apply, may be empty>], "category": "primary" | "newsletter" | "notification" | "receipt" | "calendar" | "social"}` }],
+      messages: [{ role: "user", content: `Today is ${new Date().toLocaleDateString("en-AU", { timeZone: "Australia/Melbourne", dateStyle: "full" })}.\nSubject: ${subject}\nFrom: ${from}\n\n${text}\n\n---\nAvailable tags:\n${tagList || "(none)"}\n\nReturn JSON: {"summary": "<one sentence, max 20 words, what the sender wants>", "tagIds": [<ids of tags that clearly apply, may be empty>], "category": "primary" | "newsletter" | "notification" | "receipt" | "calendar" | "social", "intent": "reschedule" if the sender is asking to move or change the date/time of an existing appointment, otherwise "other", "rescheduleFrom": "<YYYY-MM-DD of the appointment they want moved, or null>", "rescheduleTo": "<YYYY-MM-DD they want instead, or null>"}` }],
     });
-    if (res.stop_reason === "refusal") return { summary: "", tagIds: [], category: "primary" };
-    const out = parseJson<{ summary?: string; tagIds?: string[]; category?: string }>(textOf(res), {});
+    if (res.stop_reason === "refusal") return { summary: "", tagIds: [], category: "primary", intent: "other", rescheduleFrom: null, rescheduleTo: null };
+    const out = parseJson<{ summary?: string; tagIds?: string[]; category?: string; intent?: string; rescheduleFrom?: string | null; rescheduleTo?: string | null }>(textOf(res), {});
     const valid = new Set(tags.map((t) => t.id));
     const cats = ["primary", "newsletter", "notification", "receipt", "calendar", "social"] as const;
-    return { summary: (out.summary ?? "").slice(0, 200), tagIds: (out.tagIds ?? []).filter((id) => valid.has(id)), category: (cats as readonly string[]).includes(out.category ?? "") ? (out.category as (typeof cats)[number]) : "primary" };
+    const isoDate = (v: unknown) => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
+    return { summary: (out.summary ?? "").slice(0, 200), tagIds: (out.tagIds ?? []).filter((id) => valid.has(id)), category: (cats as readonly string[]).includes(out.category ?? "") ? (out.category as (typeof cats)[number]) : "primary", intent: out.intent === "reschedule" ? "reschedule" : "other", rescheduleFrom: isoDate(out.rescheduleFrom), rescheduleTo: isoDate(out.rescheduleTo) };
   },
 });
 

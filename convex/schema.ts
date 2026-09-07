@@ -68,6 +68,11 @@ export default defineSchema({
     lastInboundAt: v.optional(v.number()),
     lastDirection: direction,
     repliedBy: v.array(v.id("users")),
+    /** Org addresses that replied after the last inbound message; works before that person has signed in. */
+    repliedByEmails: v.optional(v.array(v.string())),
+    autoRepliedAt: v.optional(v.number()),
+    rescheduleRequest: v.optional(v.object({ senderEmail: v.string(), fromDate: v.optional(v.string()), toDate: v.optional(v.string()), detectedAt: v.number() })),
+    rescheduledAt: v.optional(v.number()),
     bothIncluded: v.boolean(),
     tagIds: v.array(v.id("tags")),
     matterId: v.optional(v.id("matters")),
@@ -86,6 +91,7 @@ export default defineSchema({
     .index("by_assignee", ["assignedTo", "assignmentDoneAt"])
     .index("by_matter", ["matterId"])
     .index("by_overdue", ["bothIncluded", "lastDirection", "lastInboundAt"])
+    .index("by_reschedule", ["rescheduledAt", "lastMessageAt"])
     .searchIndex("search_subject", { searchField: "subject", filterFields: ["matterId"] }),
 
   /** Header index only: enough to know who wrote when. Nothing from the body is stored. */
@@ -106,7 +112,8 @@ export default defineSchema({
   })
     .index("by_thread", ["threadId", "date"])
     .index("by_account_gmailId", ["accountId", "gmailMessageId"])
-    .index("by_rfc", ["rfcMessageId"]),
+    .index("by_rfc", ["rfcMessageId"])
+    .index("by_from_date", ["from", "date"]),
 
   /** Gmail thread id → our thread, per account. Kept separate so lookups are a single indexed get. */
   threadLookup: defineTable({ accountId: v.id("googleAccounts"), gmailThreadId: v.string(), threadId: v.id("threads") })

@@ -47,7 +47,7 @@ export const get = query({
     return {
       ...m,
       deliveredBy: m.reportDeliveredBy ? users.get(m.reportDeliveredBy) : undefined,
-      threads: threads.map((t) => ({ threadId: t._id, subject: t.subject, lastMessageAt: t.lastMessageAt, participants: t.participants, repliedBy: t.repliedBy.map((u) => users.get(u) ?? "?"), gmailThreadId: account ? t.mailboxes.find((x) => x.accountId === account._id)?.gmailThreadId : undefined })),
+      threads: threads.map((t) => ({ threadId: t._id, subject: t.subject, lastMessageAt: t.lastMessageAt, participants: t.participants, repliedBy: (t.repliedByEmails ?? []).map((e) => { const local = e.split("@")[0]; return local.charAt(0).toUpperCase() + local.slice(1); }), gmailThreadId: account ? t.mailboxes.find((x) => x.accountId === account._id)?.gmailThreadId : undefined })),
       tasks, files: files.map((f) => ({ _id: f._id, name: f.name, size: f.size, mime: f.mime, isReport: f.isReport, createdAt: f.createdAt, version: f.version })), invoices, codes, signatureRequests: sigs,
     };
   },
