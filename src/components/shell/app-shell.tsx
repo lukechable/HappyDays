@@ -14,6 +14,7 @@ import { NotificationsPopover } from "@/components/shell/notifications";
 import { Dot } from "@/components/primitives";
 import { SignOutButton } from "@/components/auth/auth-mode";
 import { AuthDiagnostics } from "@/components/auth/auth-diagnostics";
+import { Prefetch } from "@/components/shell/prefetch";
 
 export type Me = NonNullable<ReturnType<typeof useQuery<typeof api.users.me>>>;
 
@@ -92,6 +93,7 @@ function Frame({ me, children }: { me: Me; children: ReactNode }) {
         </main>
       </div>
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
+      <Prefetch me={me} />
     </div>
   );
 }

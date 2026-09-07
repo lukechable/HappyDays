@@ -1,4 +1,4 @@
-import { action, internalAction, internalMutation, internalQuery, mutation, query } from "./_generated/server";
+import { action, internalAction, internalMutation, internalQuery, mutation, query, type ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
@@ -10,11 +10,24 @@ import * as cliniko from "./lib/cliniko";
 
 /* ------------------------------ live Cliniko reads (staff) ------------------------------ */
 
+type RefData = { businesses: cliniko.Business[]; practitioners: cliniko.Practitioner[]; types: cliniko.AppointmentType[]; at: number };
+const REF_TTL = 10 * 60_000;
+
+/** Practitioners, businesses and appointment types change rarely; keep them for ten minutes so every screen doesn't re-ask Cliniko. */
+async function refData(ctx: ActionCtx, force = false): Promise<RefData> {
+  const cached = (await ctx.runQuery(internal.settings.getInternal, { key: "cliniko.refCache" })) as RefData | null;
+  if (!force && cached && Date.now() - cached.at < REF_TTL) return cached;
+  const [businesses, practitioners, types] = await Promise.all([cliniko.listBusinesses(), cliniko.listPractitioners(), cliniko.listAppointmentTypes()]);
+  const fresh: RefData = { businesses, practitioners, types, at: Date.now() };
+  await ctx.runMutation(internal.settings.setInternal, { key: "cliniko.refCache", value: fresh });
+  return fresh;
+}
+
 export const practice = action({
   args: {},
   handler: async (ctx) => {
     await ctx.runQuery(internal.bookings.requireStaff, {});
-    const [businesses, practitioners, types] = await Promise.all([cliniko.listBusinesses(), cliniko.listPractitioners(), cliniko.listAppointmentTypes()]);
+    const { businesses, practitioners, types } = await refData(ctx);
     return { businesses, practitioners: practitioners.filter((p) => p.active), appointmentTypes: types.filter((t) => !t.archived_at) };
   },
 });
@@ -23,7 +36,8 @@ export const calendar = action({
   args: { fromIso: v.string(), toIso: v.string(), practitionerId: v.optional(v.string()) },
   handler: async (ctx, { fromIso, toIso, practitionerId }) => {
     await ctx.runQuery(internal.bookings.requireStaff, {});
-    const [appointments, availability, unavailable, types, practitioners, groups] = await Promise.all([cliniko.listAppointments(fromIso, toIso, practitionerId), cliniko.availabilityBlocks(fromIso, toIso), cliniko.unavailableBlocks(fromIso, toIso), cliniko.listAppointmentTypes(), cliniko.listPractitioners(), cliniko.groupAppointments(fromIso, toIso).catch(() => [] as cliniko.GroupAppointment[])]);
+    const [appointments, availability, unavailable, ref, groups] = await Promise.all([cliniko.listAppointments(fromIso, toIso, practitionerId), cliniko.availabilityBlocks(fromIso, toIso), cliniko.unavailableBlocks(fromIso, toIso), refData(ctx), cliniko.groupAppointments(fromIso, toIso).catch(() => [] as cliniko.GroupAppointment[])]);
+    const { types, practitioners } = ref;
     const attendeeCounts = new Map<string, number>();
     await Promise.all(groups.filter((g) => !g.deleted_at).slice(0, 30).map(async (g) => { try { attendeeCounts.set(g.id, await cliniko.attendeeCount(g.id)); } catch { /* fine */ } }));
     const typeById = new Map(types.map((t) => [t.id, t]));
@@ -98,7 +112,8 @@ export const patient = action({
   args: { patientId: v.string() },
   handler: async (ctx, { patientId }) => {
     const me = await ctx.runQuery(internal.bookings.requireStaff, {});
-    const [p, appointments, attachments, alerts, invoices, types, practitioners, notes, cases, forms, users] = await Promise.all([cliniko.getPatient(patientId), cliniko.patientAppointments(patientId), cliniko.patientAttachments(patientId), cliniko.patientMedicalAlerts(patientId), cliniko.patientInvoices(patientId).catch(() => [] as cliniko.Invoice[]), cliniko.listAppointmentTypes(), cliniko.listPractitioners(), cliniko.treatmentNotes(patientId).catch(() => [] as cliniko.TreatmentNote[]), cliniko.patientCases(patientId).catch(() => [] as cliniko.PatientCase[]), cliniko.patientForms(patientId).catch(() => [] as cliniko.PatientForm[]), cliniko.listUsers().catch(() => [] as cliniko.User[])]);
+    const [p, appointments, attachments, alerts, invoices, ref, notes, cases, forms, users] = await Promise.all([cliniko.getPatient(patientId), cliniko.patientAppointments(patientId), cliniko.patientAttachments(patientId), cliniko.patientMedicalAlerts(patientId), cliniko.patientInvoices(patientId).catch(() => [] as cliniko.Invoice[]), refData(ctx), cliniko.treatmentNotes(patientId).catch(() => [] as cliniko.TreatmentNote[]), cliniko.patientCases(patientId).catch(() => [] as cliniko.PatientCase[]), cliniko.patientForms(patientId).catch(() => [] as cliniko.PatientForm[]), cliniko.listUsers().catch(() => [] as cliniko.User[])]);
+    const { types, practitioners } = ref;
     const userName = (link?: { links: { self: string } }) => { const u = users.find((x) => x.id === cliniko.idFromLink(link)); return u ? (u.display_name || `${u.first_name} ${u.last_name}`) : undefined; };
     await ctx.runMutation(internal.bookings.logAccess, { userId: me._id, action: "cliniko.patientView", subjectId: patientId });
     const typeById = new Map(types.map((t) => [t.id, t]));
@@ -247,7 +262,7 @@ export const syncPricing = action({
   args: {},
   handler: async (ctx) => {
     await ctx.runQuery(internal.bookings.requireStaff, {});
-    const types = (await cliniko.listAppointmentTypes()).filter((t) => !t.archived_at);
+    const types = (await refData(ctx, true)).types.filter((t) => !t.archived_at);
     await ctx.runMutation(internal.bookings.ensurePricingRows, { types: types.map((t) => ({ id: t.id, name: t.name, duration: t.duration_in_minutes, online: !!t.show_in_online_bookings })) });
     return types.length;
   },
@@ -280,7 +295,7 @@ export const publicOptions = action({
   args: {},
   handler: async (ctx) => {
     const pricing: Doc<"appointmentPricing">[] = await ctx.runQuery(internal.bookings.publicPricing, {});
-    const [businesses, practitioners, types] = await Promise.all([cliniko.listBusinesses(), cliniko.listPractitioners(), cliniko.listAppointmentTypes()]);
+    const { businesses, practitioners, types } = await refData(ctx);
     const priced = new Map<string, Doc<"appointmentPricing">>(pricing.map((p) => [p.clinikoAppointmentTypeId, p]));
     const business = businesses.find((b) => b.show_in_online_bookings !== false) ?? businesses[0];
     return {
