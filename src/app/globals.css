@@ -1,0 +1,276 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+  Happy Days design tokens (ported from EventBase on 7 Sep 2026).
+  Typography and colour are derived from the Manus (manus.im) design language:
+  a system-sans UI face, Libre Baskerville for statements, a warm near-black
+  text ramp on off-white grounds, one blue accent, and a 2/4/6/24 % shadow scale.
+  The admin shell, primitives and this file are the design system; docs/PLAN.md explains the port.
+*/
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  /* Type */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+  --font-serif: var(--font-libre-baskerville), "Libre Baskerville", Georgia, Cambria, "Times New Roman", Times, serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --font-heading: var(--font-serif);
+
+  /* Brand aliases kept for existing components */
+  --color-brand: var(--brand);
+  --color-brand-deep: var(--brand-deep);
+  --color-brand-soft: var(--brand-soft);
+  --color-gold: var(--gold);
+  --color-gold-soft: var(--gold-soft);
+  --color-ink: var(--ink);
+
+  /* Manus-derived semantic colours */
+  --color-blue: var(--blue);
+  --color-blue-dark: var(--blue-dark);
+  --color-blue-soft: var(--blue-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-error: var(--error);
+  --color-error-soft: var(--error-soft);
+  --color-fg-secondary: var(--fg-secondary);
+  --color-fg-tertiary: var(--fg-tertiary);
+  --color-fg-quaternary: var(--fg-quaternary);
+  --color-fg-disabled: var(--fg-disabled);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-nav: var(--nav);
+
+  /* Shadow scale (Manus XS / S / M / L) */
+  --shadow-xs: 0 1px 2px -0.5px var(--shadow-xs-c), inset 0 -0.5px 0 0 var(--shadow-xs-c);
+  --shadow-sm: 0 2px 6px 0 var(--shadow-s-c);
+  --shadow-md: 0 8px 24px 0 var(--shadow-m-c);
+  --shadow-lg: 0 8px 32px 0 var(--shadow-l-c);
+  --shadow-card: 0 12px 32px 0 var(--shadow-xs-c);
+  --shadow-float: 0 2px 6px 0 var(--shadow-s-c), 0 8px 24px 0 var(--shadow-m-c), 0 16px 48px 0 var(--shadow-s-c);
+
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.75);
+}
+
+:root {
+  /* Text ramp */
+  --foreground: #1a1a1a;
+  --fg-secondary: #4d4d4d;
+  --fg-tertiary: #737373;
+  --fg-quaternary: #8c8c8c;
+  --fg-disabled: #a6a6a6;
+  --ink: #1a1a1a;
+
+  /* Grounds */
+  --background: #f8f8f7;
+  --surface: #ffffff;
+  --surface-2: #f3f3f3;
+  --nav: #f0f0f0;
+  --card: #ffffff;
+  --card-foreground: #1a1a1a;
+  --popover: #ffffff;
+  --popover-foreground: #1a1a1a;
+
+  /* Actions */
+  --primary: #1a1a19;
+  --primary-foreground: #ffffff;
+  --brand: #1a1a19;
+  --brand-deep: #050505;
+  --brand-soft: #f0f0ef;
+  --secondary: #f3f3f3;
+  --secondary-foreground: #1a1a1a;
+  --muted: #f0f0ef;
+  --muted-foreground: #737373;
+  --accent: #f3f3f3;
+  --accent-foreground: #1a1a1a;
+
+  /* Accent + status */
+  --blue: #0081f2;
+  --blue-dark: #005fb3;
+  --blue-soft: rgb(0 129 242 / 0.08);
+  --success: #25ba3b;
+  --success-soft: rgb(37 186 59 / 0.08);
+  --warning: #efa201;
+  --warning-soft: rgb(239 162 1 / 0.12);
+  --error: #fb494f;
+  --error-soft: rgb(242 90 90 / 0.08);
+  --destructive: #fb494f;
+  --gold: #efa201;
+  --gold-soft: #fdf1d6;
+
+  /* Lines + focus */
+  --border: rgb(0 0 0 / 0.08);
+  --input: rgb(0 0 0 / 0.14);
+  --ring: #0081f2;
+
+  /* Shadow colours */
+  --shadow-xs-c: rgb(0 0 0 / 0.02);
+  --shadow-s-c: rgb(0 0 0 / 0.04);
+  --shadow-m-c: rgb(0 0 0 / 0.06);
+  --shadow-l-c: rgb(0 0 0 / 0.24);
+
+  --chart-1: #0081f2;
+  --chart-2: #1a1a1a;
+  --chart-3: #737373;
+  --chart-4: #a6a6a6;
+  --chart-5: #efa201;
+  --radius: 0.5rem;
+  --sidebar: #f0f0f0;
+  --sidebar-foreground: #1a1a1a;
+  --sidebar-primary: #1a1a19;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #f3f3f3;
+  --sidebar-accent-foreground: #1a1a1a;
+  --sidebar-border: rgb(0 0 0 / 0.08);
+  --sidebar-ring: #0081f2;
+}
+
+.dark {
+  --foreground: #e6e6e6;
+  --fg-secondary: #b3b3b3;
+  --fg-tertiary: #8c8c8c;
+  --fg-quaternary: #7a7a7a;
+  --fg-disabled: #595959;
+  --ink: #1a1a1a;
+
+  --background: #1a1a1a;
+  --surface: #242424;
+  --surface-2: #313131;
+  --nav: #1f1f1f;
+  --card: #242424;
+  --card-foreground: #e6e6e6;
+  --popover: #242424;
+  --popover-foreground: #e6e6e6;
+
+  --primary: #f2f2f2;
+  --primary-foreground: #1a1a1a;
+  --brand: #f2f2f2;
+  --brand-deep: #ffffff;
+  --brand-soft: #2a2a2a;
+  --secondary: #313131;
+  --secondary-foreground: #e6e6e6;
+  --muted: #262626;
+  --muted-foreground: #8c8c8c;
+  --accent: #313131;
+  --accent-foreground: #e6e6e6;
+
+  --blue: #1a93fe;
+  --blue-dark: #489ce6;
+  --blue-soft: rgb(26 147 254 / 0.12);
+  --success: #5eb92d;
+  --success-soft: rgb(94 185 45 / 0.12);
+  --warning: #ffbf36;
+  --warning-soft: rgb(255 191 54 / 0.12);
+  --error: #eb4d4d;
+  --error-soft: rgb(235 77 77 / 0.12);
+  --destructive: #eb4d4d;
+  --gold: #ffbf36;
+  --gold-soft: #3b2e0f;
+
+  --border: rgb(255 255 255 / 0.12);
+  --input: rgb(255 255 255 / 0.16);
+  --ring: #1a93fe;
+
+  --shadow-xs-c: rgb(0 0 0 / 0.08);
+  --shadow-s-c: rgb(0 0 0 / 0.16);
+  --shadow-m-c: rgb(0 0 0 / 0.28);
+  --shadow-l-c: rgb(0 0 0 / 0.4);
+
+  --chart-1: #1a93fe;
+  --chart-2: #e6e6e6;
+  --chart-3: #8c8c8c;
+  --chart-4: #595959;
+  --chart-5: #ffbf36;
+  --sidebar: #1f1f1f;
+  --sidebar-foreground: #e6e6e6;
+  --sidebar-primary: #f2f2f2;
+  --sidebar-primary-foreground: #1a1a1a;
+  --sidebar-accent: #313131;
+  --sidebar-accent-foreground: #e6e6e6;
+  --sidebar-border: rgb(255 255 255 / 0.12);
+  --sidebar-ring: #1a93fe;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans;
+    line-height: 1.5;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  /* Content must never widen the layout viewport on phones; anything that overflows is clipped, not scrolled. */
+  html, body { overflow-x: clip; }
+  button:not(:disabled), [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  /* Statement headings are serif, regular weight by default; UI headings stay sans. */
+  h1, h2 {
+    font-family: var(--font-serif);
+    font-weight: 400;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+  h3, h4 {
+    font-family: var(--font-sans);
+    font-weight: 500;
+    letter-spacing: 0;
+  }
+  h1.font-display, h2.font-display, .font-display { font-family: var(--font-serif); letter-spacing: -0.01em; }
+  h3.font-display, h4.font-display { font-family: var(--font-sans); letter-spacing: 0; }
+  em { font-style: italic; }
+}
+
+/* ---------- EventBase brand layer ---------- */
+.num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.hd-card { transition: transform .25s cubic-bezier(.2,.8,.2,1), box-shadow .25s; }
+.hd-card:hover { transform: translateY(-2px); box-shadow: 0 12px 32px 0 var(--shadow-m-c); }
+@media (prefers-reduced-motion: reduce) { .hd-card, .hd-card:hover { transition: none; transform: none; } }
+/* Email bodies render inside a sandboxed iframe; the host document only needs the frame to size itself. */
+.hd-mail-frame { width: 100%; border: 0; background: transparent; }
