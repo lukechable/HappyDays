@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useAction, useQuery } from "convex/react";
+import { useAction } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import { X, FileDown, Archive } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../../../convex/_generated/api";

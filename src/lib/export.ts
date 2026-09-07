@@ -1,7 +1,5 @@
 "use client";
 
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
-
 /** Tabular export for any table in the app: CSV, Excel, PDF and print, all built in the browser. */
 export type ExportColumn = { key: string; label: string; align?: "left" | "right"; width?: number };
 export type ExportRow = Record<string, string | number | null | undefined>;
@@ -32,6 +30,7 @@ export async function exportXlsx(t: ExportTable) {
 
 /** Landscape A4, repeating header row, page numbers; the same table you see on screen. */
 export async function exportPdf(t: ExportTable, open = false) {
+  const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib"); // ~170 KB, loaded only when someone exports a PDF
   const doc = await PDFDocument.create();
   doc.setTitle(t.title); doc.setProducer("Happy Days");
   const font = await doc.embedFont(StandardFonts.Helvetica);

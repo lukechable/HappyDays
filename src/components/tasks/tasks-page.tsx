@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { replaceSearch } from "@/lib/shallow";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import { Inbox, Sun, CalendarDays, AlarmClock, UserCheck, Send, CheckCircle2, List as ListIcon, Plus, LayoutGrid, Calendar, Rows3, Circle, CheckCircle, Flag, MessageSquare, Paperclip, GitBranch } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../../../convex/_generated/api";

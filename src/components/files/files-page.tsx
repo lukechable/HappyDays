@@ -1,10 +1,11 @@
 "use client";
 
 import { useRef, useState } from "react";
-import Link from "next/link";
+import { PrefetchLink } from "@/components/prefetch-link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { replaceUrl } from "@/lib/shallow";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import { Upload, FileText, Download, KeyRound, Trash2, Eye, PenLine, RefreshCw, Copy, Mail, Ban, CalendarPlus } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../../../convex/_generated/api";
@@ -90,7 +91,7 @@ export function FilesPage() {
 
 function FileAction({ label, onClick, href, icon }: { label: string; onClick?: () => void; href?: string; icon: React.ReactNode }) {
   const cls = "inline-flex size-7 items-center justify-center rounded-md text-fg-secondary hover:bg-muted hover:text-foreground";
-  return href ? <Link href={href} className={cls} title={label} aria-label={label}>{icon}</Link> : <button type="button" onClick={onClick} className={cls} title={label} aria-label={label}>{icon}</button>;
+  return href ? <PrefetchLink href={href} className={cls} title={label} aria-label={label}>{icon}</PrefetchLink> : <button type="button" onClick={onClick} className={cls} title={label} aria-label={label}>{icon}</button>;
 }
 
 /* ------------------------------ codes ------------------------------ */

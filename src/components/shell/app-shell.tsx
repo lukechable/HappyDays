@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { Authenticated, AuthLoading, Unauthenticated, useConvexAuth, useMutation, useQuery } from "convex/react";
+import { Authenticated, AuthLoading, Unauthenticated, useConvexAuth, useMutation } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import { Bell, LogOut, Menu, Search } from "lucide-react";
 import { api } from "../../../convex/_generated/api";
 import { NAV, isActive, navItemFor } from "@/lib/nav";

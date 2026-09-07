@@ -3,7 +3,8 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useAction, useMutation, useQuery } from "convex/react";
+import { useAction, useMutation } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import { Plus, RefreshCw, ExternalLink, FileText } from "lucide-react";
 import { ExportMenu } from "@/components/export/export-menu";
 import { toast } from "sonner";

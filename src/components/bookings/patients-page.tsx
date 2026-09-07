@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { PrefetchLink } from "@/components/prefetch-link";
 import { useRouter } from "next/navigation";
-import { useQuery } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import { api } from "../../../convex/_generated/api";
 import { PageHeader, Panel, Empty, Loading, ErrorBox, DataTable } from "@/components/primitives";
 import { Button } from "@/components/ui/button";
@@ -22,7 +23,7 @@ export function PatientsPage() {
         <Panel title="Recently updated" blurb="The 50 patient records Cliniko changed most recently." actions={<Button size="sm" variant="ghost" onClick={recent.reload}>Refresh</Button>}>
           {recent.error ? <ErrorBox title="Couldn’t read patients from Cliniko" message={recent.error} retry={recent.reload} /> : !recent.data ? <Loading rows={6} /> : recent.data.length === 0 ? <Empty title="No patients yet" /> : (
             <DataTable head={<><th>Patient</th><th>Contact</th><th>DOB</th><th>Updated</th><th></th></>} minWidth={640}>
-              {recent.data.map((p) => <tr key={p.id} className="hover:bg-muted/50"><td><Link href={`/bookings/patients/${p.id}`} className="font-medium hover:underline">{p.name}</Link>{p.medicalAlerts && <div className="text-xs text-warning">{p.medicalAlerts}</div>}</td><td className="text-xs text-fg-secondary">{[p.email, p.phone].filter(Boolean).join(" · ") || "—"}</td><td className="text-xs">{p.dob ? day(p.dob) : "—"}</td><td className="text-xs text-fg-tertiary">{ago(Date.parse(p.updatedAt))}</td><td><a href={p.clinikoUrl} target="_blank" rel="noreferrer" className="text-xs text-fg-tertiary hover:text-foreground">Cliniko ↗</a></td></tr>)}
+              {recent.data.map((p) => <tr key={p.id} className="hover:bg-muted/50"><td><PrefetchLink href={`/bookings/patients/${p.id}`} className="font-medium hover:underline">{p.name}</PrefetchLink>{p.medicalAlerts && <div className="text-xs text-warning">{p.medicalAlerts}</div>}</td><td className="text-xs text-fg-secondary">{[p.email, p.phone].filter(Boolean).join(" · ") || "—"}</td><td className="text-xs">{p.dob ? day(p.dob) : "—"}</td><td className="text-xs text-fg-tertiary">{ago(Date.parse(p.updatedAt))}</td><td><a href={p.clinikoUrl} target="_blank" rel="noreferrer" className="text-xs text-fg-tertiary hover:text-foreground">Cliniko ↗</a></td></tr>)}
             </DataTable>
           )}
         </Panel>

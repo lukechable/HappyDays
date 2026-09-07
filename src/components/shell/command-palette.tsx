@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useQuery } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import { useLive } from "@/lib/hooks";
 import { api } from "../../../convex/_generated/api";
 import { NAV_ITEMS } from "@/lib/nav";
