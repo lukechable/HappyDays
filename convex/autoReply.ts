@@ -155,6 +155,10 @@ async function evaluateOne(ctx: ActionCtx, accountId: Id<"googleAccounts">, m: {
   // Folder rules run for every inbound message, including bulk mail, before any reply guard rails.
   try { await fileByRules(ctx, { accountId, threadId: m.threadId, gmailThreadId: m.gmailThreadId, senderEmail: from.email, subject: gmail.header(msg, "Subject"), matterId: c.thread.matterId, existingLabelIds: msg.labelIds ?? [], token }); }
   catch (e) { console.error("auto-file failed", m.gmailMessageId, e); }
+  const orgEmailsEarly = new Set(allowedEmails().concat(c.account.email));
+  if (!orgEmailsEarly.has(from.email) && !gmail.isAutoSubmitted(msg) && c.owner.prefs?.pushMail !== false) {
+    await ctx.scheduler.runAfter(0, internal.push.sendToUser, { userId: c.owner._id, title: from.name || from.email, body: gmail.header(msg, "Subject") || "(no subject)", href: `/mail?thread=${encodeURIComponent(m.gmailThreadId)}`, tag: `mail-${m.gmailThreadId}` });
+  }
   const orgEmails = new Set(allowedEmails().concat(c.account.email));
   if (orgEmails.has(from.email) || gmail.isAutoSubmitted(msg)) return;
   const body = gmail.parseBody(msg.payload);

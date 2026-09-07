@@ -16,6 +16,7 @@ import { SignOutButton } from "@/components/auth/auth-mode";
 import { AuthDiagnostics } from "@/components/auth/auth-diagnostics";
 import { Prefetch } from "@/components/shell/prefetch";
 import { PageEnter } from "@/components/shell/page-enter";
+import { PwaProvider } from "@/components/shell/pwa";
 
 export type Me = NonNullable<ReturnType<typeof useQuery<typeof api.users.me>>>;
 
@@ -96,6 +97,7 @@ function Frame({ me, children }: { me: Me; children: ReactNode }) {
       </div>
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
       <Prefetch me={me} />
+      <PwaProvider />
     </div>
   );
 }

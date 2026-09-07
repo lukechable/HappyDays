@@ -17,8 +17,13 @@ export const metadata: Metadata = {
   title: { default: "Happy Days", template: "%s · Happy Days" },
   description: "Mail, bookings, tasks, files and money for Barbara Fraser & Associates.",
   robots: { index: false, follow: false },
+  manifest: "/manifest.webmanifest",
+  applicationName: "Happy Days",
+  appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "Happy Days" },
+  icons: { icon: [{ url: "/icon-192.png", sizes: "192x192", type: "image/png" }, { url: "/icon-512.png", sizes: "512x512", type: "image/png" }], apple: "/apple-touch-icon.png" },
+  formatDetection: { telephone: false },
 };
-export const viewport: Viewport = { themeColor: "#1a1a19", width: "device-width", initialScale: 1 };
+export const viewport: Viewport = { themeColor: "#1a1a19", width: "device-width", initialScale: 1, viewportFit: "cover" };
 
 const clerkConfigured = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
 

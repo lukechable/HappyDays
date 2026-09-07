@@ -24,6 +24,8 @@ export default defineSchema({
       showImages: v.optional(v.boolean()),
       signatureImage: v.optional(v.string()),
       initialsImage: v.optional(v.string()),
+      pushMail: v.optional(v.boolean()),
+      pushActivity: v.optional(v.boolean()),
     })),
   }).index("by_clerk", ["clerkId"]).index("by_email", ["email"]),
 
@@ -228,6 +230,18 @@ export default defineSchema({
   taskComments: defineTable({ taskId: v.id("tasks"), userId: v.id("users"), body: v.string(), createdAt: v.number() }).index("by_task", ["taskId", "createdAt"]),
 
   /** In-app notifications (assignment, task handed over, first download of a code). */
+  /** Web push subscriptions, one per browser/device that turned notifications on. */
+  pushSubscriptions: defineTable({
+    userId: v.id("users"),
+    endpoint: v.string(),
+    p256dh: v.string(),
+    auth: v.string(),
+    userAgent: v.optional(v.string()),
+    createdAt: v.number(),
+    lastOkAt: v.optional(v.number()),
+    failures: v.number(),
+  }).index("by_user", ["userId"]).index("by_endpoint", ["endpoint"]),
+
   notifications: defineTable({
     userId: v.id("users"),
     kind: v.string(),

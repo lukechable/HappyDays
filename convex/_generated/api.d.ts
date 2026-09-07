@@ -28,6 +28,8 @@ import type * as mail from "../mail.js";
 import type * as matters from "../matters.js";
 import type * as money from "../money.js";
 import type * as notifications from "../notifications.js";
+import type * as push from "../push.js";
+import type * as pushData from "../pushData.js";
 import type * as settings from "../settings.js";
 import type * as signatures from "../signatures.js";
 import type * as signaturesEmail from "../signaturesEmail.js";
@@ -65,6 +67,8 @@ declare const fullApi: ApiFromModules<{
   matters: typeof matters;
   money: typeof money;
   notifications: typeof notifications;
+  push: typeof push;
+  pushData: typeof pushData;
   settings: typeof settings;
   signatures: typeof signatures;
   signaturesEmail: typeof signaturesEmail;
