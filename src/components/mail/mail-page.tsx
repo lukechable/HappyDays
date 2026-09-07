@@ -6,7 +6,7 @@ import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
 import { useAction, useMutation } from "convex/react";
 import { useQuery } from "convex-helpers/react/cache/hooks";
-import { PenSquare, Search, RefreshCw, Archive, Trash2, MailOpen, Tag as TagIcon, X, Star, Inbox as InboxIcon, ShieldAlert, FolderInput } from "lucide-react";
+import { PenSquare, Search, RefreshCw, Archive, Trash2, MailOpen, Tag as TagIcon, X, Star, Inbox as InboxIcon, ShieldAlert, FolderInput, PanelBottom, PanelRight } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../../../convex/_generated/api";
 import type { ListItem, MessageView } from "../../../convex/mail";
@@ -50,6 +50,8 @@ export function MailPage() {
   const markRead = useAction(api.mail.markMessageRead);
   const labelsLive = useLive(api.mail.labels, me?.google?.status === "connected" ? {} : "skip", { ttlMs: 300_000 });
   const reportSent = useMutation(api.files.reportSentByEmail);
+  const updatePrefs = useMutation(api.users.updatePrefs);
+  const [paneOverride, setPaneOverride] = useState<"below" | "right" | null>(null);
 
   const connected = me?.google?.status === "connected";
   const listKey = JSON.stringify({ view, labelId, q, connected });
@@ -292,6 +294,9 @@ export function MailPage() {
   }
 
   const selectedIds = checked.size ? Array.from(checked) : selectedId ? [selectedId] : [];
+  // Reading pane under the list (Outlook's default) unless this user has moved it to the right. Saved per user.
+  const pane = paneOverride ?? me?.prefs.readingPane ?? "below";
+  const togglePane = () => { const next = pane === "below" ? "right" : "below"; setPaneOverride(next); updatePrefs({ prefs: { readingPane: next } }).catch((e: unknown) => toast.error(errorMessage(e))); };
 
   return (
     <div className="flex min-h-0 flex-1 flex-col lg:h-[calc(100svh-48px)]">
@@ -318,11 +323,13 @@ export function MailPage() {
           </div>
         )}
         <Button size="sm" variant="ghost" onClick={() => { reload(); refreshLabels(); }} aria-label="Refresh" title="Refresh"><RefreshCw className={cn("size-3.5", listLoading && "animate-spin")} /></Button>
+        <Button size="sm" variant="ghost" className="hidden lg:inline-flex" onClick={togglePane} aria-label={pane === "below" ? "Move the reading pane to the right" : "Move the reading pane below the list"} title={pane === "below" ? "Reading pane: below the list. Click for right." : "Reading pane: on the right. Click for below."}>{pane === "below" ? <PanelBottom className="size-3.5" /> : <PanelRight className="size-3.5" />}</Button>
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[200px_minmax(320px,400px)_minmax(0,1fr)]">
+      <div className={cn("grid min-h-0 flex-1 grid-cols-1", pane === "right" ? "lg:grid-cols-[200px_minmax(320px,400px)_minmax(0,1fr)]" : "lg:grid-cols-[200px_minmax(0,1fr)]")}>
         <aside className="hidden min-h-0 border-r border-border bg-surface-2/60 lg:block"><FolderList view={view} labelId={labelId} labels={labels} badges={{ overdue: me?.badges.overdue ?? 0, assigned: me?.badges.assigned ?? 0 }} onSelect={(v, l) => { setParams({ view: v === "inbox" ? undefined : v, label: l, q: undefined, thread: undefined }); }} onLabelsChanged={refreshLabels} onDropThreads={onDropThreads} /></aside>
-        <section className={cn("flex min-h-0 flex-col border-r border-border", selectedId && "hidden lg:flex")}>
+        <div className={cn("contents", pane === "below" && "lg:flex lg:min-h-0 lg:flex-col")}>
+        <section className={cn("flex min-h-0 flex-col", pane === "right" ? "border-r border-border" : "lg:h-[45%] lg:shrink-0 lg:border-b lg:border-border", selectedId && "hidden lg:flex")}>
           <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-1.5">
             <span className="truncate text-[13px] font-medium">{title}</span>
             {missing > 0 && <span className="text-[11px] text-fg-tertiary" title="These threads exist only in the other mailbox">{missing} not in your mailbox</span>}
@@ -337,9 +344,10 @@ export function MailPage() {
             <ThreadList items={items} meta={meta} selectedId={selectedId} focusedIndex={focused} checked={checked} onOpen={open} onToggleCheck={toggleCheck} onStar={(i) => act([i.gmailThreadId], i.starred ? "unstar" : "star")} loading={listLoading || appending} error={listError} hasMore={!!nextToken} onMore={() => void loadMore()} emptyText={EMPTY_TEXT[view] ?? "Nothing here."} myFirst={me?.first} labels={labels} onContextMenu={onContextMenu} onDragStart={onDragStart} />
           </div>
         </section>
-        <section className={cn("min-h-0 bg-surface/60", !selectedId && "hidden lg:block")}>
+        <section className={cn("min-h-0 bg-surface/60", pane === "below" && "lg:flex-1", !selectedId && "hidden lg:block")}>
           <ThreadView thread={selectedId ? thread : undefined} meta={selectedId ? meta[selectedId] : undefined} labels={labels ?? []} loading={threadLoading} error={threadError} myFirst={me?.first} showImagesDefault={me?.prefs.showImages ?? false} onAction={(op, payload) => selectedId && act([selectedId], op, payload)} onReply={startCompose} onClose={closeThread} />
         </section>
+        </div>
       </div>
 
       {menu && (
