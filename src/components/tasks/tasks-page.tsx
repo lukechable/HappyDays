@@ -158,10 +158,10 @@ function Row({ t, active, now, onOpen, onToggle }: { t: TaskView; active: boolea
   const overdue = t.dueAt !== undefined && t.dueAt < now && t.status !== "done" && !(t.allDay && new Date(t.dueAt).toDateString() === new Date(now).toDateString());
   const doneSubs = t.subtasks.filter((s) => s.status === "done").length;
   return (
-    <li className={cn("flex items-start gap-2.5 border-b border-border/70 px-3 py-2 last:border-0", active ? "bg-blue-soft" : "hover:bg-muted/60")}>
-      <button type="button" onClick={onToggle} aria-label={t.status === "done" ? "Mark open" : "Mark done"} className={cn("mt-0.5 shrink-0", t.status === "done" ? "text-success" : PRI_COLOR[t.priority])}>{t.status === "done" ? <CheckCircle className="size-4" /> : <Circle className="size-4" />}</button>
+    <li className={cn("hd-row flex items-start gap-2.5 border-b border-border/70 px-3 py-2 last:border-0", active ? "bg-blue-soft shadow-[inset_2px_0_0_var(--blue)]" : "hover:bg-muted/60")}>
+      <button type="button" onClick={onToggle} aria-label={t.status === "done" ? "Mark open" : "Mark done"} className={cn("hd-press mt-0.5 shrink-0 rounded-full", t.status === "done" ? "text-success" : PRI_COLOR[t.priority])}>{t.status === "done" ? <CheckCircle className="size-4" /> : <Circle className="size-4" />}</button>
       <button type="button" onClick={onOpen} className="min-w-0 flex-1 text-left">
-        <div className={cn("truncate text-sm", t.status === "done" && "text-fg-tertiary line-through")}>{t.title}</div>
+        <div className={cn("truncate text-sm transition-colors duration-200", t.status === "done" && "text-fg-tertiary line-through")}>{t.title}</div>
         <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-fg-tertiary">
           {t.dueAt !== undefined && <span className={cn(overdue ? "font-medium text-error" : "")}>{dueLabel(t.dueAt)}{!t.allDay && ` ${time(t.dueAt)}`}</span>}
           {t.priority !== "none" && <Flag className={cn("size-3", PRI_COLOR[t.priority])} />}
@@ -187,7 +187,7 @@ function Board({ tasks, selected, onOpen, onStatus }: { tasks: TaskView[]; selec
           <div className="flex items-baseline gap-2 px-1 pb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-fg-tertiary">{c.label}<span className="num font-normal">{tasks.filter((t) => t.status === c.key).length}</span></div>
           <ul className="space-y-1.5">
             {tasks.filter((t) => t.status === c.key).map((t) => (
-              <li key={t._id} draggable onDragStart={(e) => e.dataTransfer.setData("task", t._id)} onClick={() => onOpen(t._id)} className={cn("cursor-grab rounded-lg bg-card p-2.5 text-sm ring-1 ring-black/[0.06] hover:shadow-sm dark:ring-white/10", selected === t._id && "ring-2 ring-blue")}>
+              <li key={t._id} draggable onDragStart={(e) => e.dataTransfer.setData("task", t._id)} onClick={() => onOpen(t._id)} className={cn("hd-lift cursor-grab rounded-lg bg-card p-2.5 text-sm shadow-xs ring-1 ring-black/[0.06] dark:ring-white/10", selected === t._id && "ring-2 ring-blue")}>
                 <div className={cn(t.status === "done" && "text-fg-tertiary line-through")}>{t.title}</div>
                 <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-fg-tertiary">{t.dueAt !== undefined && <span>{dueLabel(t.dueAt)}</span>}{t.priority !== "none" && <Flag className={cn("size-3", PRI_COLOR[t.priority])} />}{t.assignee && <span className="ml-auto">{t.assignee}</span>}{t.tagIds.length > 0 && <span className={cn("rounded-full px-1.5", TONE_CLASS.neutral)}>{t.tagIds.length} tag{t.tagIds.length === 1 ? "" : "s"}</span>}</div>
               </li>

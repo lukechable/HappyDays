@@ -98,7 +98,7 @@ export function ThreadView({ thread, meta, labels, loading, error, myFirst, show
             const open = expanded.has(m.gmailMessageId) || m.isDraft;
             const atts = realAttachments(m);
             return (
-              <li key={m.gmailMessageId} className={cn("rounded-xl bg-card ring-1 ring-black/[0.06] dark:ring-white/10", m.isDraft && "ring-error/40")}>
+              <li key={m.gmailMessageId} className={cn("hd-enter rounded-xl bg-card shadow-xs ring-1 ring-black/[0.06] dark:ring-white/10", m.isDraft && "ring-error/40")}>
                 <button type="button" onClick={() => setExpanded((s) => { const n = new Set(s); if (n.has(m.gmailMessageId)) n.delete(m.gmailMessageId); else n.add(m.gmailMessageId); return n; })} className="flex w-full items-start gap-3 px-4 py-3 text-left">
                   <span className={cn("mt-0.5 inline-flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold", m.fromOrg ? "bg-foreground text-background" : "bg-muted text-fg-secondary")}>{initials(m.from.name || m.from.email)}</span>
                   <span className="min-w-0 flex-1">

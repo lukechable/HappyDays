@@ -23,10 +23,10 @@ export function ThreadList({ items, meta, selectedId, focusedIndex, checked, onO
           const others = m?.repliedBy.filter((r) => r.first !== myFirst) ?? [];
           const mine = m?.repliedBy.some((r) => r.first === myFirst) ?? false;
           return (
-            <li key={t.gmailThreadId} role="option" aria-selected={active} data-index={i} className={cn("group relative flex cursor-pointer gap-2 border-b border-border/70 px-3 py-2 text-[13px]", active ? "bg-blue-soft" : focused ? "bg-muted/70" : "hover:bg-muted/60", t.unread && !active && "bg-card")} onClick={() => onOpen(t.gmailThreadId)}>
+            <li key={t.gmailThreadId} role="option" aria-selected={active} data-index={i} className={cn("hd-row group relative flex cursor-pointer gap-2 border-b border-border/70 px-3 py-2 text-[13px]", active ? "bg-blue-soft shadow-[inset_2px_0_0_var(--blue)]" : focused ? "bg-muted/70" : "hover:bg-muted/60", t.unread && !active && "bg-card")} onClick={() => onOpen(t.gmailThreadId)}>
               <div className="flex shrink-0 flex-col items-center gap-1 pt-0.5">
                 <input type="checkbox" aria-label="Select conversation" checked={checked.has(t.gmailThreadId)} onClick={(e) => { e.stopPropagation(); onToggleCheck(t.gmailThreadId, e.shiftKey); }} onChange={() => undefined} className="size-3.5 accent-foreground" />
-                <button type="button" onClick={(e) => { e.stopPropagation(); onStar(t); }} aria-label={t.starred ? "Unstar" : "Star"} className={cn("rounded p-0.5", t.starred ? "text-gold" : "text-fg-quaternary opacity-0 hover:text-gold group-hover:opacity-100")}><Star className="size-3.5" fill={t.starred ? "currentColor" : "none"} /></button>
+                <button type="button" onClick={(e) => { e.stopPropagation(); onStar(t); }} aria-label={t.starred ? "Unstar" : "Star"} className={cn("hd-press rounded p-0.5 transition-opacity", t.starred ? "text-gold" : "text-fg-quaternary opacity-0 hover:text-gold group-hover:opacity-100")}><Star className="size-3.5" fill={t.starred ? "currentColor" : "none"} /></button>
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-baseline gap-2">
