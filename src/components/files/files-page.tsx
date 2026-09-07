@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { openCompose, sha256 } from "@/lib/compose-handoff";
 import { bytes, day, ago, when } from "@/lib/format";
 import { cn, errorMessage } from "@/lib/utils";
+import { siteUrl } from "@/lib/public-url";
 
 /** The practice's own documents (reports, signed forms) and the download codes that deliver them. */
 export function FilesPage() {
@@ -99,7 +100,7 @@ function CodesTab({ onNew }: { onNew: () => void }) {
   const revoke = useMutation(api.files.revokeCode);
   const extend = useMutation(api.files.extendCode);
   const router = useRouter();
-  const site = process.env.NEXT_PUBLIC_SITE_URL ?? "";
+  const site = siteUrl();
   const [open, setOpen] = useState<string | null>(null);
   if (codes === undefined) return <Loading rows={4} />;
   const message = (c: (typeof codes)[number]) => `Hello${c.recipientName ? ` ${c.recipientName.split(" ")[0]}` : ""},\n\nYour document${c.files.length > 1 ? "s are" : " is"} ready to download.\n\nGo to ${site}/d and enter the code ${c.code}${c.hasPin ? ". I will send the PIN separately." : "."}\n\nThe link works until ${day(c.expiresAt)}.\n\nKind regards`;
@@ -139,7 +140,7 @@ function CodeDialog({ preselected, onClose }: { preselected: Id<"files">[]; onCl
   const [fileIds, setFileIds] = useState<Id<"files">[]>(preselected);
   const [form, setForm] = useState({ recipientName: "", recipientEmail: "", note: "", pin: "", expiresInDays: 14, maxDownloads: "" });
   const [result, setResult] = useState<{ code: string } | null>(null);
-  const site = process.env.NEXT_PUBLIC_SITE_URL ?? "";
+  const site = siteUrl();
   const submit = async () => {
     try { const r = await create({ fileIds, recipientName: form.recipientName || undefined, recipientEmail: form.recipientEmail || undefined, note: form.note || undefined, pin: form.pin || undefined, expiresInDays: form.expiresInDays, maxDownloads: form.maxDownloads ? Number(form.maxDownloads) : undefined }); setResult({ code: r.code }); }
     catch (e) { toast.error(errorMessage(e)); }

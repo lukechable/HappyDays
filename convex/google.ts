@@ -6,8 +6,12 @@ import type { ActionCtx } from "./_generated/server";
 import { decrypt, encrypt, randomToken } from "./lib/crypto";
 import { GMAIL_SCOPES, exchangeCode, profile, refreshAccessToken, stopWatch, watch } from "./lib/gmail";
 
-/** Where Google sends the user back. Set APP_URL on the Convex deployment for production. */
-export const redirectUri = () => `${process.env.APP_URL ?? "http://localhost:3000"}/api/google/callback`;
+/** Where Google sends the user back. APP_URL must be the public site URL; a missing value is an error, never localhost. */
+export const redirectUri = () => {
+  const base = process.env.APP_URL;
+  if (!base || /localhost/.test(base)) throw new Error("APP_URL is not set to the public site URL on the Convex deployment.");
+  return `${base.replace(/\/$/, "")}/api/google/callback`;
+};
 
 /** Step 1 of connecting: a Google consent URL bound to this user by a one-time state token. */
 export const authUrl = action({

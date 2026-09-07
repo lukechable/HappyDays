@@ -19,6 +19,7 @@ import { SignaturePad } from "./signature-pad";
 import { openPdf, rebuildPages, mergePdfs, extractPages, flatten, dateStamp, renderPage, type LoadedPdf, type Annotation, type PageOp } from "@/lib/pdf";
 import { fileToBase64, openCompose, sha256 } from "@/lib/compose-handoff";
 import { cn, errorMessage } from "@/lib/utils";
+import { siteUrl } from "@/lib/public-url";
 import { ago, day } from "@/lib/format";
 
 type Tab = "pages" | "markup" | "requests";
@@ -224,7 +225,7 @@ function RequestsTab({ pdf, name, sourceId, fileMatterId, onSaveBytes }: { pdf: 
   const [fieldKind, setFieldKind] = useState<Field["kind"]>("signature");
   const [signer, setSigner] = useState({ name: "", email: "", message: "" });
   const [scale] = useState(0.9);
-  const site = process.env.NEXT_PUBLIC_SITE_URL ?? "";
+  const site = siteUrl();
   const send = async () => {
     if (!pdf) return;
     if (!signer.name.trim() || !signer.email.trim()) { toast.error("Who is signing?"); return; }

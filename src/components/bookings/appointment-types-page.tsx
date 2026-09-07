@@ -10,6 +10,7 @@ import { PricingRow } from "@/components/settings/settings-page";
 import { useLive } from "@/lib/hooks";
 import { aud } from "@/lib/format";
 import { errorMessage } from "@/lib/utils";
+import { siteUrl } from "@/lib/public-url";
 
 /** Every Cliniko appointment type with its colour, length and how Happy Days charges for it online. */
 export function AppointmentTypesPage() {
@@ -32,7 +33,7 @@ export function AppointmentTypesPage() {
                 : <tr key={t.id}><td><span className="mr-2 inline-block size-3 rounded-full align-middle" style={{ background: t.color ?? "#999" }} />{t.name}</td><td className="num text-fg-secondary">{t.duration_in_minutes} min</td><td>{t.show_in_online_bookings ? <Pill tone="good">yes</Pill> : <Pill>no</Pill>}</td><td colSpan={4} className="text-xs text-fg-tertiary">Click “Sync pricing rows” to price this type.</td></tr>;
             })}
           </DataTable>
-          <p className="mt-3 text-xs text-fg-tertiary">{(pricing ?? []).filter((p) => p.bookableOnline && p.mode !== "none").length} type{(pricing ?? []).filter((p) => p.bookableOnline && p.mode !== "none").length === 1 ? "" : "s"} bookable online at {process.env.NEXT_PUBLIC_SITE_URL}/book. Paid amounts show as {aud(0).replace("0.00", "…")} on the booking page.</p>
+          <p className="mt-3 text-xs text-fg-tertiary">{(pricing ?? []).filter((p) => p.bookableOnline && p.mode !== "none").length} type{(pricing ?? []).filter((p) => p.bookableOnline && p.mode !== "none").length === 1 ? "" : "s"} bookable online at {siteUrl()}/book. Paid amounts show as {aud(0).replace("0.00", "…")} on the booking page.</p>
         </Panel>
       )}
     </div>
