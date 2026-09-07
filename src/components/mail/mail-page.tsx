@@ -18,7 +18,11 @@ import { Button } from "@/components/ui/button";
 import { Empty } from "@/components/primitives";
 import { useLive } from "@/lib/hooks";
 import { readLive, subscribeLive, writeLive } from "@/lib/live-cache";
+import { mailStore } from "@/lib/mail-store";
 import { cn, errorMessage } from "@/lib/utils";
+
+/** Searchable text for the device copy: subject, people, then bodies. */
+const threadText = (t: ThreadData) => [t.subject, ...t.messages.flatMap((m) => [m.from.name, m.from.email, ...m.to.map((a) => a.email), m.text ?? m.snippet])].join("\n");
 
 const EMPTY_TEXT: Record<string, string> = { inbox: "Inbox zero.", unread: "Nothing unread.", overdue: "Nothing overdue. Every shared thread has a reply.", assigned: "Nothing assigned to you.", starred: "No starred conversations.", drafts: "No drafts.", search: "No matches in Gmail.", trash: "Trash is empty.", spam: "No spam." };
 
@@ -87,6 +91,19 @@ export function MailPage() {
 
   const refreshLabels = labelsLive.reload;
 
+  // Device copy → memory: the list appears instantly even after a browser restart.
+  useEffect(() => {
+    if (!connected || readLive(listCacheKey).data) return;
+    let live = true;
+    void mailStore.getList<ListItem>(listCacheKey).then((r) => { if (live && r && !readLive(listCacheKey).data) writeLive(listCacheKey, { data: { items: r.items, nextToken: r.nextToken, missing: r.missing }, fetchedAt: 0 }); });
+    return () => { live = false; };
+  }, [connected, listCacheKey]);
+
+  // Gmail push landed (the account's last sync moved): refresh the list we are looking at, quietly.
+  const lastSyncAt = me?.google?.lastSyncAt;
+  const lastSeenSync = useRef(lastSyncAt);
+  useEffect(() => { if (lastSyncAt && lastSeenSync.current && lastSyncAt !== lastSeenSync.current) setTick((t) => t + 1); lastSeenSync.current = lastSyncAt; }, [lastSyncAt]);
+
   useEffect(() => {
     if (!connected) return;
     // A list seen in the last minute is shown as is; older ones show instantly and refresh behind the scenes.
@@ -94,7 +111,16 @@ export function MailPage() {
     if (tick === 0 && cached.fetchedAt && Date.now() - cached.fetchedAt < 60_000) return; // shown from the cache already
     let live = true;
     const args = JSON.parse(listKey) as { view: ViewKey; labelId?: string; q?: string };
-    listThreads({ view: args.view, labelId: args.labelId, q: args.q }).then((r) => { if (!live) return; writeLive(listCacheKey, { data: { items: r.items, nextToken: r.nextPageToken, missing: r.missing ?? 0 }, fetchedAt: Date.now() }); setList({ key: listKey, items: r.items, nextToken: r.nextPageToken, missing: r.missing ?? 0, tick }); setChecked(new Set()); setFocused(0); }).catch((e: unknown) => { if (live) setList({ key: listKey, items: cached.data?.items ?? [], error: errorMessage(e), missing: 0, tick }); });
+    listThreads({ view: args.view, labelId: args.labelId, q: args.q }).then((r) => {
+      if (!live) return;
+      const data = { items: r.items, nextToken: r.nextPageToken, missing: r.missing ?? 0 };
+      writeLive(listCacheKey, { data, fetchedAt: Date.now() });
+      if (args.view !== "search") void mailStore.putList(listCacheKey, { ...data, fetchedAt: Date.now() });
+      setList({ key: listKey, items: r.items, nextToken: r.nextPageToken, missing: r.missing ?? 0, tick }); setChecked(new Set()); setFocused(0);
+      // Warm the first few conversations so opening them is instant.
+      const warm = r.items.slice(0, 6);
+      (async () => { for (const it of warm) { if (!live) return; if (await mailStore.hasThread(it.gmailThreadId)) continue; try { const t = await getThread({ gmailThreadId: it.gmailThreadId }); writeLive(`mail:thread:${it.gmailThreadId}`, { data: t, fetchedAt: Date.now() }); await mailStore.putThread(it.gmailThreadId, t, threadText(t)); } catch { /* skip */ } await new Promise((res) => setTimeout(res, 400)); } })();
+    }).catch((e: unknown) => { if (live) setList({ key: listKey, items: cached.data?.items ?? [], error: errorMessage(e), missing: 0, tick }); });
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [listKey, tick, connected, listThreads]);
@@ -114,7 +140,8 @@ export function MailPage() {
     let live = true;
     const cachedThread = readLive<ThreadData>(`mail:thread:${selectedId}`);
     const useCached = cachedThread.data && cachedThread.fetchedAt && Date.now() - cachedThread.fetchedAt < 120_000;
-    (useCached ? Promise.resolve(cachedThread.data as ThreadData) : getThread({ gmailThreadId: selectedId })).then((t) => {
+    const fromDevice = async () => { const d = await mailStore.getThread<ThreadData>(selectedId); if (d && live) setThreadState({ id: selectedId, thread: d.data }); return d; };
+    (useCached ? Promise.resolve(cachedThread.data as ThreadData) : fromDevice().then(async (d) => { const t = await getThread({ gmailThreadId: selectedId }); if (!d || JSON.stringify(d.data.messages.map((m) => m.gmailMessageId)) !== JSON.stringify(t.messages.map((m) => m.gmailMessageId)) || d.data.labelIds.join() !== t.labelIds.join()) void mailStore.putThread(selectedId, t, threadText(t)); return t; })).then((t) => {
       if (!live) return;
       if (!useCached) writeLive(`mail:thread:${selectedId}`, { data: t, fetchedAt: Date.now() });
       setThreadState({ id: selectedId, thread: t });
@@ -198,6 +225,15 @@ export function MailPage() {
     return () => window.removeEventListener("keydown", onKey);
   }); // intentionally re-bound every render: handlers close over fresh state
 
+  // Local search: instant matches from the device copy while typing; Enter still runs the Gmail search.
+  const [localSearch, setLocalSearch] = useState<{ q: string; hits: Array<{ id: string; text: string }> }>({ q: "", hits: [] });
+  const localHits = localSearch.q === searchText.trim() ? localSearch.hits : [];
+  useEffect(() => {
+    const q2 = searchText.trim(); if (q2.length < 2) return;
+    let live = true; const t = setTimeout(() => { void mailStore.search(q2, 20).then((h) => { if (live) setLocalSearch({ q: q2, hits: h }); }); }, 150);
+    return () => { live = false; clearTimeout(t); };
+  }, [searchText]);
+
   const defaultSignature = useMemo(() => { if (!signatures || !compose) return undefined; return (compose.mode === "new" ? signatures.find((s) => s.isDefaultNew) : signatures.find((s) => s.isDefaultReply))?.html ?? signatures[0]?.html; }, [signatures, compose]);
 
   const title = view === "label" ? labels?.find((l) => l.id === labelId)?.name ?? "Folder" : view === "search" ? `Search: ${q}` : view.startsWith("smart:") ? "Smart inbox" : view.charAt(0).toUpperCase() + view.slice(1).replace(/([A-Z])/g, " $1");
@@ -216,6 +252,12 @@ export function MailPage() {
           <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-fg-quaternary" />
           <input id="mail-search" value={searchText} onChange={(e) => setSearchText(e.target.value)} placeholder="Search all mail (Gmail syntax works: from:, has:attachment, newer_than:7d)" className="h-8 w-full rounded-full border border-border bg-card pl-8 pr-8 text-sm outline-none focus:border-input" />
           {q && <button type="button" onClick={() => { setSearchText(""); setParams({ view: "inbox", q: undefined, thread: undefined }); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-fg-tertiary" aria-label="Clear search"><X className="size-3.5" /></button>}
+          {localHits.length > 0 && searchText.trim() !== q && (
+            <div className="absolute left-0 top-full z-30 mt-1 w-full rounded-xl bg-popover p-1 shadow-md ring-1 ring-border">
+              <div className="px-2 py-1 text-[10.5px] font-semibold uppercase tracking-wider text-fg-tertiary">On this device · Enter to search all of Gmail</div>
+              {localHits.slice(0, 8).map((h) => { const line = h.text.split("\n")[0]; return <button key={h.id} type="button" onMouseDown={(e) => { e.preventDefault(); setParams({ thread: h.id }); setSearchText(""); }} className="block w-full truncate rounded-md px-2 py-1 text-left text-[13px] hover:bg-muted">{line}</button>; })}
+            </div>
+          )}
         </form>
         {checked.size > 0 && (
           <div className="flex items-center gap-1 rounded-full bg-muted px-2 py-1 text-xs">

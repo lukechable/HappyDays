@@ -54,6 +54,17 @@ export function useCalendarWindow(win: Window | null) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
+  // Next week is usually the next click: warm it once this one is in.
+  useEffect(() => {
+    if (!win || !slot.data || slot.phase !== "idle") return;
+    const from = new Date(win.fromIso), to = new Date(win.toIso); const span = to.getTime() - from.getTime();
+    const next = { fromIso: new Date(from.getTime() + span).toISOString(), toIso: new Date(to.getTime() + span).toISOString() };
+    const k = `${next.fromIso}|${next.toIso}`;
+    if (get(k).data || get(k).phase !== "idle") return;
+    const t = setTimeout(() => { if (get(k).phase === "idle" && !get(k).data) void fetchFull(k, next); }, 1200);
+    return () => clearTimeout(t);
+  }, [win, slot.data, slot.phase, fetchFull]);
+
   return {
     data: slot.data,
     fetchedAt: slot.fetchedAt,
