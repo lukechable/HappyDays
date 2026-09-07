@@ -144,6 +144,7 @@ function ClinikoTab() {
             <Facts items={[["Appointment types", String(practice.appointmentTypes.length)], ["Priced for online booking", String(pricing.filter((p) => p.bookableOnline && p.mode !== "none").length)]]} />
           </div>
         )}
+        {practice && <IntakeFormSetting value={(settings?.["cliniko.intakeFormTemplateId"] as string | undefined) ?? ""} onChange={(v) => setSetting({ key: "cliniko.intakeFormTemplateId", value: v || null })} />}
         {practice && (
           <div className="mt-4 flex flex-wrap gap-3 text-sm">
             <label className="flex items-center gap-2">Default business<select className="h-8 rounded-lg border border-input bg-card px-2 text-sm" value={String(settings?.["cliniko.businessId"] ?? practice.businesses[0]?.id ?? "")} onChange={(e) => void setSetting({ key: "cliniko.businessId", value: e.target.value })}>{practice.businesses.map((b) => <option key={b.id} value={b.id}>{b.display_name || b.business_name}</option>)}</select></label>
@@ -152,6 +153,7 @@ function ClinikoTab() {
         )}
       </Panel>
       <p className="text-xs text-fg-tertiary">Prices for online booking are set per appointment type under Cliniko Link → Appointment Types.</p>
+      {status.cliniko && <ClinikoUsersPanel />}
     </div>
   );
 }
@@ -169,6 +171,31 @@ export function PricingRow({ p, color, telehealth, clinikoOnline, onSave }: { p:
       <td><Input className="num h-8 w-28" inputMode="decimal" value={fee} onChange={(e) => setFee(e.target.value)} onBlur={() => onSave({ feeCents: Math.round(Number(fee) * 100) || 0 })} /></td>
       <td><Input className="num h-8 w-28" inputMode="decimal" value={dep} disabled={p.mode !== "deposit"} onChange={(e) => setDep(e.target.value)} onBlur={() => onSave({ depositCents: Math.round(Number(dep) * 100) || 0 })} /></td>
     </tr>
+  );
+}
+
+function IntakeFormSetting({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const templates = useLive(api.bookings.formTemplates, {});
+  return (
+    <div className="mt-4 text-sm">
+      <label className="flex flex-wrap items-center gap-2">Intake form for online bookings
+        <select className="h-8 rounded-lg border border-input bg-card px-2 text-sm" value={value} onChange={(e) => onChange(e.target.value)}><option value="">None</option>{(templates.data ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
+      </label>
+      <p className="mt-1 text-xs text-fg-tertiary">After a paid online booking, this Cliniko form is created against the appointment and its link is emailed from the practice mailbox.</p>
+    </div>
+  );
+}
+
+function ClinikoUsersPanel() {
+  const users = useLive(api.bookings.clinikoUsers, {});
+  return (
+    <Panel title="Cliniko users" blurb="Who exists in Cliniko, and whose permissions the API key carries." dense>
+      {users.error ? <p className="text-sm text-error">{users.error}</p> : !users.data ? <Loading rows={2} /> : (
+        <ul className="divide-y divide-border/70 text-sm">
+          {users.data.users.map((u) => <li key={u.id} className="flex items-center gap-2 py-1.5"><span className="font-medium">{u.name}</span><span className="text-xs text-fg-tertiary">{u.email}{u.role ? ` · ${u.role}` : ""}</span>{!u.active && <Pill>inactive</Pill>}{users.data!.apiKeyOwner === u.name && <Pill tone="info">API key owner</Pill>}</li>)}
+        </ul>
+      )}
+    </Panel>
   );
 }
 

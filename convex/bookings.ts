@@ -23,7 +23,9 @@ export const calendar = action({
   args: { fromIso: v.string(), toIso: v.string(), practitionerId: v.optional(v.string()) },
   handler: async (ctx, { fromIso, toIso, practitionerId }) => {
     await ctx.runQuery(internal.bookings.requireStaff, {});
-    const [appointments, availability, unavailable, types, practitioners] = await Promise.all([cliniko.listAppointments(fromIso, toIso, practitionerId), cliniko.availabilityBlocks(fromIso, toIso), cliniko.unavailableBlocks(fromIso, toIso), cliniko.listAppointmentTypes(), cliniko.listPractitioners()]);
+    const [appointments, availability, unavailable, types, practitioners, groups] = await Promise.all([cliniko.listAppointments(fromIso, toIso, practitionerId), cliniko.availabilityBlocks(fromIso, toIso), cliniko.unavailableBlocks(fromIso, toIso), cliniko.listAppointmentTypes(), cliniko.listPractitioners(), cliniko.groupAppointments(fromIso, toIso).catch(() => [] as cliniko.GroupAppointment[])]);
+    const attendeeCounts = new Map<string, number>();
+    await Promise.all(groups.filter((g) => !g.deleted_at).slice(0, 30).map(async (g) => { try { attendeeCounts.set(g.id, await cliniko.attendeeCount(g.id)); } catch { /* fine */ } }));
     const typeById = new Map(types.map((t) => [t.id, t]));
     const pracById = new Map(practitioners.map((p) => [p.id, p]));
     return {
@@ -33,6 +35,7 @@ export const calendar = action({
         const p = pracById.get(cliniko.idFromLink(a.practitioner) ?? "");
         return { id: a.id, startsAt: a.starts_at, endsAt: a.ends_at, notes: a.notes, cancelledAt: a.cancelled_at ?? null, didNotArrive: !!a.did_not_arrive, arrived: !!a.patient_arrived, telehealthUrl: a.telehealth_url, patientId: pid, patientName: a.patient_name ?? "Patient", typeId: t?.id, typeName: t?.name ?? "Appointment", color: t?.color, practitionerId: p?.id, practitionerName: p ? `${p.first_name} ${p.last_name}` : "", clinikoUrl: cliniko.clinikoWebUrl(`/appointments/${a.id}`), patientUrl: pid ? cliniko.clinikoWebUrl(`/patients/${pid}`) : undefined };
       }),
+      groups: groups.filter((g) => !g.deleted_at).map((g) => { const t = typeById.get(cliniko.idFromLink(g.appointment_type) ?? ""); const p = pracById.get(cliniko.idFromLink(g.practitioner) ?? ""); return { id: g.id, startsAt: g.starts_at, endsAt: g.ends_at, notes: g.notes, typeName: t?.name ?? "Group", color: t?.color, practitionerId: p?.id, practitionerName: p ? `${p.first_name} ${p.last_name}` : "", attendees: attendeeCounts.get(g.id), maxAttendees: g.max_attendees, clinikoUrl: cliniko.clinikoWebUrl(`/appointments/${g.id}`) }; }),
       availability: availability.filter((b) => !b.deleted_at).map((b) => ({ id: b.id, startsAt: b.starts_at, endsAt: b.ends_at, practitionerId: cliniko.idFromLink(b.practitioner) })),
       unavailable: unavailable.filter((b) => !b.deleted_at).map((b) => ({ id: b.id, startsAt: b.starts_at, endsAt: b.ends_at, notes: b.notes, practitionerId: cliniko.idFromLink(b.practitioner) })),
     };
@@ -91,7 +94,8 @@ export const patient = action({
   args: { patientId: v.string() },
   handler: async (ctx, { patientId }) => {
     const me = await ctx.runQuery(internal.bookings.requireStaff, {});
-    const [p, appointments, attachments, alerts, invoices, types, practitioners] = await Promise.all([cliniko.getPatient(patientId), cliniko.patientAppointments(patientId), cliniko.patientAttachments(patientId), cliniko.patientMedicalAlerts(patientId), cliniko.patientInvoices(patientId).catch(() => [] as cliniko.Invoice[]), cliniko.listAppointmentTypes(), cliniko.listPractitioners()]);
+    const [p, appointments, attachments, alerts, invoices, types, practitioners, notes, cases, forms, users] = await Promise.all([cliniko.getPatient(patientId), cliniko.patientAppointments(patientId), cliniko.patientAttachments(patientId), cliniko.patientMedicalAlerts(patientId), cliniko.patientInvoices(patientId).catch(() => [] as cliniko.Invoice[]), cliniko.listAppointmentTypes(), cliniko.listPractitioners(), cliniko.treatmentNotes(patientId).catch(() => [] as cliniko.TreatmentNote[]), cliniko.patientCases(patientId).catch(() => [] as cliniko.PatientCase[]), cliniko.patientForms(patientId).catch(() => [] as cliniko.PatientForm[]), cliniko.listUsers().catch(() => [] as cliniko.User[])]);
+    const userName = (link?: { links: { self: string } }) => { const u = users.find((x) => x.id === cliniko.idFromLink(link)); return u ? (u.display_name || `${u.first_name} ${u.last_name}`) : undefined; };
     await ctx.runMutation(internal.bookings.logAccess, { userId: me._id, action: "cliniko.patientView", subjectId: patientId });
     const typeById = new Map(types.map((t) => [t.id, t]));
     const pracById = new Map(practitioners.map((x) => [x.id, x]));
@@ -104,6 +108,10 @@ export const patient = action({
       appointments: appointments.map((a) => ({ id: a.id, startsAt: a.starts_at, endsAt: a.ends_at, cancelledAt: a.cancelled_at ?? null, didNotArrive: !!a.did_not_arrive, typeName: typeById.get(cliniko.idFromLink(a.appointment_type) ?? "")?.name ?? "Appointment", practitionerName: (() => { const x = pracById.get(cliniko.idFromLink(a.practitioner) ?? ""); return x ? `${x.first_name} ${x.last_name}` : ""; })(), clinikoUrl: cliniko.clinikoWebUrl(`/appointments/${a.id}`) })),
       attachments: attachments.filter((a) => !a.archived_at).map((a) => ({ id: a.id, filename: a.filename ?? a.description ?? `Attachment ${a.id}`, description: a.description, contentType: a.content_type, createdAt: a.created_at, url: a.content_url })),
       invoices: invoices.map((i) => ({ id: i.id, number: i.number, status: i.status_description ?? String(i.status), issueDate: i.issue_date, closedAt: i.closed_at ?? null, total: Number(i.total_amount) || 0, clinikoUrl: cliniko.clinikoWebUrl(`/invoices/${i.id}`) })),
+      // Titles and dates only. Note content never leaves Cliniko.
+      treatmentNotes: notes.filter((n) => !n.deleted_at).map((n) => ({ id: n.id, title: n.title || "Treatment note", draft: n.draft, createdAt: n.created_at, finalizedAt: n.finalized_at ?? null, author: userName(n.author), clinikoUrl: cliniko.clinikoWebUrl(`/patients/${patientId}/treatment_notes/${n.id}`) })),
+      cases: cases.filter((c) => !c.deleted_at).map((c) => ({ id: c.id, name: c.name, closed: c.closed, issueDate: c.issue_date, expiryDate: c.expiry_date, notes: c.notes, clinikoUrl: cliniko.clinikoWebUrl(`/patients/${patientId}/cases/${c.id}`) })),
+      forms: forms.filter((f) => !f.deleted_at).map((f) => ({ id: f.id, name: f.name ?? "Form", completed: f.completed, completedAt: f.completed_at ?? null, createdAt: f.created_at, url: f.url, clinikoUrl: cliniko.clinikoWebUrl(`/patients/${patientId}/patient_forms/${f.id}`) })),
       matters,
     };
   },
@@ -112,6 +120,76 @@ export const patient = action({
 function shapePatient(p: cliniko.Patient) {
   return { id: p.id, firstName: p.first_name, lastName: p.last_name, preferredName: p.preferred_first_name, name: `${p.preferred_first_name || p.first_name} ${p.last_name}`, email: p.email, phone: p.patient_phone_numbers?.[0]?.number, phones: p.patient_phone_numbers ?? [], dob: p.date_of_birth, medicalAlerts: typeof p.medical_alerts === "string" ? p.medical_alerts : undefined, updatedAt: p.updated_at, clinikoUrl: cliniko.clinikoWebUrl(`/patients/${p.id}`) };
 }
+
+/* ------------------------------ cases, forms, billing, users ------------------------------ */
+
+export const createCase = action({
+  args: { patientId: v.string(), name: v.string(), notes: v.optional(v.string()), matterId: v.optional(v.id("matters")) },
+  handler: async (ctx, a) => {
+    const me = await ctx.runQuery(internal.bookings.requireStaff, {});
+    const c = await cliniko.createPatientCase({ patient_id: a.patientId, name: a.name, notes: a.notes, issue_date: new Date().toISOString().slice(0, 10) });
+    await ctx.runMutation(internal.bookings.logAccess, { userId: me._id, action: "cliniko.caseCreate", subjectId: a.patientId, detail: c.name });
+    if (a.matterId) await ctx.runMutation(internal.bookings.linkCase, { matterId: a.matterId, patientId: a.patientId, caseId: c.id, name: c.name });
+    return { id: c.id, name: c.name };
+  },
+});
+
+export const linkCase = internalMutation({
+  args: { matterId: v.id("matters"), patientId: v.string(), caseId: v.string(), name: v.string() },
+  handler: async (ctx, a) => { const m = await ctx.db.get(a.matterId); if (!m) return; await ctx.db.patch(a.matterId, { clinikoCases: [...(m.clinikoCases ?? []).filter((c) => c.caseId !== a.caseId), { patientId: a.patientId, caseId: a.caseId, name: a.name }], updatedAt: Date.now() }); },
+});
+
+export const formTemplates = action({
+  args: {},
+  handler: async (ctx) => { await ctx.runQuery(internal.bookings.requireStaff, {}); return (await cliniko.patientFormTemplates()).filter((t) => !t.archived_at).map((t) => ({ id: t.id, name: t.name })); },
+});
+
+/** Create a Cliniko patient form from a template and return the link the patient fills in. */
+export const sendForm = action({
+  args: { patientId: v.string(), templateId: v.string(), appointmentId: v.optional(v.string()) },
+  handler: async (ctx, a) => {
+    const me = await ctx.runQuery(internal.bookings.requireStaff, {});
+    const f = await cliniko.createPatientForm({ patient_form_template_id: a.templateId, patient_id: a.patientId, appointment_id: a.appointmentId, email_to_patient_on_completion: true });
+    await ctx.runMutation(internal.bookings.logAccess, { userId: me._id, action: "cliniko.formCreate", subjectId: a.patientId, detail: f.name });
+    return { id: f.id, url: f.url ?? null, name: f.name ?? "Form" };
+  },
+});
+
+/** Everything needed to raise a Cliniko invoice: items, products, taxes, concession types and prices. */
+export const billingCatalogue = action({
+  args: {},
+  handler: async (ctx) => {
+    await ctx.runQuery(internal.bookings.requireStaff, {});
+    const [items, products, taxes, concessionTypes, concessionPrices] = await Promise.all([cliniko.listBillableItems(), cliniko.listProducts().catch(() => [] as cliniko.Product[]), cliniko.listTaxes(), cliniko.listConcessionTypes().catch(() => [] as cliniko.ConcessionType[]), cliniko.listConcessionPrices().catch(() => [] as cliniko.ConcessionPrice[])]);
+    return {
+      items: items.filter((i) => !i.archived_at).map((i) => ({ id: i.id, name: i.name, code: i.item_code, price: Number(i.price) || 0, taxId: cliniko.idFromLink(i.tax) })),
+      products: products.filter((p) => !p.archived_at).map((p) => ({ id: p.id, name: p.name, code: p.item_code, price: Number(p.price) || 0, taxId: cliniko.idFromLink(p.tax), stock: p.stock_level })),
+      taxes: taxes.map((t) => ({ id: t.id, name: t.name, rate: Number(t.rate) || 0 })),
+      concessionTypes: concessionTypes.filter((c) => !c.archived_at).map((c) => ({ id: c.id, name: c.name })),
+      concessionPrices: concessionPrices.map((c) => ({ itemId: cliniko.idFromLink(c.billable_item), concessionTypeId: cliniko.idFromLink(c.concession_type), price: Number(c.price) || 0 })),
+    };
+  },
+});
+
+export const createClinikoInvoice = action({
+  args: { patientId: v.string(), businessId: v.string(), practitionerId: v.string(), appointmentId: v.optional(v.string()), notes: v.optional(v.string()), items: v.array(v.object({ billableItemId: v.optional(v.string()), productId: v.optional(v.string()), quantity: v.number(), unitPrice: v.number(), taxId: v.optional(v.string()), concessionTypeId: v.optional(v.string()), discountPercentage: v.optional(v.number()) })) },
+  handler: async (ctx, a) => {
+    const me = await ctx.runQuery(internal.bookings.requireStaff, {});
+    if (!a.items.length) throw new Error("Add at least one item.");
+    const inv = await cliniko.createInvoice({ patient_id: a.patientId, business_id: a.businessId, practitioner_id: a.practitionerId, appointment_id: a.appointmentId, issue_date: new Date().toISOString().slice(0, 10), notes: a.notes, invoice_items: a.items.map((i) => ({ billable_item_id: i.billableItemId, product_id: i.productId, quantity: i.quantity, unit_price: i.unitPrice, tax_id: i.taxId, concession_type_id: i.concessionTypeId, discount_percentage: i.discountPercentage })) });
+    await ctx.runMutation(internal.bookings.logAccess, { userId: me._id, action: "cliniko.invoiceCreate", subjectId: a.patientId, detail: `#${inv.number}` });
+    return { id: inv.id, number: inv.number, total: Number(inv.total_amount) || 0, clinikoUrl: cliniko.clinikoWebUrl(`/invoices/${inv.id}`), payUrl: inv.online_payment_url };
+  },
+});
+
+export const clinikoUsers = action({
+  args: {},
+  handler: async (ctx) => {
+    await ctx.runQuery(internal.bookings.requireStaff, {});
+    const [users, current] = await Promise.all([cliniko.listUsers(), cliniko.me().catch(() => null)]);
+    return { users: users.map((u) => ({ id: u.id, name: u.display_name || `${u.first_name} ${u.last_name}`, email: u.email, role: u.role, active: u.active !== false })), apiKeyOwner: current ? `${current.first_name} ${current.last_name}` : null };
+  },
+});
 
 export const requireStaff = internalQuery({ args: {}, handler: async (ctx) => { const u = await requireUser(ctx); return { _id: u._id, email: u.email, name: u.name }; } });
 export const logAccess = internalMutation({ args: { userId: v.id("users"), action: v.string(), subjectId: v.optional(v.string()), detail: v.optional(v.string()) }, handler: async (ctx, a) => { await audit(ctx, { userId: a.userId, action: a.action, subjectKind: "clinikoPatient", subjectId: a.subjectId, detail: a.detail }); } });
@@ -265,6 +343,14 @@ export const completePaid = internalAction({
       }
       const appt = await cliniko.createAppointment({ appointment_type_id: s.appointmentTypeId, business_id: s.businessId, practitioner_id: s.practitionerId, patient_id: patientId, starts_at: s.startsAt, ends_at: s.endsAt, notes: `Booked and paid online via Happy Days (${s.mode === "deposit" ? "deposit" : "full fee"} $${(s.amountCents / 100).toFixed(2)}, Stripe ${a.stripeCheckoutSessionId}).${s.patient.notes ? `\n${s.patient.notes}` : ""}`, online_booking_policy_accepted: true });
       await ctx.runMutation(internal.bookings.finishSession, { id: s._id, status: "booked", clinikoPatientId: patientId, clinikoAppointmentId: appt.id });
+      // Intake form: if a template is chosen in Settings, create the form against this appointment and email its link.
+      const templateId = (await ctx.runQuery(internal.settings.getInternal, { key: "cliniko.intakeFormTemplateId" })) as string | null;
+      if (templateId) {
+        try {
+          const f = await cliniko.createPatientForm({ patient_form_template_id: templateId, patient_id: patientId, appointment_id: appt.id, email_to_patient_on_completion: true });
+          if (f.url) await ctx.runAction(internal.mail.sendFromPractice, { to: { name: `${s.patient.firstName} ${s.patient.lastName}`, email: s.patient.email }, subject: `Before your appointment: a short form to complete`, html: `<p>Hello ${s.patient.firstName},</p><p>Thanks for booking. Before your appointment on ${new Date(s.startsAt).toLocaleDateString("en-AU", { timeZone: "Australia/Melbourne", weekday: "long", day: "numeric", month: "long" })}, please complete this short form:</p><p><a href="${f.url}">${f.url}</a></p><p>Kind regards,<br>Barbara Fraser &amp; Associates</p>` });
+        } catch (e) { console.error("intake form failed", e); }
+      }
     } catch (e) {
       await ctx.runMutation(internal.bookings.finishSession, { id: s._id, status: "failed", error: e instanceof Error ? e.message : String(e) });
       throw e;

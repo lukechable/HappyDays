@@ -150,6 +150,7 @@ export default defineSchema({
     court: v.optional(v.string()),
     parties: v.array(v.string()),
     clinikoPatientIds: v.array(v.string()),
+    clinikoCases: v.optional(v.array(v.object({ patientId: v.string(), caseId: v.string(), name: v.string() }))),
     status: v.union(v.literal("open"), v.literal("report_due"), v.literal("delivered"), v.literal("closed")),
     notes: v.optional(v.string()),
     reportDeliveredAt: v.optional(v.number()),

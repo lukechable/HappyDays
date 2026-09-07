@@ -690,3 +690,18 @@ export const suggestReply = action({
     return await ctx.runAction(internal.ai.draftReply, { subject: a.subject, from: a.from, text: a.text.slice(0, 8000), instruction: a.instruction, signOff: me.name.split(" ")[0] });
   },
 });
+
+/** Send a message from the practice: uses the first connected Google account. For automated mail (intake forms). */
+export const sendFromPractice = internalAction({
+  args: { to: addressV, subject: v.string(), html: v.string() },
+  handler: async (ctx, a) => {
+    const accounts = await ctx.runQuery(internal.googleData.connectedAccounts, {});
+    const account = accounts[0];
+    if (!account) throw new Error("No connected Google account to send from.");
+    const owner = await ctx.runQuery(internal.googleData.ownerName, { accountId: account._id });
+    const token = await accessTokenFor(ctx, account._id);
+    const raw = gmail.buildRaw({ from: { name: owner ?? "Barbara Fraser & Associates", email: account.email }, to: [a.to], subject: a.subject, html: a.html, extraHeaders: { "X-Mailer": "Happy Days" } });
+    const sent = await gmail.sendRaw(token, raw);
+    return { gmailMessageId: sent.id, gmailThreadId: sent.threadId };
+  },
+});

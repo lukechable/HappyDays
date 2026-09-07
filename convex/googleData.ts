@@ -41,3 +41,5 @@ export const setStatus = internalMutation({
   args: { accountId: v.id("googleAccounts"), status: v.union(v.literal("connected"), v.literal("needs_reauth"), v.literal("disconnected")) },
   handler: async (ctx, { accountId, status }) => { await ctx.db.patch(accountId, { status, ...(status === "disconnected" ? { accessToken: undefined, accessTokenExpiresAt: undefined, watchExpiresAt: undefined } : {}) }); },
 });
+
+export const ownerName = internalQuery({ args: { accountId: v.id("googleAccounts") }, handler: async (ctx, { accountId }) => { const a = await ctx.db.get(accountId); const u = a ? await ctx.db.get(a.userId) : null; return u?.name ?? null; } });
