@@ -473,20 +473,19 @@ async function recompute(ctx: { db: import("./_generated/server").DatabaseWriter
 }
 
 /** Backfill after connecting: headers for recent inbox and sent mail so overdue and replied pills work from day one. */
+/**
+ * Backfill after connecting: one page of 25 threads every few seconds, scheduled rather than looped, so it stays
+ * well inside Gmail's per-user quota and never competes with the inbox the user is looking at.
+ */
 export const indexRecent = internalAction({
-  args: { accountId: v.id("googleAccounts"), days: v.number() },
-  handler: async (ctx, { accountId, days }) => {
+  args: { accountId: v.id("googleAccounts"), days: v.number(), pageToken: v.optional(v.string()), page: v.optional(v.number()) },
+  handler: async (ctx, { accountId, days, pageToken, page = 0 }) => {
     const token = await accessTokenFor(ctx, accountId);
-    let pageToken: string | undefined;
-    let pages = 0;
-    do {
-      const r = await gmail.listThreadIds(token, { q: `newer_than:${days}d -in:spam -in:trash`, pageToken, maxResults: 50 });
-      const threads = await gmail.batchGetThreads(token, r.ids, "metadata");
-      await ctx.runMutation(internal.mail.indexHeaders, { accountId, threads: threads.map(toIndex) });
-      pageToken = r.nextPageToken;
-      pages++;
-    } while (pageToken && pages < 20);
+    const r = await gmail.listThreadIds(token, { q: `newer_than:${days}d -in:spam -in:trash`, pageToken, maxResults: 25 });
+    const threads = await gmail.batchGetThreads(token, r.ids, "metadata");
+    await ctx.runMutation(internal.mail.indexHeaders, { accountId, threads: threads.map(toIndex) });
     await ctx.runMutation(internal.googleData.patchAccount, { accountId, patch: { lastSyncAt: Date.now() } });
+    if (r.nextPageToken && page < 40) await ctx.scheduler.runAfter(6_000, internal.mail.indexRecent, { accountId, days, pageToken: r.nextPageToken, page: page + 1 });
   },
 });
 
@@ -513,7 +512,7 @@ export const syncHistory = internalAction({
       if (e instanceof gmail.GmailError && e.status === 404) {
         const p = await gmail.profile(token);
         await ctx.runMutation(internal.googleData.patchAccount, { accountId, patch: { historyId: p.historyId } });
-        await ctx.runAction(internal.mail.indexRecent, { accountId, days: 7 });
+        await ctx.scheduler.runAfter(0, internal.mail.indexRecent, { accountId, days: 7 });
         return;
       }
       throw e;
