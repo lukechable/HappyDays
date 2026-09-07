@@ -63,7 +63,7 @@ export const exchange = action({
     });
     await ctx.runMutation(internal.settings.setInternal, { key: `google.oauthState:${me._id}`, value: null });
     await ctx.runAction(internal.google.ensureWatch, { accountId });
-    await ctx.scheduler.runAfter(0, internal.mail.indexRecent, { accountId, days: 30 });
+    await ctx.scheduler.runAfter(15_000, internal.mail.indexRecent, { accountId, days: 30 });
     return { email: prof.emailAddress };
   },
 });

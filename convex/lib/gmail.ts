@@ -39,13 +39,21 @@ export async function exchangeCode(code: string, redirectUri: string): Promise<{
   return { accessToken: json.access_token, refreshToken: json.refresh_token, expiresAt: Date.now() + ((json.expires_in ?? 3600) - 60) * 1000, scope: json.scope ?? "" };
 }
 
-async function call<T>(token: string, path: string, init: RequestInit = {}): Promise<T> {
+const isRateLimit = (status: number, msg: string) => status === 429 || (status === 403 && /rate|quota/i.test(msg));
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** One Gmail call. Rate limits (Google's free per-user quota) are retried with backoff before surfacing. */
+async function call<T>(token: string, path: string, init: RequestInit = {}, attempt = 0): Promise<T> {
   const res = await fetch(path.startsWith("http") ? path : `${API}${path}`, { ...init, headers: { Authorization: `Bearer ${token}`, ...(init.body && !(init.headers as Record<string, string> | undefined)?.["Content-Type"] ? { "Content-Type": "application/json" } : {}), ...(init.headers ?? {}) } });
   if (res.status === 204) return undefined as T;
   const text = await res.text();
   if (!res.ok) {
     let msg = text;
     try { msg = (JSON.parse(text) as { error?: { message?: string } }).error?.message ?? text; } catch { /* raw */ }
+    if (isRateLimit(res.status, msg)) {
+      if (attempt < 3) { await sleep(800 * 2 ** attempt); return call<T>(token, path, init, attempt + 1); }
+      throw new GmailError("Gmail is rate-limiting requests for a moment. Wait a few seconds and try again.", 429);
+    }
     throw new GmailError(msg || `Gmail returned ${res.status}`, res.status);
   }
   return text ? (JSON.parse(text) as T) : (undefined as T);
@@ -99,8 +107,15 @@ export async function batchGetThreads(token: string, ids: string[], format: "met
   const p = new URLSearchParams({ format });
   if (format === "metadata") for (const h of METADATA_HEADERS) p.append("metadataHeaders", h);
   const body = ids.map((id, i) => `--${boundary}\r\nContent-Type: application/http\r\nContent-ID: <t${i}>\r\n\r\nGET /gmail/v1/users/me/threads/${id}?${p}\r\n\r\n`).join("") + `--${boundary}--`;
-  const res = await fetch("https://gmail.googleapis.com/batch/gmail/v1", { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": `multipart/mixed; boundary=${boundary}` }, body });
-  const text = await res.text();
+  let res: Response | undefined; let text = "";
+  for (let attempt = 0; attempt < 4; attempt++) {
+    res = await fetch("https://gmail.googleapis.com/batch/gmail/v1", { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": `multipart/mixed; boundary=${boundary}` }, body });
+    text = await res.text();
+    if (res.ok && !/"code":\s*429|rateLimitExceeded|userRateLimitExceeded/.test(text)) break;
+    if (attempt === 3) throw new GmailError("Gmail is rate-limiting requests for a moment. Wait a few seconds and try again.", 429);
+    await sleep(800 * 2 ** attempt);
+  }
+  if (!res) throw new GmailError("Gmail batch failed", 502);
   if (!res.ok) throw new GmailError(`Gmail batch failed: ${res.status} ${text.slice(0, 200)}`, res.status);
   const ct = res.headers.get("content-type") ?? "";
   const rb = /boundary=([^;]+)/.exec(ct)?.[1]?.replace(/^"|"$/g, "");
