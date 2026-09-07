@@ -20,21 +20,21 @@ export const practice = action({
 });
 
 export const calendar = action({
-  args: { fromIso: v.string(), toIso: v.string(), practitionerId: v.optional(v.number()) },
+  args: { fromIso: v.string(), toIso: v.string(), practitionerId: v.optional(v.string()) },
   handler: async (ctx, { fromIso, toIso, practitionerId }) => {
     await ctx.runQuery(internal.bookings.requireStaff, {});
     const [appointments, availability, unavailable, types, practitioners] = await Promise.all([cliniko.listAppointments(fromIso, toIso, practitionerId), cliniko.availabilityBlocks(fromIso, toIso), cliniko.unavailableBlocks(fromIso, toIso), cliniko.listAppointmentTypes(), cliniko.listPractitioners()]);
     const typeById = new Map(types.map((t) => [t.id, t]));
     const pracById = new Map(practitioners.map((p) => [p.id, p]));
     // Patient names are not on the appointment payload; fetch the few unique patients in this window.
-    const patientIds = Array.from(new Set(appointments.map((a) => cliniko.idFromLink(a.patient)).filter((x): x is number => !!x)));
-    const patients = new Map<number, cliniko.Patient>();
+    const patientIds = Array.from(new Set(appointments.map((a) => cliniko.idFromLink(a.patient)).filter((x): x is string => !!x)));
+    const patients = new Map<string, cliniko.Patient>();
     await Promise.all(patientIds.slice(0, 60).map(async (id) => { try { patients.set(id, await cliniko.getPatient(id)); } catch { /* archived */ } }));
     return {
       appointments: appointments.map((a) => {
         const pid = cliniko.idFromLink(a.patient);
-        const t = typeById.get(cliniko.idFromLink(a.appointment_type) ?? -1);
-        const p = pracById.get(cliniko.idFromLink(a.practitioner) ?? -1);
+        const t = typeById.get(cliniko.idFromLink(a.appointment_type) ?? "");
+        const p = pracById.get(cliniko.idFromLink(a.practitioner) ?? "");
         const pat = pid ? patients.get(pid) : undefined;
         return { id: a.id, startsAt: a.starts_at, endsAt: a.ends_at, notes: a.notes, cancelledAt: a.cancelled_at ?? null, didNotArrive: !!a.did_not_arrive, arrived: !!a.patient_arrived, telehealthUrl: a.telehealth_url, patientId: pid, patientName: pat ? `${pat.first_name} ${pat.last_name}` : a.patient_name ?? "Patient", typeId: t?.id, typeName: t?.name ?? "Appointment", color: t?.color, practitionerId: p?.id, practitionerName: p ? `${p.first_name} ${p.last_name}` : "", clinikoUrl: cliniko.clinikoWebUrl(`/appointments/${a.id}`), patientUrl: pid ? cliniko.clinikoWebUrl(`/patients/${pid}`) : undefined };
       }),
@@ -56,11 +56,11 @@ export const searchPatients = action({
 });
 
 export const patient = action({
-  args: { patientId: v.number() },
+  args: { patientId: v.string() },
   handler: async (ctx, { patientId }) => {
     const me = await ctx.runQuery(internal.bookings.requireStaff, {});
     const [p, appointments, attachments, alerts, invoices, types, practitioners] = await Promise.all([cliniko.getPatient(patientId), cliniko.patientAppointments(patientId), cliniko.patientAttachments(patientId), cliniko.patientMedicalAlerts(patientId), cliniko.patientInvoices(patientId).catch(() => [] as cliniko.Invoice[]), cliniko.listAppointmentTypes(), cliniko.listPractitioners()]);
-    await ctx.runMutation(internal.bookings.logAccess, { userId: me._id, action: "cliniko.patientView", subjectId: String(patientId) });
+    await ctx.runMutation(internal.bookings.logAccess, { userId: me._id, action: "cliniko.patientView", subjectId: patientId });
     const typeById = new Map(types.map((t) => [t.id, t]));
     const pracById = new Map(practitioners.map((x) => [x.id, x]));
     const matters: MatterRef[] = await ctx.runQuery(internal.bookings.mattersForPatient, { patientId });
@@ -69,7 +69,7 @@ export const patient = action({
       notes: p.notes,
       address: [p.address_1, p.address_2, p.city, p.state, p.post_code].filter(Boolean).join(", "),
       alerts: alerts.filter((a) => !a.archived_at).map((a) => a.name),
-      appointments: appointments.map((a) => ({ id: a.id, startsAt: a.starts_at, endsAt: a.ends_at, cancelledAt: a.cancelled_at ?? null, didNotArrive: !!a.did_not_arrive, typeName: typeById.get(cliniko.idFromLink(a.appointment_type) ?? -1)?.name ?? "Appointment", practitionerName: (() => { const x = pracById.get(cliniko.idFromLink(a.practitioner) ?? -1); return x ? `${x.first_name} ${x.last_name}` : ""; })(), clinikoUrl: cliniko.clinikoWebUrl(`/appointments/${a.id}`) })),
+      appointments: appointments.map((a) => ({ id: a.id, startsAt: a.starts_at, endsAt: a.ends_at, cancelledAt: a.cancelled_at ?? null, didNotArrive: !!a.did_not_arrive, typeName: typeById.get(cliniko.idFromLink(a.appointment_type) ?? "")?.name ?? "Appointment", practitionerName: (() => { const x = pracById.get(cliniko.idFromLink(a.practitioner) ?? ""); return x ? `${x.first_name} ${x.last_name}` : ""; })(), clinikoUrl: cliniko.clinikoWebUrl(`/appointments/${a.id}`) })),
       attachments: attachments.filter((a) => !a.archived_at).map((a) => ({ id: a.id, filename: a.filename ?? a.description ?? `Attachment ${a.id}`, description: a.description, contentType: a.content_type, createdAt: a.created_at, url: a.content_url })),
       invoices: invoices.map((i) => ({ id: i.id, number: i.number, status: i.status_description ?? String(i.status), issueDate: i.issue_date, closedAt: i.closed_at ?? null, total: i.total_amount, clinikoUrl: cliniko.clinikoWebUrl(`/invoices/${i.id}`) })),
       matters,
@@ -83,44 +83,44 @@ function shapePatient(p: cliniko.Patient) {
 
 export const requireStaff = internalQuery({ args: {}, handler: async (ctx) => { const u = await requireUser(ctx); return { _id: u._id, email: u.email, name: u.name }; } });
 export const logAccess = internalMutation({ args: { userId: v.id("users"), action: v.string(), subjectId: v.optional(v.string()), detail: v.optional(v.string()) }, handler: async (ctx, a) => { await audit(ctx, { userId: a.userId, action: a.action, subjectKind: "clinikoPatient", subjectId: a.subjectId, detail: a.detail }); } });
-export const mattersForPatient = internalQuery({ args: { patientId: v.number() }, handler: async (ctx, { patientId }): Promise<MatterRef[]> => (await ctx.db.query("matters").collect()).filter((m) => m.clinikoPatientIds.includes(patientId)).map((m) => ({ _id: m._id, name: m.name, status: m.status })) });
+export const mattersForPatient = internalQuery({ args: { patientId: v.string() }, handler: async (ctx, { patientId }): Promise<MatterRef[]> => (await ctx.db.query("matters").collect()).filter((m) => m.clinikoPatientIds.includes(patientId)).map((m) => ({ _id: m._id, name: m.name, status: m.status })) });
 
 /* ------------------------------ staff writes ------------------------------ */
 
 export const createAppointment = action({
-  args: { patientId: v.number(), practitionerId: v.number(), businessId: v.number(), appointmentTypeId: v.number(), startsAt: v.string(), endsAt: v.string(), notes: v.optional(v.string()) },
+  args: { patientId: v.string(), practitionerId: v.string(), businessId: v.string(), appointmentTypeId: v.string(), startsAt: v.string(), endsAt: v.string(), notes: v.optional(v.string()) },
   handler: async (ctx, a) => {
     const me = await ctx.runQuery(internal.bookings.requireStaff, {});
     const appt = await cliniko.createAppointment({ patient_id: a.patientId, practitioner_id: a.practitionerId, business_id: a.businessId, appointment_type_id: a.appointmentTypeId, starts_at: a.startsAt, ends_at: a.endsAt, notes: a.notes });
-    await ctx.runMutation(internal.bookings.logAccess, { userId: me._id, action: "cliniko.appointmentCreate", subjectId: String(appt.id) });
+    await ctx.runMutation(internal.bookings.logAccess, { userId: me._id, action: "cliniko.appointmentCreate", subjectId: appt.id });
     return { id: appt.id };
   },
 });
 
 export const rescheduleAppointment = action({
-  args: { appointmentId: v.number(), startsAt: v.string(), endsAt: v.string(), practitionerId: v.optional(v.number()) },
+  args: { appointmentId: v.string(), startsAt: v.string(), endsAt: v.string(), practitionerId: v.optional(v.string()) },
   handler: async (ctx, a) => {
     const me = await ctx.runQuery(internal.bookings.requireStaff, {});
     await cliniko.updateAppointment(a.appointmentId, { starts_at: a.startsAt, ends_at: a.endsAt, ...(a.practitionerId ? { practitioner_id: a.practitionerId } : {}) });
-    await ctx.runMutation(internal.bookings.logAccess, { userId: me._id, action: "cliniko.appointmentReschedule", subjectId: String(a.appointmentId) });
+    await ctx.runMutation(internal.bookings.logAccess, { userId: me._id, action: "cliniko.appointmentReschedule", subjectId: a.appointmentId });
   },
 });
 
 export const updateAppointmentFlags = action({
-  args: { appointmentId: v.number(), didNotArrive: v.optional(v.boolean()), arrived: v.optional(v.boolean()), notes: v.optional(v.string()) },
+  args: { appointmentId: v.string(), didNotArrive: v.optional(v.boolean()), arrived: v.optional(v.boolean()), notes: v.optional(v.string()) },
   handler: async (ctx, a) => {
     const me = await ctx.runQuery(internal.bookings.requireStaff, {});
     await cliniko.updateAppointment(a.appointmentId, { ...(a.didNotArrive !== undefined ? { did_not_arrive: a.didNotArrive } : {}), ...(a.arrived !== undefined ? { patient_arrived: a.arrived } : {}), ...(a.notes !== undefined ? { notes: a.notes } : {}) });
-    await ctx.runMutation(internal.bookings.logAccess, { userId: me._id, action: "cliniko.appointmentUpdate", subjectId: String(a.appointmentId) });
+    await ctx.runMutation(internal.bookings.logAccess, { userId: me._id, action: "cliniko.appointmentUpdate", subjectId: a.appointmentId });
   },
 });
 
 export const cancelAppointment = action({
-  args: { appointmentId: v.number(), reason: v.number(), note: v.optional(v.string()) },
+  args: { appointmentId: v.string(), reason: v.number(), note: v.optional(v.string()) },
   handler: async (ctx, a) => {
     const me = await ctx.runQuery(internal.bookings.requireStaff, {});
     await cliniko.cancelAppointment(a.appointmentId, a.reason, a.note);
-    await ctx.runMutation(internal.bookings.logAccess, { userId: me._id, action: "cliniko.appointmentCancel", subjectId: String(a.appointmentId), detail: a.note });
+    await ctx.runMutation(internal.bookings.logAccess, { userId: me._id, action: "cliniko.appointmentCancel", subjectId: a.appointmentId, detail: a.note });
   },
 });
 
@@ -140,7 +140,7 @@ export const syncPricing = action({
 });
 
 export const ensurePricingRows = internalMutation({
-  args: { types: v.array(v.object({ id: v.number(), name: v.string(), duration: v.number(), online: v.boolean() })) },
+  args: { types: v.array(v.object({ id: v.string(), name: v.string(), duration: v.number(), online: v.boolean() })) },
   handler: async (ctx, { types }) => {
     for (const t of types) {
       const row = await ctx.db.query("appointmentPricing").withIndex("by_cliniko", (q) => q.eq("clinikoAppointmentTypeId", t.id)).unique();
@@ -167,7 +167,7 @@ export const publicOptions = action({
   handler: async (ctx) => {
     const pricing: Doc<"appointmentPricing">[] = await ctx.runQuery(internal.bookings.publicPricing, {});
     const [businesses, practitioners, types] = await Promise.all([cliniko.listBusinesses(), cliniko.listPractitioners(), cliniko.listAppointmentTypes()]);
-    const priced = new Map<number, Doc<"appointmentPricing">>(pricing.map((p) => [p.clinikoAppointmentTypeId, p]));
+    const priced = new Map<string, Doc<"appointmentPricing">>(pricing.map((p) => [p.clinikoAppointmentTypeId, p]));
     const business = businesses.find((b) => b.show_in_online_bookings !== false) ?? businesses[0];
     return {
       business: business ? { id: business.id, name: business.display_name || business.business_name, address: [business.address_1, business.city, business.state, business.post_code].filter(Boolean).join(", "), timeZone: business.time_zone_identifier ?? "Australia/Melbourne" } : null,
@@ -180,7 +180,7 @@ export const publicOptions = action({
 export const publicPricing = internalQuery({ args: {}, handler: async (ctx): Promise<Doc<"appointmentPricing">[]> => (await ctx.db.query("appointmentPricing").collect()).filter((p) => p.bookableOnline) });
 
 export const publicAvailability = action({
-  args: { businessId: v.number(), practitionerId: v.number(), appointmentTypeId: v.number(), from: v.string(), to: v.string() },
+  args: { businessId: v.string(), practitionerId: v.string(), appointmentTypeId: v.string(), from: v.string(), to: v.string() },
   handler: async (_ctx, a) => {
     const times = await cliniko.availableTimes(a.businessId, a.practitionerId, a.appointmentTypeId, a.from, a.to);
     return times.map((t) => t.appointment_start);
@@ -188,7 +188,7 @@ export const publicAvailability = action({
 });
 
 export const startPublicBooking = action({
-  args: { businessId: v.number(), practitionerId: v.number(), appointmentTypeId: v.number(), startsAt: v.string(), patient: v.object({ firstName: v.string(), lastName: v.string(), email: v.string(), phone: v.optional(v.string()), dob: v.optional(v.string()), notes: v.optional(v.string()) }), origin: v.string() },
+  args: { businessId: v.string(), practitionerId: v.string(), appointmentTypeId: v.string(), startsAt: v.string(), patient: v.object({ firstName: v.string(), lastName: v.string(), email: v.string(), phone: v.optional(v.string()), dob: v.optional(v.string()), notes: v.optional(v.string()) }), origin: v.string() },
   handler: async (ctx, a): Promise<{ url: string }> => {
     const all: Doc<"appointmentPricing">[] = await ctx.runQuery(internal.bookings.publicPricing, {});
     const pricing = all.find((p) => p.clinikoAppointmentTypeId === a.appointmentTypeId);
@@ -206,14 +206,14 @@ export const startPublicBooking = action({
 });
 
 export const createSession = internalMutation({
-  args: { businessId: v.number(), practitionerId: v.number(), appointmentTypeId: v.number(), startsAt: v.string(), endsAt: v.string(), patient: v.object({ firstName: v.string(), lastName: v.string(), email: v.string(), phone: v.optional(v.string()), dob: v.optional(v.string()), notes: v.optional(v.string()) }), amountCents: v.number(), mode: v.union(v.literal("full"), v.literal("deposit")), expiresAt: v.number() },
+  args: { businessId: v.string(), practitionerId: v.string(), appointmentTypeId: v.string(), startsAt: v.string(), endsAt: v.string(), patient: v.object({ firstName: v.string(), lastName: v.string(), email: v.string(), phone: v.optional(v.string()), dob: v.optional(v.string()), notes: v.optional(v.string()) }), amountCents: v.number(), mode: v.union(v.literal("full"), v.literal("deposit")), expiresAt: v.number() },
   handler: async (ctx, a) => await ctx.db.insert("bookingSessions", { ...a, status: "pending", createdAt: Date.now() }),
 });
 export const attachCheckout = internalMutation({ args: { bookingSessionId: v.id("bookingSessions"), stripeCheckoutSessionId: v.string() }, handler: async (ctx, a) => { await ctx.db.patch(a.bookingSessionId, { stripeCheckoutSessionId: a.stripeCheckoutSessionId }); } });
 export const markFailed = internalMutation({ args: { bookingSessionId: v.id("bookingSessions"), error: v.string() }, handler: async (ctx, a) => { const s = await ctx.db.get(a.bookingSessionId); if (s && s.status === "pending") await ctx.db.patch(a.bookingSessionId, { status: "failed", error: a.error }); } });
 export const sessionById = internalQuery({ args: { id: v.id("bookingSessions") }, handler: async (ctx, { id }) => await ctx.db.get(id) });
 export const finishSession = internalMutation({
-  args: { id: v.id("bookingSessions"), status: v.union(v.literal("paid"), v.literal("booked"), v.literal("failed")), clinikoPatientId: v.optional(v.number()), clinikoAppointmentId: v.optional(v.number()), stripePaymentIntentId: v.optional(v.string()), error: v.optional(v.string()) },
+  args: { id: v.id("bookingSessions"), status: v.union(v.literal("paid"), v.literal("booked"), v.literal("failed")), clinikoPatientId: v.optional(v.string()), clinikoAppointmentId: v.optional(v.string()), stripePaymentIntentId: v.optional(v.string()), error: v.optional(v.string()) },
   handler: async (ctx, { id, ...patch }) => { await ctx.db.patch(id, patch); },
 });
 

@@ -122,7 +122,7 @@ function GoogleTab() {
 
 /* ------------------------------ cliniko + pricing ------------------------------ */
 
-type Practice = { businesses: Array<{ id: number; business_name: string; display_name?: string }>; practitioners: Array<{ id: number; first_name: string; last_name: string; designation?: string }>; appointmentTypes: Array<{ id: number; name: string; duration_in_minutes: number; show_in_online_bookings: boolean }> };
+type Practice = { businesses: Array<{ id: string; business_name: string; display_name?: string }>; practitioners: Array<{ id: string; first_name: string; last_name: string; designation?: string }>; appointmentTypes: Array<{ id: string; name: string; duration_in_minutes: number; show_in_online_bookings: boolean }> };
 
 function ClinikoTab() {
   const status = useQuery(api.settings.setupStatus);
@@ -147,8 +147,8 @@ function ClinikoTab() {
         )}
         {practice && (
           <div className="mt-4 flex flex-wrap gap-3 text-sm">
-            <label className="flex items-center gap-2">Default business<select className="h-8 rounded-lg border border-input bg-card px-2 text-sm" value={String(settings?.["cliniko.businessId"] ?? practice.businesses[0]?.id ?? "")} onChange={(e) => void setSetting({ key: "cliniko.businessId", value: Number(e.target.value) })}>{practice.businesses.map((b) => <option key={b.id} value={b.id}>{b.display_name || b.business_name}</option>)}</select></label>
-            <label className="flex items-center gap-2">Default practitioner<select className="h-8 rounded-lg border border-input bg-card px-2 text-sm" value={String(settings?.["cliniko.practitionerId"] ?? practice.practitioners[0]?.id ?? "")} onChange={(e) => void setSetting({ key: "cliniko.practitionerId", value: Number(e.target.value) })}>{practice.practitioners.map((p) => <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>)}</select></label>
+            <label className="flex items-center gap-2">Default business<select className="h-8 rounded-lg border border-input bg-card px-2 text-sm" value={String(settings?.["cliniko.businessId"] ?? practice.businesses[0]?.id ?? "")} onChange={(e) => void setSetting({ key: "cliniko.businessId", value: e.target.value })}>{practice.businesses.map((b) => <option key={b.id} value={b.id}>{b.display_name || b.business_name}</option>)}</select></label>
+            <label className="flex items-center gap-2">Default practitioner<select className="h-8 rounded-lg border border-input bg-card px-2 text-sm" value={String(settings?.["cliniko.practitionerId"] ?? practice.practitioners[0]?.id ?? "")} onChange={(e) => void setSetting({ key: "cliniko.practitionerId", value: e.target.value })}>{practice.practitioners.map((p) => <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>)}</select></label>
           </div>
         )}
       </Panel>

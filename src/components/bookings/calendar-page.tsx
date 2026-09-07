@@ -14,8 +14,8 @@ import { cn, errorMessage } from "@/lib/utils";
 import { time } from "@/lib/format";
 import { PatientSearch } from "./patient-search";
 
-type Appt = { id: number; startsAt: string; endsAt: string; notes?: string; cancelledAt: string | null; didNotArrive: boolean; arrived: boolean; telehealthUrl?: string; patientId?: number; patientName: string; typeId?: number; typeName: string; color?: string; practitionerId?: number; practitionerName: string; clinikoUrl: string; patientUrl?: string };
-type Block = { id: number; startsAt: string; endsAt: string; practitionerId?: number; notes?: string };
+type Appt = { id: string; startsAt: string; endsAt: string; notes?: string; cancelledAt: string | null; didNotArrive: boolean; arrived: boolean; telehealthUrl?: string; patientId?: string; patientName: string; typeId?: string; typeName: string; color?: string; practitionerId?: string; practitionerName: string; clinikoUrl: string; patientUrl?: string };
+type Block = { id: string; startsAt: string; endsAt: string; practitionerId?: string; notes?: string };
 
 const HOUR_PX = 64;
 const DAY_START = 7;
@@ -46,22 +46,22 @@ export function CalendarPage() {
   const create = useAction(api.bookings.createAppointment);
   const settings = useQuery(api.settings.all);
   const [selected, setSelected] = useState<Appt | null>(null);
-  const [creating, setCreating] = useState<{ startsAt: Date; practitionerId?: number } | null>(null);
+  const [creating, setCreating] = useState<{ startsAt: Date; practitionerId?: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
   const practitioners = practice.data?.practitioners ?? [];
   const types = practice.data?.appointmentTypes ?? [];
-  const columns: Array<{ key: string; label: string; day: Date; practitionerId?: number }> = mode === "week"
+  const columns: Array<{ key: string; label: string; day: Date; practitionerId?: string }> = mode === "week"
     ? Array.from({ length: 7 }, (_, i) => { const d = new Date(rangeStart); d.setDate(d.getDate() + i); return { key: d.toDateString(), label: d.toLocaleDateString("en-AU", { weekday: "short", day: "numeric" }), day: d }; })
-    : (practitioners.length ? practitioners : [{ id: undefined as number | undefined, first_name: "All", last_name: "" }]).map((p) => ({ key: String(p.id ?? "all"), label: `${p.first_name} ${p.last_name}`.trim(), day: rangeStart, practitionerId: p.id }));
+    : (practitioners.length ? practitioners : [{ id: undefined as string | undefined, first_name: "All", last_name: "" }]).map((p) => ({ key: String(p.id ?? "all"), label: `${p.first_name} ${p.last_name}`.trim(), day: rangeStart, practitionerId: p.id }));
 
-  const inColumn = (a: { startsAt: string; practitionerId?: number }, c: (typeof columns)[number]) => { const d = new Date(a.startsAt); return d.toDateString() === c.day.toDateString() && (mode === "week" || c.practitionerId === undefined || a.practitionerId === c.practitionerId); };
+  const inColumn = (a: { startsAt: string; practitionerId?: string }, c: (typeof columns)[number]) => { const d = new Date(a.startsAt); return d.toDateString() === c.day.toDateString() && (mode === "week" || c.practitionerId === undefined || a.practitionerId === c.practitionerId); };
   const yFor = (iso: string) => { const d = new Date(iso); return ((d.getHours() - DAY_START) * 60 + d.getMinutes()) * (HOUR_PX / 60); };
   const hFor = (s: string, e: string) => Math.max(18, ((new Date(e).getTime() - new Date(s).getTime()) / 60_000) * (HOUR_PX / 60));
 
   const onDrop = async (e: React.DragEvent, col: (typeof columns)[number]) => {
     e.preventDefault();
-    const id = Number(e.dataTransfer.getData("appt"));
+    const id = e.dataTransfer.getData("appt");
     const a = live.data?.appointments.find((x) => x.id === id);
     if (!a) return;
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -80,7 +80,7 @@ export function CalendarPage() {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const minutes = Math.floor(((e.clientY - rect.top) / HOUR_PX) * 60 / 15) * 15;
     const start = new Date(col.day); start.setHours(DAY_START, 0, 0, 0); start.setMinutes(start.getMinutes() + minutes);
-    setCreating({ startsAt: start, practitionerId: col.practitionerId ?? (settings?.["cliniko.practitionerId"] as number | undefined) ?? practitioners[0]?.id });
+    setCreating({ startsAt: start, practitionerId: col.practitionerId ?? (settings?.["cliniko.practitionerId"] as string | undefined) ?? practitioners[0]?.id });
   };
 
   if (setup && !setup.cliniko) return <div className="p-8"><Empty title="Cliniko isn’t connected" body="Add CLINIKO_API_KEY on the Convex deployment and the calendar appears here, read live." action={<Button render={<Link href="/settings?tab=cliniko" />}>Settings</Button>} /></div>;
@@ -93,7 +93,7 @@ export function CalendarPage() {
         <h1 className="font-display text-lg">{mode === "day" ? rangeStart.toLocaleDateString("en-AU", { weekday: "long", day: "numeric", month: "long" }) : `${rangeStart.toLocaleDateString("en-AU", { day: "numeric", month: "short" })} – ${new Date(rangeEnd.getTime() - 1).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" })}`}</h1>
         <div className="ml-auto flex items-center gap-1 rounded-full bg-muted p-0.5">{(["day", "week"] as const).map((m) => <button key={m} type="button" onClick={() => setParams({ mode: m })} className={cn("h-7 rounded-full px-3 text-xs capitalize", mode === m ? "bg-card shadow-xs" : "text-fg-tertiary hover:text-foreground")}>{m}</button>)}</div>
         <PatientSearch onPick={(p) => router.push(`/bookings/patients/${p.id}`)} />
-        <Button size="sm" onClick={() => setCreating({ startsAt: (() => { const d = new Date(now); d.setMinutes(0, 0, 0); d.setHours(d.getHours() + 1); return d; })(), practitionerId: (settings?.["cliniko.practitionerId"] as number | undefined) ?? practitioners[0]?.id })}><Plus className="size-3.5" />Book</Button>
+        <Button size="sm" onClick={() => setCreating({ startsAt: (() => { const d = new Date(now); d.setMinutes(0, 0, 0); d.setHours(d.getHours() + 1); return d; })(), practitionerId: (settings?.["cliniko.practitionerId"] as string | undefined) ?? practitioners[0]?.id })}><Plus className="size-3.5" />Book</Button>
         <Button size="icon-sm" variant="ghost" aria-label="Refresh" onClick={() => live.reload()}><RefreshCw className={cn("size-3.5", live.loading && "animate-spin")} /></Button>
       </div>
 
@@ -116,7 +116,7 @@ export function CalendarPage() {
                   {unavail.map((b) => <div key={`u${b.id}`} className="absolute inset-x-0 bg-[repeating-linear-gradient(45deg,transparent,transparent_6px,rgba(0,0,0,.05)_6px,rgba(0,0,0,.05)_12px)] px-1 text-[10px] text-fg-tertiary" style={{ top: yFor(b.startsAt), height: hFor(b.startsAt, b.endsAt) }} title={b.notes}>{b.notes}</div>)}
                   {isToday && <div className="absolute inset-x-0 z-[5] h-px bg-error" style={{ top: yFor(new Date(now).toISOString()) }} />}
                   {appts.map((a) => (
-                    <button key={a.id} type="button" data-appt draggable={!a.cancelledAt} onDragStart={(e) => e.dataTransfer.setData("appt", String(a.id))} onClick={(e) => { e.stopPropagation(); setSelected(a); }} className={cn("absolute inset-x-0.5 overflow-hidden rounded-md px-1.5 py-0.5 text-left text-[11px] leading-tight text-white shadow-xs ring-1 ring-black/10", a.cancelledAt && "opacity-40 line-through", a.didNotArrive && "ring-2 ring-error")} style={{ top: yFor(a.startsAt), height: hFor(a.startsAt, a.endsAt), background: a.color ?? "#0081f2" }}>
+                    <button key={a.id} type="button" data-appt draggable={!a.cancelledAt} onDragStart={(e) => e.dataTransfer.setData("appt", a.id)} onClick={(e) => { e.stopPropagation(); setSelected(a); }} className={cn("absolute inset-x-0.5 overflow-hidden rounded-md px-1.5 py-0.5 text-left text-[11px] leading-tight text-white shadow-xs ring-1 ring-black/10", a.cancelledAt && "opacity-40 line-through", a.didNotArrive && "ring-2 ring-error")} style={{ top: yFor(a.startsAt), height: hFor(a.startsAt, a.endsAt), background: a.color ?? "#0081f2" }}>
                       <div className="truncate font-semibold">{a.patientName}</div>
                       <div className="truncate opacity-90">{time(a.startsAt)} · {a.typeName}</div>
                       {mode === "week" && practitioners.length > 1 && <div className="truncate opacity-75">{a.practitionerName}</div>}
@@ -154,16 +154,16 @@ export function CalendarPage() {
       )}
 
       {creating && (
-        <NewAppointment start={creating.startsAt} practitionerId={creating.practitionerId} practitioners={practitioners} types={types} businessId={(settings?.["cliniko.businessId"] as number | undefined) ?? practice.data?.businesses[0]?.id} onClose={() => setCreating(null)} onCreate={async (a) => { try { await create(a); toast.success("Booked in Cliniko"); setCreating(null); live.reload(); } catch (e) { toast.error(errorMessage(e)); } }} />
+        <NewAppointment start={creating.startsAt} practitionerId={creating.practitionerId} practitioners={practitioners} types={types} businessId={(settings?.["cliniko.businessId"] as string | undefined) ?? practice.data?.businesses[0]?.id} onClose={() => setCreating(null)} onCreate={async (a) => { try { await create(a); toast.success("Booked in Cliniko"); setCreating(null); live.reload(); } catch (e) { toast.error(errorMessage(e)); } }} />
       )}
     </div>
   );
 }
 
-function NewAppointment({ start, practitionerId, practitioners, types, businessId, onClose, onCreate }: { start: Date; practitionerId?: number; practitioners: Array<{ id: number; first_name: string; last_name: string }>; types: Array<{ id: number; name: string; duration_in_minutes: number }>; businessId?: number; onClose: () => void; onCreate: (a: { patientId: number; practitionerId: number; businessId: number; appointmentTypeId: number; startsAt: string; endsAt: string; notes?: string }) => Promise<void> }) {
-  const [patient, setPatient] = useState<{ id: number; name: string } | null>(null);
-  const [typeId, setTypeId] = useState<number>(types[0]?.id ?? 0);
-  const [pracId, setPracId] = useState<number>(practitionerId ?? practitioners[0]?.id ?? 0);
+function NewAppointment({ start, practitionerId, practitioners, types, businessId, onClose, onCreate }: { start: Date; practitionerId?: string; practitioners: Array<{ id: string; first_name: string; last_name: string }>; types: Array<{ id: string; name: string; duration_in_minutes: number }>; businessId?: string; onClose: () => void; onCreate: (a: { patientId: string; practitionerId: string; businessId: string; appointmentTypeId: string; startsAt: string; endsAt: string; notes?: string }) => Promise<void> }) {
+  const [patient, setPatient] = useState<{ id: string; name: string } | null>(null);
+  const [typeId, setTypeId] = useState<string>(types[0]?.id ?? "");
+  const [pracId, setPracId] = useState<string>(practitionerId ?? practitioners[0]?.id ?? "");
   const [when, setWhen] = useState(() => { const pad = (n: number) => String(n).padStart(2, "0"); return `${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(start.getDate())}T${pad(start.getHours())}:${pad(start.getMinutes())}`; });
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
@@ -173,8 +173,8 @@ function NewAppointment({ start, practitionerId, practitioners, types, businessI
       <form className="w-full max-w-md space-y-3 rounded-2xl bg-card p-5 shadow-float" onClick={(e) => e.stopPropagation()} onSubmit={async (e) => { e.preventDefault(); if (!patient || !type || !businessId) { toast.error("Pick a patient and an appointment type."); return; } setBusy(true); const s = new Date(when); const en = new Date(s.getTime() + type.duration_in_minutes * 60_000); await onCreate({ patientId: patient.id, practitionerId: pracId, businessId, appointmentTypeId: type.id, startsAt: s.toISOString(), endsAt: en.toISOString(), notes: notes || undefined }); setBusy(false); }}>
         <h2 className="font-display text-xl">New appointment</h2>
         <div><span className="text-xs text-fg-tertiary">Patient</span>{patient ? <div className="flex items-center gap-2 text-sm"><span className="font-medium">{patient.name}</span><button type="button" onClick={() => setPatient(null)} className="text-xs underline">change</button></div> : <PatientSearch onPick={(p) => setPatient({ id: p.id, name: p.name })} inline />}</div>
-        <label className="block text-xs text-fg-tertiary">Appointment type<select value={typeId} onChange={(e) => setTypeId(Number(e.target.value))} className="mt-1 h-9 w-full rounded-lg border border-input bg-card px-2 text-sm text-foreground">{types.map((t) => <option key={t.id} value={t.id}>{t.name} ({t.duration_in_minutes} min)</option>)}</select></label>
-        <label className="block text-xs text-fg-tertiary">Practitioner<select value={pracId} onChange={(e) => setPracId(Number(e.target.value))} className="mt-1 h-9 w-full rounded-lg border border-input bg-card px-2 text-sm text-foreground">{practitioners.map((p) => <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>)}</select></label>
+        <label className="block text-xs text-fg-tertiary">Appointment type<select value={typeId} onChange={(e) => setTypeId(e.target.value)} className="mt-1 h-9 w-full rounded-lg border border-input bg-card px-2 text-sm text-foreground">{types.map((t) => <option key={t.id} value={t.id}>{t.name} ({t.duration_in_minutes} min)</option>)}</select></label>
+        <label className="block text-xs text-fg-tertiary">Practitioner<select value={pracId} onChange={(e) => setPracId(e.target.value)} className="mt-1 h-9 w-full rounded-lg border border-input bg-card px-2 text-sm text-foreground">{practitioners.map((p) => <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>)}</select></label>
         <label className="block text-xs text-fg-tertiary">Starts<input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} className="mt-1 h-9 w-full rounded-lg border border-input bg-card px-2 text-sm text-foreground" /></label>
         <label className="block text-xs text-fg-tertiary">Notes<textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className="mt-1 w-full rounded-lg border border-input bg-card px-2 py-1 text-sm text-foreground" /></label>
         <div className="flex gap-2"><Button type="submit" disabled={busy}>{busy ? "Booking…" : "Book in Cliniko"}</Button><Button type="button" variant="ghost" onClick={onClose}>Cancel</Button></div>

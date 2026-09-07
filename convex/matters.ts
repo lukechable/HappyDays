@@ -55,7 +55,7 @@ export const get = query({
 });
 
 export const save = mutation({
-  args: { id: v.optional(v.id("matters")), name: v.string(), courtFileNo: v.optional(v.string()), court: v.optional(v.string()), parties: v.array(v.string()), clinikoPatientIds: v.array(v.number()), status: v.optional(status), notes: v.optional(v.string()) },
+  args: { id: v.optional(v.id("matters")), name: v.string(), courtFileNo: v.optional(v.string()), court: v.optional(v.string()), parties: v.array(v.string()), clinikoPatientIds: v.array(v.string()), status: v.optional(status), notes: v.optional(v.string()) },
   handler: async (ctx, { id, ...fields }) => {
     const user = await requireUser(ctx);
     if (!fields.name.trim()) throw new Error("Give the matter a name.");

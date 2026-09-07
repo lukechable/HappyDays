@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { aud, dueLabel, mailDate, time, weekday } from "@/lib/format";
 import { useLive, useNow } from "@/lib/hooks";
 
-type Appt = { id: number; startsAt: string; endsAt: string; patientName: string; typeName: string; color?: string; cancelledAt: string | null; didNotArrive: boolean; practitionerName: string; clinikoUrl: string; patientId?: number; telehealthUrl?: string };
+type Appt = { id: string; startsAt: string; endsAt: string; patientName: string; typeName: string; color?: string; cancelledAt: string | null; didNotArrive: boolean; practitionerName: string; clinikoUrl: string; patientId?: string; telehealthUrl?: string };
 type OverdueItem = { gmailThreadId: string; subject: string; senders: Array<{ name: string }>; lastAt: number };
 
 /** Today at a glance: appointments from Cliniko, overdue mail, tasks due, and the money table's two red flags. */

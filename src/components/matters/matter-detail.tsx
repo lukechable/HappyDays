@@ -40,7 +40,7 @@ export function MatterDetail({ id }: { id: Id<"matters"> }) {
 
       {editing && form && (
         <Panel title="Edit matter" dense>
-          <form className="grid gap-3 sm:grid-cols-2" onSubmit={async (e) => { e.preventDefault(); try { await save({ id, name: form.name, courtFileNo: form.courtFileNo || undefined, court: form.court || undefined, parties: form.parties.split(/[;\n]/).map((p) => p.trim()).filter(Boolean), clinikoPatientIds: form.patients.split(/[,\s]+/).map(Number).filter((n) => Number.isFinite(n) && n > 0), notes: form.notes || undefined, status: m.status }); setEditing(false); toast.success("Saved"); } catch (err) { toast.error(errorMessage(err)); } }}>
+          <form className="grid gap-3 sm:grid-cols-2" onSubmit={async (e) => { e.preventDefault(); try { await save({ id, name: form.name, courtFileNo: form.courtFileNo || undefined, court: form.court || undefined, parties: form.parties.split(/[;\n]/).map((p) => p.trim()).filter(Boolean), clinikoPatientIds: form.patients.split(/[,\s]+/).map((x) => x.trim()).filter((x) => /^\d+$/.test(x)), notes: form.notes || undefined, status: m.status }); setEditing(false); toast.success("Saved"); } catch (err) { toast.error(errorMessage(err)); } }}>
             <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Name" required className="sm:col-span-2" />
             <Input value={form.courtFileNo} onChange={(e) => setForm({ ...form, courtFileNo: e.target.value })} placeholder="Court file number" />
             <Input value={form.court} onChange={(e) => setForm({ ...form, court: e.target.value })} placeholder="Court" />
