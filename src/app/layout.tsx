@@ -2,7 +2,11 @@ import type { Metadata, Viewport } from "next";
 import { Libre_Baskerville } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
-import { ConvexClientProvider } from "@/components/ConvexClientProvider";
+import Link from "next/link";
+import { cookies } from "next/headers";
+import { ConvexClientProvider, GuestConvexProvider } from "@/components/ConvexClientProvider";
+import { AuthModeProvider } from "@/components/auth/auth-mode";
+import { GUEST_COOKIE, guestTokenLive } from "@/lib/guest";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
@@ -19,34 +23,49 @@ export const viewport: Viewport = { themeColor: "#1a1a19", width: "device-width"
 
 const clerkConfigured = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default async function RootLayout({ children }: LayoutProps<"/">) {
   const html = (body: React.ReactNode) => (
     <html lang="en-AU" className={`${serif.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col bg-background text-foreground">{body}</body>
     </html>
   );
-  if (!clerkConfigured) return html(<SetupNeeded />);
-  return (
-    <ClerkProvider signInUrl="/signin" afterSignOutUrl="/signin" appearance={{ variables: { colorPrimary: "#1a1a19", borderRadius: "0.5rem" } }}>
-      {html(
-        <ConvexClientProvider>
+  const guest = guestTokenLive((await cookies()).get(GUEST_COOKIE)?.value);
+  if (guest) {
+    return html(
+      <AuthModeProvider mode="guest">
+        <GuestConvexProvider>
           <TooltipProvider>
             {children}
             <Toaster position="bottom-center" />
           </TooltipProvider>
-        </ConvexClientProvider>,
+        </GuestConvexProvider>
+      </AuthModeProvider>,
+    );
+  }
+  if (!clerkConfigured) return html(<SetupNeeded />);
+  return (
+    <ClerkProvider signInUrl="/signin" afterSignOutUrl="/signin" appearance={{ variables: { colorPrimary: "#1a1a19", borderRadius: "0.5rem" } }}>
+      {html(
+        <AuthModeProvider mode="clerk">
+          <ConvexClientProvider>
+            <TooltipProvider>
+              {children}
+              <Toaster position="bottom-center" />
+            </TooltipProvider>
+          </ConvexClientProvider>
+        </AuthModeProvider>,
       )}
     </ClerkProvider>
   );
 }
 
-/** Shown on a deployment that has no Clerk keys yet, instead of a 500. */
+/** Shown on a deployment that has no Clerk keys yet, instead of a 500. Offers the guest login when it is on. */
 function SetupNeeded() {
   const convex = process.env.NEXT_PUBLIC_CONVEX_URL ?? "(not set)";
   return (
     <main className="mx-auto flex min-h-svh max-w-lg flex-col justify-center gap-5 px-6 py-12">
       <p className="font-display text-3xl">Happy Days</p>
-      <p className="text-sm text-fg-secondary">This deployment is running but sign-in isn’t configured yet. Add the Clerk keys and redeploy.</p>
+      <p className="text-sm text-fg-secondary">This deployment is running but sign-in isn’t configured yet. Add the Clerk keys and redeploy, or <Link href="/signin" className="underline">sign in as a guest tester</Link>.</p>
       <ol className="list-decimal space-y-2 pl-5 text-sm">
         <li>Create a Clerk application (Google sign-in only, restricted to barbarafraser.net).</li>
         <li>Set <code className="rounded bg-muted px-1">NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY</code> and <code className="rounded bg-muted px-1">CLERK_SECRET_KEY</code> on this service.</li>

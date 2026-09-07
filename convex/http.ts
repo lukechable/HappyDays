@@ -62,4 +62,14 @@ http.route({
   }),
 });
 
+/** Public key for guest test tokens (empty unless guest access is switched on). */
+http.route({
+  path: "/guest/jwks.json",
+  method: "GET",
+  handler: httpAction(async (ctx) => {
+    const doc = await ctx.runAction(internal.guest.jwks, {});
+    return Response.json(doc, { headers: { "Cache-Control": "public, max-age=300" } });
+  }),
+});
+
 export default http;

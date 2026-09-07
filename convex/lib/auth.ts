@@ -1,7 +1,7 @@
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import type { Doc } from "../_generated/dataModel";
 
-export const allowedEmails = () => (process.env.ALLOWED_EMAILS ?? "barbara@barbarafraser.net,luke@barbarafraser.net").split(",").map((e) => e.trim().toLowerCase()).filter(Boolean);
+export const allowedEmails = () => (process.env.ALLOWED_EMAILS ?? "barbara@barbarafraser.net,luke@barbarafraser.net").split(",").map((e) => e.trim().toLowerCase()).filter(Boolean).concat(process.env.GUEST_PASSWORD ? ["guest@barbarafraser.net"] : []);
 
 /** The signed-in Happy Days user, or null when signed out or not on the allowlist. */
 export async function currentUser(ctx: QueryCtx | MutationCtx): Promise<Doc<"users"> | null> {
