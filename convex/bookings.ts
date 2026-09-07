@@ -26,21 +26,48 @@ export const calendar = action({
     const [appointments, availability, unavailable, types, practitioners] = await Promise.all([cliniko.listAppointments(fromIso, toIso, practitionerId), cliniko.availabilityBlocks(fromIso, toIso), cliniko.unavailableBlocks(fromIso, toIso), cliniko.listAppointmentTypes(), cliniko.listPractitioners()]);
     const typeById = new Map(types.map((t) => [t.id, t]));
     const pracById = new Map(practitioners.map((p) => [p.id, p]));
-    // Patient names are not on the appointment payload; fetch the few unique patients in this window.
-    const patientIds = Array.from(new Set(appointments.map((a) => cliniko.idFromLink(a.patient)).filter((x): x is string => !!x)));
-    const patients = new Map<string, cliniko.Patient>();
-    await Promise.all(patientIds.slice(0, 60).map(async (id) => { try { patients.set(id, await cliniko.getPatient(id)); } catch { /* archived */ } }));
     return {
       appointments: appointments.map((a) => {
         const pid = cliniko.idFromLink(a.patient);
         const t = typeById.get(cliniko.idFromLink(a.appointment_type) ?? "");
         const p = pracById.get(cliniko.idFromLink(a.practitioner) ?? "");
-        const pat = pid ? patients.get(pid) : undefined;
-        return { id: a.id, startsAt: a.starts_at, endsAt: a.ends_at, notes: a.notes, cancelledAt: a.cancelled_at ?? null, didNotArrive: !!a.did_not_arrive, arrived: !!a.patient_arrived, telehealthUrl: a.telehealth_url, patientId: pid, patientName: pat ? `${pat.first_name} ${pat.last_name}` : a.patient_name ?? "Patient", typeId: t?.id, typeName: t?.name ?? "Appointment", color: t?.color, practitionerId: p?.id, practitionerName: p ? `${p.first_name} ${p.last_name}` : "", clinikoUrl: cliniko.clinikoWebUrl(`/appointments/${a.id}`), patientUrl: pid ? cliniko.clinikoWebUrl(`/patients/${pid}`) : undefined };
+        return { id: a.id, startsAt: a.starts_at, endsAt: a.ends_at, notes: a.notes, cancelledAt: a.cancelled_at ?? null, didNotArrive: !!a.did_not_arrive, arrived: !!a.patient_arrived, telehealthUrl: a.telehealth_url, patientId: pid, patientName: a.patient_name ?? "Patient", typeId: t?.id, typeName: t?.name ?? "Appointment", color: t?.color, practitionerId: p?.id, practitionerName: p ? `${p.first_name} ${p.last_name}` : "", clinikoUrl: cliniko.clinikoWebUrl(`/appointments/${a.id}`), patientUrl: pid ? cliniko.clinikoWebUrl(`/patients/${pid}`) : undefined };
       }),
       availability: availability.filter((b) => !b.deleted_at).map((b) => ({ id: b.id, startsAt: b.starts_at, endsAt: b.ends_at, practitionerId: cliniko.idFromLink(b.practitioner) })),
       unavailable: unavailable.filter((b) => !b.deleted_at).map((b) => ({ id: b.id, startsAt: b.starts_at, endsAt: b.ends_at, notes: b.notes, practitionerId: cliniko.idFromLink(b.practitioner) })),
     };
+  },
+});
+
+/** Cheap freshness check: has any appointment in this window changed since the calendar last fetched it? */
+export const changedSince = action({
+  args: { fromIso: v.string(), toIso: v.string(), sinceIso: v.string() },
+  handler: async (ctx, { fromIso, toIso, sinceIso }) => {
+    await ctx.runQuery(internal.bookings.requireStaff, {});
+    const changed = await cliniko.listAppointments(fromIso, toIso, undefined, sinceIso);
+    return { changed: changed.length };
+  },
+});
+
+/** Patients page: the most recently updated records, straight from Cliniko. */
+export const recentPatients = action({
+  args: {},
+  handler: async (ctx) => {
+    const me = await ctx.runQuery(internal.bookings.requireStaff, {});
+    const patients = await cliniko.recentPatients(50);
+    await ctx.runMutation(internal.bookings.logAccess, { userId: me._id, action: "cliniko.patientList" });
+    return patients.filter((p) => !p.archived_at).map(shapePatient);
+  },
+});
+
+/** Payments page: Cliniko invoices issued in the last N days. */
+export const clinikoInvoices = action({
+  args: { days: v.number() },
+  handler: async (ctx, { days }) => {
+    await ctx.runQuery(internal.bookings.requireStaff, {});
+    const since = new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
+    const invoices = await cliniko.listInvoices(since);
+    return invoices.map((i) => ({ id: i.id, number: i.number, patientId: cliniko.idFromLink(i.patient), patientName: i.patient_name ?? "", issueDate: i.issue_date, closedAt: i.closed_at ?? null, status: i.status_description ?? String(i.status), total: i.total_amount, net: i.net_amount ?? i.total_amount, clinikoUrl: cliniko.clinikoWebUrl(`/invoices/${i.id}`), payUrl: i.online_payment_url }));
   },
 });
 

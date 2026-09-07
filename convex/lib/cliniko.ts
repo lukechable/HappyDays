@@ -50,7 +50,7 @@ export type AvailabilityBlock = { id: string; starts_at: string; ends_at: string
 export type UnavailableBlock = { id: string; starts_at: string; ends_at: string; notes?: string; practitioner?: { links: { self: string } }; business?: { links: { self: string } }; deleted_at?: string | null };
 export type PatientAttachment = { id: string; description?: string; content_type?: string; filename?: string; upload_url?: string; content_url?: string; created_at: string; updated_at: string; archived_at?: string | null; user?: { links: { self: string } }; patient?: { links: { self: string } }; links?: { self: string } };
 export type MedicalAlert = { id: string; name: string; created_at: string; archived_at?: string | null; patient?: { links: { self: string } } };
-export type Invoice = { id: string; number: number; status: number; status_description?: string; issue_date: string; closed_at?: string | null; total_amount: number; net_amount?: number; discounted_amount?: number; created_at: string; updated_at: string; patient?: { links: { self: string } }; appointment?: { links: { self: string } }; online_payment_url?: string };
+export type Invoice = { id: string; number: number; patient_name?: string; status: number; status_description?: string; issue_date: string; closed_at?: string | null; total_amount: number; net_amount?: number; discounted_amount?: number; created_at: string; updated_at: string; patient?: { links: { self: string } }; appointment?: { links: { self: string } }; online_payment_url?: string };
 
 export const idFromLink = (link?: { links: { self: string } }) => (link ? link.links.self.split("/").pop() : undefined);
 
@@ -80,11 +80,12 @@ export const patientAppointments = (patientId: string) => all<Appointment>(`/pat
 export const patientAttachments = (patientId: string) => all<PatientAttachment>(`/patients/${patientId}/patient_attachments`, "patient_attachments", 200);
 export const patientMedicalAlerts = (patientId: string) => all<MedicalAlert>(`/patients/${patientId}/medical_alerts`, "medical_alerts", 50);
 export const patientInvoices = (patientId: string) => all<Invoice>(`/patients/${patientId}/invoices?sort=issue_date:desc`, "invoices", 100);
-export const listAppointments = (fromIso: string, toIso: string, practitionerId?: string) => {
+export const listAppointments = (fromIso: string, toIso: string, practitionerId?: string, updatedSinceIso?: string) => {
   const p = new URLSearchParams();
   p.append("q[]", `starts_at:>=${fromIso}`);
   p.append("q[]", `starts_at:<${toIso}`);
   if (practitionerId) p.append("q[]", `practitioner_id:=${practitionerId}`);
+  if (updatedSinceIso) p.append("q[]", `updated_at:>${updatedSinceIso}`);
   p.set("sort", "starts_at:asc");
   return all<Appointment>(`/individual_appointments?${p}`, "individual_appointments", 500);
 };
@@ -92,6 +93,8 @@ export const getAppointment = (id: string) => call<Appointment>(`/individual_app
 export const availableTimes = (businessId: string, practitionerId: string, appointmentTypeId: string, from: string, to: string) => all<AvailableTime>(`/businesses/${businessId}/practitioners/${practitionerId}/appointment_types/${appointmentTypeId}/available_times?from=${from}&to=${to}`, "available_times", 500);
 export const availabilityBlocks = (fromIso: string, toIso: string) => all<AvailabilityBlock>(`/availability_blocks?q[]=starts_at:>=${fromIso}&q[]=starts_at:<${toIso}`, "availability_blocks", 500);
 export const unavailableBlocks = (fromIso: string, toIso: string) => all<UnavailableBlock>(`/unavailable_blocks?q[]=starts_at:>=${fromIso}&q[]=starts_at:<${toIso}`, "unavailable_blocks", 500);
+export const recentPatients = (limit = 50) => call<{ patients: Patient[] }>(`/patients?per_page=${limit}&sort=updated_at:desc`).then((r) => r.patients);
+export const listInvoices = (sinceDate: string) => all<Invoice>(`/invoices?q[]=issue_date:>=${sinceDate}&sort=issue_date:desc`, "invoices", 300);
 export const me = () => call<{ id: string; first_name: string; last_name: string; email: string }>("/user");
 
 /* ------------------------------ writes ------------------------------ */

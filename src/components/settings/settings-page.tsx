@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { toast } from "sonner";
 import { api } from "../../../convex/_generated/api";
-import { PageHeader, Panel, Pill, Dot, Facts, DataTable, Empty, Loading } from "@/components/primitives";
+import { PageHeader, Panel, Pill, Dot, Facts, Empty, Loading } from "@/components/primitives";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -128,7 +128,6 @@ function ClinikoTab() {
   const status = useQuery(api.settings.setupStatus);
   const pricing = useQuery(api.bookings.pricing);
   const syncPricing = useAction(api.bookings.syncPricing);
-  const setPricing = useMutation(api.bookings.setPricing);
   const settings = useQuery(api.settings.all);
   const setSetting = useMutation(api.settings.set);
   const live = useLive(api.bookings.practice, status?.cliniko ? {} : "skip");
@@ -152,24 +151,19 @@ function ClinikoTab() {
           </div>
         )}
       </Panel>
-      <Panel title="Pricing for online booking" blurb="Cliniko owns the appointment types; Happy Days decides how each is paid through Stripe. Amounts in dollars.">
-        {pricing.length === 0 ? <Empty title="No appointment types yet" body="Click “Refresh appointment types” once Cliniko is connected." /> : (
-          <DataTable head={<><th>Appointment type</th><th>Length</th><th>Online</th><th>Charge</th><th>Fee</th><th>Deposit</th></>} minWidth={720}>
-            {pricing.sort((a, b) => a.name.localeCompare(b.name)).map((p) => <PricingRow key={p._id} p={p} onSave={(patch) => setPricing({ id: p._id, mode: patch.mode ?? p.mode, feeCents: patch.feeCents ?? p.feeCents, depositCents: patch.depositCents ?? p.depositCents, bookableOnline: patch.bookableOnline ?? p.bookableOnline }).then(() => toast.success(`${p.name} saved`)).catch((e) => toast.error(errorMessage(e)))} />)}
-          </DataTable>
-        )}
-      </Panel>
+      <p className="text-xs text-fg-tertiary">Prices for online booking are set per appointment type under Cliniko Link → Appointment Types.</p>
     </div>
   );
 }
 
-function PricingRow({ p, onSave }: { p: { name: string; durationMinutes: number; mode: "full" | "deposit" | "none"; feeCents: number; depositCents?: number; bookableOnline: boolean }; onSave: (patch: Partial<{ mode: "full" | "deposit" | "none"; feeCents: number; depositCents: number; bookableOnline: boolean }>) => void }) {
+export function PricingRow({ p, color, telehealth, clinikoOnline, onSave }: { p: { name: string; durationMinutes: number; mode: "full" | "deposit" | "none"; feeCents: number; depositCents?: number; bookableOnline: boolean }; color?: string; telehealth?: boolean; clinikoOnline?: boolean; onSave: (patch: Partial<{ mode: "full" | "deposit" | "none"; feeCents: number; depositCents: number; bookableOnline: boolean }>) => void }) {
   const [fee, setFee] = useState((p.feeCents / 100).toFixed(2));
   const [dep, setDep] = useState(((p.depositCents ?? 0) / 100).toFixed(2));
   return (
     <tr>
-      <td className="font-medium">{p.name}</td>
+      <td className="font-medium"><span className="mr-2 inline-block size-3 rounded-full align-middle ring-1 ring-black/10" style={{ background: color ?? "#0081f2" }} />{p.name}{telehealth && <Pill tone="info" className="ml-1">telehealth</Pill>}</td>
       <td className="num text-fg-secondary">{p.durationMinutes} min</td>
+      <td>{clinikoOnline ? <Pill tone="good">yes</Pill> : <Pill>no</Pill>}</td>
       <td><Switch checked={p.bookableOnline} onCheckedChange={(v) => onSave({ bookableOnline: v })} /></td>
       <td><select className="h-8 rounded-lg border border-input bg-card px-2 text-sm" value={p.mode} onChange={(e) => onSave({ mode: e.target.value as "full" | "deposit" | "none" })}><option value="none">Not payable online</option><option value="full">Full fee</option><option value="deposit">Deposit</option></select></td>
       <td><Input className="num h-8 w-28" inputMode="decimal" value={fee} onChange={(e) => setFee(e.target.value)} onBlur={() => onSave({ feeCents: Math.round(Number(fee) * 100) || 0 })} /></td>
