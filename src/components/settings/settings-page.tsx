@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { ago, aud, TONES, TONE_CLASS, TONE_DOT } from "@/lib/format";
 import { cn, errorMessage } from "@/lib/utils";
+import { siteUrl } from "@/lib/public-url";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { AutoRepliesTab } from "./auto-replies";
 
@@ -55,9 +56,13 @@ function SetupTab() {
   const me = useQuery(api.users.me);
   if (!s) return <Loading rows={6} />;
   const site = process.env.NEXT_PUBLIC_CONVEX_URL?.replace(".convex.cloud", ".convex.site");
+  const here = typeof window !== "undefined" ? window.location.origin : "";
+  const built = process.env.NEXT_PUBLIC_SITE_URL ?? "";
+  const urlsOk = !!s.appUrl && !/localhost/.test(s.appUrl) && !/localhost/.test(built) && (!built || built === here) && s.appUrl === here;
   const rows: Array<[string, boolean, string]> = [
+    ["Public URL (NEXT_PUBLIC_SITE_URL on Railway, APP_URL on Convex)", urlsOk, urlsOk ? `Both are ${here}.` : `This page is ${here}; the app was built with “${built || "unset"}” and Convex has “${s.appUrl ?? "unset"}”. All three must match or Google sign-in and emailed links break.`],
     ["Clerk JWT template (CLERK_JWT_ISSUER_DOMAIN)", s.clerkJwt, "Create a JWT template named “convex” in Clerk and copy its issuer."],
-    ["Google OAuth app (GOOGLE_CLIENT_ID / SECRET)", s.googleOAuth, `Internal app on the barbarafraser.net Workspace. Redirect URI: ${s.appUrl ?? "http://localhost:3000"}/api/google/callback`],
+    ["Google OAuth app (GOOGLE_CLIENT_ID / SECRET)", s.googleOAuth, `Internal app on the barbarafraser.net Workspace. Redirect URI: ${s.appUrl ?? here}/api/google/callback`],
     ["Token encryption key (TOKEN_ENCRYPTION_KEY)", s.tokenKey, "32 random bytes, base64. Encrypts Google refresh tokens at rest."],
     ["Gmail push (GOOGLE_PUBSUB_TOPIC / VERIFICATION_TOKEN)", s.pubsub, `Optional. Without it mail syncs every 10 minutes. Push endpoint: ${site}/gmail/push?token=…`],
     ["Cliniko API key (CLINIKO_API_KEY)", s.cliniko, `Shard ${s.clinikoShard}, subdomain ${s.clinikoSubdomain ?? "not set"}.`],
@@ -307,7 +312,7 @@ function PracticeTab() {
   const [slug, setSlug] = useState<string | null>(null);
   if (!settings || !me) return <Loading />;
   const hours = (settings["practice.hours"] as { start?: number; end?: number; days?: number[]; tz?: string } | undefined) ?? { start: 9, end: 17, days: [1, 2, 3, 4, 5], tz: "Australia/Melbourne" };
-  const site = process.env.NEXT_PUBLIC_SITE_URL ?? "";
+  const site = siteUrl();
   return (
     <div className="space-y-4">
       <Panel title="Practice" dense>
