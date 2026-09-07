@@ -16,7 +16,7 @@ export function PatientSearch({ onPick, inline }: { onPick: (p: P) => void; inli
   const live = useLive(api.bookings.searchPatients, debounced.length >= 2 ? { q: debounced } : "skip");
   const results: P[] = live.data ?? [];
   return (
-    <div className={cn("relative", inline ? "w-full" : "w-64")}>
+    <div className={cn("relative", inline ? "w-full" : "w-full sm:w-64")}>
       <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-fg-quaternary" />
       <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a patient (name, email, phone)" className={cn("w-full rounded-full border border-border bg-card pl-8 pr-3 text-sm outline-none focus:border-input", inline ? "h-9" : "h-8")} />
       {debounced.length >= 2 && (
