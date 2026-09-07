@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useMutation, useQuery } from "convex/react";
-import { ExternalLink, AlertTriangle, FileText, Briefcase, Plus } from "lucide-react";
+import { useState } from "react";
+import { useAction, useMutation, useQuery } from "convex/react";
+import { ExternalLink, AlertTriangle, FileText, Briefcase, Plus, NotebookPen, FolderOpen, ClipboardList, Send } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../../../convex/_generated/api";
 import { PageHeader, Panel, Pill, statusTone, Facts, Loading, ErrorBox, DataTable } from "@/components/primitives";
@@ -20,6 +21,12 @@ export function PatientPanel({ patientId }: { patientId: string }) {
   const live = useLive(api.bookings.patient, patientId ? { patientId } : "skip");
   const matters = useQuery(api.matters.list, {});
   const save = useMutation(api.matters.save);
+  const createCase = useAction(api.bookings.createCase);
+  const sendForm = useAction(api.bookings.sendForm);
+  const formTemplates = useLive(api.bookings.formTemplates, {});
+  const [newCase, setNewCase] = useState<string | null>(null);
+  const [formTemplate, setFormTemplate] = useState("");
+  const [busy, setBusy] = useState(false);
   const p = live.data;
   if (live.error) return <ErrorBox title="Couldn’t load this patient from Cliniko" message={live.error} retry={live.reload} />;
   if (!p) return <Loading rows={6} />;
@@ -37,6 +44,22 @@ export function PatientPanel({ patientId }: { patientId: string }) {
         </Panel>
         <Panel title="Files in Cliniko" dense blurb="Stored in Cliniko. Links open there.">
           {p.attachments.length === 0 ? <p className="text-sm text-fg-tertiary">No attachments.</p> : <ul className="space-y-1 text-sm">{p.attachments.map((a) => <li key={a.id} className="flex items-center gap-2"><FileText className="size-3.5 text-fg-tertiary" />{a.url ? <a href={a.url} target="_blank" rel="noreferrer" className="min-w-0 flex-1 truncate hover:underline">{a.filename}</a> : <a href={p.clinikoUrl} target="_blank" rel="noreferrer" className="min-w-0 flex-1 truncate hover:underline">{a.filename}</a>}<span className="text-xs text-fg-tertiary">{day(a.createdAt)}</span></li>)}</ul>}
+        </Panel>
+      </div>
+      <div className="grid gap-4 lg:grid-cols-3">
+        <Panel title="Treatment notes" dense blurb="Titles and dates only. Notes open in Cliniko.">
+          {p.treatmentNotes.length === 0 ? <p className="text-sm text-fg-tertiary">No notes.</p> : <ul className="space-y-1 text-sm">{p.treatmentNotes.slice(0, 8).map((n) => <li key={n.id} className="flex items-center gap-2"><NotebookPen className="size-3.5 shrink-0 text-fg-tertiary" /><a href={n.clinikoUrl} target="_blank" rel="noreferrer" className="min-w-0 flex-1 truncate hover:underline">{n.title}</a>{n.draft && <Pill tone="warn">draft</Pill>}<span className="shrink-0 text-xs text-fg-tertiary">{day(n.createdAt)}{n.author ? ` · ${n.author}` : ""}</span></li>)}</ul>}
+        </Panel>
+        <Panel title="Cases" dense blurb="Cliniko cases for this patient." actions={<Button size="xs" variant="ghost" onClick={() => setNewCase("")}><Plus className="size-3" />New</Button>}>
+          {p.cases.length === 0 && newCase === null ? <p className="text-sm text-fg-tertiary">No cases.</p> : <ul className="space-y-1 text-sm">{p.cases.map((c) => <li key={c.id} className="flex items-center gap-2"><FolderOpen className="size-3.5 shrink-0 text-fg-tertiary" /><a href={c.clinikoUrl} target="_blank" rel="noreferrer" className="min-w-0 flex-1 truncate hover:underline">{c.name}</a><Pill tone={c.closed ? "neutral" : "good"}>{c.closed ? "closed" : "open"}</Pill></li>)}</ul>}
+          {newCase !== null && <form className="mt-2 flex gap-1" onSubmit={async (e) => { e.preventDefault(); if (!newCase.trim()) return; setBusy(true); try { await createCase({ patientId, name: newCase.trim() }); toast.success("Case created in Cliniko"); setNewCase(null); live.reload(); } catch (err) { toast.error(errorMessage(err)); } finally { setBusy(false); } }}><input autoFocus value={newCase} onChange={(e) => setNewCase(e.target.value)} placeholder="Case name" className="h-8 min-w-0 flex-1 rounded-md border border-input bg-card px-2 text-sm" /><Button size="sm" type="submit" disabled={busy}>Create</Button><Button size="sm" type="button" variant="ghost" onClick={() => setNewCase(null)}>Cancel</Button></form>}
+        </Panel>
+        <Panel title="Forms" dense blurb="Intake and consent forms from Cliniko templates.">
+          {p.forms.length === 0 ? <p className="text-sm text-fg-tertiary">No forms yet.</p> : <ul className="space-y-1 text-sm">{p.forms.map((f) => <li key={f.id} className="flex items-center gap-2"><ClipboardList className="size-3.5 shrink-0 text-fg-tertiary" /><a href={f.clinikoUrl} target="_blank" rel="noreferrer" className="min-w-0 flex-1 truncate hover:underline">{f.name}</a><Pill tone={f.completed ? "good" : "warn"}>{f.completed ? `done ${f.completedAt ? day(f.completedAt) : ""}` : "waiting"}</Pill></li>)}</ul>}
+          <form className="mt-2 flex gap-1" onSubmit={async (e) => { e.preventDefault(); if (!formTemplate) return; setBusy(true); try { const f = await sendForm({ patientId, templateId: formTemplate }); if (f.url) { await navigator.clipboard.writeText(f.url).catch(() => undefined); toast.success(`${f.name} created. Link copied; Cliniko will email it too.`); } else toast.success(`${f.name} created in Cliniko`); live.reload(); } catch (err) { toast.error(errorMessage(err)); } finally { setBusy(false); } }}>
+            <select value={formTemplate} onChange={(e) => setFormTemplate(e.target.value)} className="h-8 min-w-0 flex-1 rounded-md border border-input bg-card px-2 text-xs"><option value="">Send a form…</option>{(formTemplates.data ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
+            <Button size="sm" type="submit" disabled={!formTemplate || busy}><Send className="size-3" />Send</Button>
+          </form>
         </Panel>
       </div>
       <Panel title="Appointments" dense>

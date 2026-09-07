@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAction, useQuery } from "convex/react";
-import { ChevronLeft, ChevronRight, RefreshCw, Plus, X, ExternalLink, Video } from "lucide-react";
+import { ChevronLeft, ChevronRight, RefreshCw, Plus, X, ExternalLink, Video, Users, Receipt } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../../../convex/_generated/api";
 import { Button } from "@/components/ui/button";
@@ -14,9 +14,11 @@ import { useCalendarWindow } from "./use-calendar-window";
 import { cn, errorMessage } from "@/lib/utils";
 import { time } from "@/lib/format";
 import { PatientSearch } from "./patient-search";
+import { InvoiceDialog } from "./invoice-dialog";
 
 type Appt = { id: string; startsAt: string; endsAt: string; notes?: string; cancelledAt: string | null; didNotArrive: boolean; arrived: boolean; telehealthUrl?: string; patientId?: string; patientName: string; typeId?: string; typeName: string; color?: string; practitionerId?: string; practitionerName: string; clinikoUrl: string; patientUrl?: string };
 type Block = { id: string; startsAt: string; endsAt: string; practitionerId?: string; notes?: string };
+type Group = { id: string; startsAt: string; endsAt: string; notes?: string; typeName: string; color?: string; practitionerId?: string; practitionerName: string; attendees?: number; maxAttendees?: number; clinikoUrl: string };
 
 const HOUR_PX = 64;
 const DAY_START = 7;
@@ -49,6 +51,7 @@ export function CalendarPage() {
   const [selected, setSelected] = useState<Appt | null>(null);
   const [creating, setCreating] = useState<{ startsAt: Date; practitionerId?: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [invoicing, setInvoicing] = useState<Appt | null>(null);
 
   const practitioners = practice.data?.practitioners ?? [];
   const types = practice.data?.appointmentTypes ?? [];
@@ -110,12 +113,19 @@ export function CalendarPage() {
               const appts = (live.data?.appointments ?? []).filter((a) => inColumn(a, c));
               const avail = (live.data?.availability ?? []).filter((b: Block) => inColumn(b, c));
               const unavail = (live.data?.unavailable ?? []).filter((b: Block) => inColumn(b, c));
+              const groups = ((live.data?.groups ?? []) as Group[]).filter((g) => inColumn(g, c));
               const isToday = c.day.toDateString() === new Date(now).toDateString();
               return (
                 <div key={c.key} className={cn("relative border-l border-border", busy && "opacity-60")} style={{ height: (DAY_END - DAY_START) * HOUR_PX, backgroundImage: `repeating-linear-gradient(to bottom, transparent 0, transparent ${HOUR_PX - 1}px, var(--border) ${HOUR_PX - 1}px, var(--border) ${HOUR_PX}px)` }} onDragOver={(e) => e.preventDefault()} onDrop={(e) => void onDrop(e, c)} onClick={(e) => onEmptyClick(e, c)}>
                   {avail.map((b) => <div key={`a${b.id}`} className="absolute inset-x-0 bg-success/[0.06]" style={{ top: yFor(b.startsAt), height: hFor(b.startsAt, b.endsAt) }} />)}
                   {unavail.map((b) => <div key={`u${b.id}`} className="absolute inset-x-0 bg-[repeating-linear-gradient(45deg,transparent,transparent_6px,rgba(0,0,0,.05)_6px,rgba(0,0,0,.05)_12px)] px-1 text-[10px] text-fg-tertiary" style={{ top: yFor(b.startsAt), height: hFor(b.startsAt, b.endsAt) }} title={b.notes}>{b.notes}</div>)}
                   {isToday && <div className="absolute inset-x-0 z-[5] h-px bg-error" style={{ top: yFor(new Date(now).toISOString()) }} />}
+                  {groups.map((g) => (
+                    <a key={`g${g.id}`} data-appt href={g.clinikoUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="absolute inset-x-0.5 overflow-hidden rounded-md border-2 border-dashed px-1.5 py-0.5 text-left text-[11px] leading-tight" style={{ top: yFor(g.startsAt), height: hFor(g.startsAt, g.endsAt), borderColor: g.color ?? "#0081f2", background: `${g.color ?? "#0081f2"}22`, color: "var(--foreground)" }} title={g.notes}>
+                      <div className="flex items-center gap-1 font-semibold"><Users className="size-3" />{g.typeName}</div>
+                      <div className="opacity-80">{time(g.startsAt)} · {g.attendees ?? "?"}{g.maxAttendees ? `/${g.maxAttendees}` : ""} attending</div>
+                    </a>
+                  ))}
                   {appts.map((a) => (
                     <button key={a.id} type="button" data-appt draggable={!a.cancelledAt} onDragStart={(e) => e.dataTransfer.setData("appt", a.id)} onClick={(e) => { e.stopPropagation(); setSelected(a); }} className={cn("absolute inset-x-0.5 overflow-hidden rounded-md px-1.5 py-0.5 text-left text-[11px] leading-tight text-white shadow-xs ring-1 ring-black/10", a.cancelledAt && "opacity-40 line-through", a.didNotArrive && "ring-2 ring-error")} style={{ top: yFor(a.startsAt), height: hFor(a.startsAt, a.endsAt), background: a.color ?? "#0081f2" }}>
                       <div className="truncate font-semibold">{a.patientName}</div>
@@ -143,6 +153,7 @@ export function CalendarPage() {
             <div className="mt-3 flex flex-wrap gap-1.5">
               {selected.patientId && <Button size="sm" variant="outline" render={<Link href={`/bookings/patients/${selected.patientId}`} />}>Patient</Button>}
               <Button size="sm" variant="outline" render={<a href={selected.clinikoUrl} target="_blank" rel="noreferrer" />}><ExternalLink className="size-3.5" />Cliniko</Button>
+              {selected.patientId && <Button size="sm" variant="outline" onClick={() => setInvoicing(selected)}><Receipt className="size-3.5" />Invoice in Cliniko</Button>}
               {!selected.cancelledAt && <>
                 <Button size="sm" variant="outline" onClick={async () => { try { await flags({ appointmentId: selected.id, arrived: !selected.arrived }); live.reload(); setSelected({ ...selected, arrived: !selected.arrived }); } catch (e) { toast.error(errorMessage(e)); } }}>{selected.arrived ? "Undo arrived" : "Arrived"}</Button>
                 <Button size="sm" variant="outline" onClick={async () => { try { await flags({ appointmentId: selected.id, didNotArrive: !selected.didNotArrive }); live.reload(); setSelected({ ...selected, didNotArrive: !selected.didNotArrive }); } catch (e) { toast.error(errorMessage(e)); } }}>{selected.didNotArrive ? "Undo DNA" : "Did not arrive"}</Button>
@@ -154,12 +165,15 @@ export function CalendarPage() {
         </div>
       )}
 
+      {invoicing && invoicing.patientId && <InvoiceDialog patientId={invoicing.patientId} patientName={invoicing.patientName} businessId={(settings?.["cliniko.businessId"] as string | undefined) ?? practice.data?.businesses[0]?.id ?? ""} practitionerId={invoicing.practitionerId ?? pracDefault(settings, practitioners)} appointmentId={invoicing.id} typeName={invoicing.typeName} onClose={() => setInvoicing(null)} />}
       {creating && (
         <NewAppointment start={creating.startsAt} practitionerId={creating.practitionerId} practitioners={practitioners} types={types} businessId={(settings?.["cliniko.businessId"] as string | undefined) ?? practice.data?.businesses[0]?.id} onClose={() => setCreating(null)} onCreate={async (a) => { try { await create(a); toast.success("Booked in Cliniko"); setCreating(null); live.reload(); } catch (e) { toast.error(errorMessage(e)); } }} />
       )}
     </div>
   );
 }
+
+const pracDefault = (settings: Record<string, unknown> | undefined, practitioners: Array<{ id: string }>) => (settings?.["cliniko.practitionerId"] as string | undefined) ?? practitioners[0]?.id ?? "";
 
 function NewAppointment({ start, practitionerId, practitioners, types, businessId, onClose, onCreate }: { start: Date; practitionerId?: string; practitioners: Array<{ id: string; first_name: string; last_name: string }>; types: Array<{ id: string; name: string; duration_in_minutes: number }>; businessId?: string; onClose: () => void; onCreate: (a: { patientId: string; practitionerId: string; businessId: string; appointmentTypeId: string; startsAt: string; endsAt: string; notes?: string }) => Promise<void> }) {
   const [patient, setPatient] = useState<{ id: string; name: string } | null>(null);

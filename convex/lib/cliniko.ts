@@ -107,3 +107,34 @@ export const appointmentConflicts = (id: string) => call<{ conflicts?: unknown[]
 
 /** Cliniko's cancellation reason codes. */
 export const CANCELLATION_REASONS: Record<number, string> = { 10: "Feeling better", 20: "Condition worse", 30: "Sick", 31: "COVID-19 related", 40: "Away", 50: "Other", 60: "Work" };
+
+/* ------------------------------ extras: notes, cases, forms, groups, billing, users ------------------------------ */
+
+export type TreatmentNote = { id: string; title?: string; draft: boolean; finalized_at?: string | null; created_at: string; updated_at: string; author?: { links: { self: string } }; practitioner?: { links: { self: string } }; patient?: { links: { self: string } }; deleted_at?: string | null };
+export type PatientCase = { id: string; name: string; notes?: string; issue_date?: string; expiry_date?: string; closed: boolean; created_at: string; updated_at: string; patient?: { links: { self: string } }; deleted_at?: string | null };
+export type PatientForm = { id: string; name?: string; completed: boolean; completed_at?: string | null; email_to_patient_on_completion?: boolean; url?: string; created_at: string; updated_at: string; patient_form_template?: { links: { self: string } }; appointment?: { links: { self: string } }; deleted_at?: string | null };
+export type PatientFormTemplate = { id: string; name: string; email_to_patient_on_completion?: boolean; restricted_to_practitioner?: boolean; created_at: string; archived_at?: string | null };
+export type GroupAppointment = { id: string; starts_at: string; ends_at: string; max_attendees?: number; notes?: string; created_at: string; updated_at: string; appointment_type?: { links: { self: string } }; practitioner?: { links: { self: string } }; business?: { links: { self: string } }; attendees?: { links: { self: string } }; deleted_at?: string | null };
+export type BillableItem = { id: string; name: string; item_code?: string; price: number | string; tax?: { links: { self: string } }; archived_at?: string | null };
+export type Product = { id: string; name: string; item_code?: string; price: number | string; stock_level?: number; tax?: { links: { self: string } }; archived_at?: string | null };
+export type Tax = { id: string; name: string; rate: number | string; amount?: number | string };
+export type ConcessionType = { id: string; name: string; archived_at?: string | null };
+export type ConcessionPrice = { id: string; price: number | string; billable_item?: { links: { self: string } }; concession_type?: { links: { self: string } } };
+export type User = { id: string; first_name: string; last_name: string; display_name?: string; email: string; role?: string; active?: boolean; title?: string };
+
+export const treatmentNotes = (patientId: string) => all<TreatmentNote>(`/patients/${patientId}/treatment_notes?sort=created_at:desc`, "treatment_notes", 20);
+export const patientCases = (patientId: string) => all<PatientCase>(`/patients/${patientId}/patient_cases`, "patient_cases", 50);
+export const createPatientCase = (c: { patient_id: string; name: string; notes?: string; issue_date?: string; expiry_date?: string }) => call<PatientCase>("/patient_cases", { method: "POST", body: JSON.stringify(c) });
+export const patientForms = (patientId: string) => all<PatientForm>(`/patients/${patientId}/patient_forms?sort=created_at:desc`, "patient_forms", 50);
+export const patientFormTemplates = () => all<PatientFormTemplate>("/patient_form_templates", "patient_form_templates", 100);
+export const createPatientForm = (f: { patient_form_template_id: string; patient_id: string; appointment_id?: string; email_to_patient_on_completion?: boolean }) => call<PatientForm>("/patient_forms", { method: "POST", body: JSON.stringify(f) });
+export const groupAppointments = (fromIso: string, toIso: string) => all<GroupAppointment>(`/group_appointments?q[]=starts_at:>=${fromIso}&q[]=starts_at:<${toIso}&sort=starts_at:asc`, "group_appointments", 200);
+export const attendeeCount = (groupId: string) => call<{ attendees?: unknown[]; total_entries?: number }>(`/group_appointments/${groupId}/attendees?per_page=1`).then((r) => r.total_entries ?? r.attendees?.length ?? 0);
+export const listBillableItems = () => all<BillableItem>("/billable_items", "billable_items", 300);
+export const listProducts = () => all<Product>("/products", "products", 300);
+export const listTaxes = () => all<Tax>("/taxes", "taxes", 50);
+export const listConcessionTypes = () => all<ConcessionType>("/concession_types", "concession_types", 50);
+export const listConcessionPrices = () => all<ConcessionPrice>("/concession_prices", "concession_prices", 1000);
+export const listUsers = () => all<User>("/users", "users", 100);
+export type InvoiceCreate = { patient_id: string; business_id: string; practitioner_id: string; appointment_id?: string; issue_date: string; notes?: string; invoice_items: Array<{ billable_item_id?: string; product_id?: string; quantity: number; unit_price: number; tax_id?: string; concession_type_id?: string; discount_percentage?: number; name?: string }> };
+export const createInvoice = (i: InvoiceCreate) => call<Invoice>("/invoices", { method: "POST", body: JSON.stringify(i) });

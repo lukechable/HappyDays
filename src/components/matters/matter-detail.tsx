@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { toast } from "sonner";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
@@ -21,6 +21,7 @@ export function MatterDetail({ id }: { id: Id<"matters"> }) {
   const setStatus = useMutation(api.matters.setStatus);
   const markDelivered = useMutation(api.matters.markDelivered);
   const remove = useMutation(api.matters.remove);
+  const createCase = useAction(api.bookings.createCase);
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<{ name: string; courtFileNo: string; court: string; parties: string; notes: string; patients: string } | null>(null);
@@ -54,7 +55,10 @@ export function MatterDetail({ id }: { id: Id<"matters"> }) {
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Panel title="Details" dense>
-          <Facts items={[["Parties", m.parties.length ? m.parties.join("; ") : "—"], ["Cliniko patients", m.clinikoPatientIds.length ? m.clinikoPatientIds.map((p) => <Link key={p} href={`/bookings/patients/${p}`} className="mr-2 underline">#{p}</Link>) : "—"], ["Notes", m.notes ? <span className="whitespace-pre-wrap">{m.notes}</span> : "—"], ["Updated", ago(m.updatedAt)]]} />
+          <Facts items={[["Parties", m.parties.length ? m.parties.join("; ") : "—"], ["Cliniko patients", m.clinikoPatientIds.length ? m.clinikoPatientIds.map((p) => <Link key={p} href={`/bookings/patients/${p}`} className="mr-2 underline">#{p}</Link>) : "—"], ["Cliniko cases", (m.clinikoCases ?? []).length ? (m.clinikoCases ?? []).map((c) => <span key={c.caseId} className="mr-2">{c.name}</span>) : "—"], ["Notes", m.notes ? <span className="whitespace-pre-wrap">{m.notes}</span> : "—"], ["Updated", ago(m.updatedAt)]]} />
+          {m.clinikoPatientIds.filter((p) => !(m.clinikoCases ?? []).some((c) => c.patientId === p)).length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-1">{m.clinikoPatientIds.filter((p) => !(m.clinikoCases ?? []).some((c) => c.patientId === p)).map((p) => <Button key={p} size="xs" variant="outline" onClick={async () => { try { await createCase({ patientId: p, name: m.name, notes: [m.courtFileNo ? `File ${m.courtFileNo}` : "", m.court ?? "", "Created from Happy Days"].filter(Boolean).join(" · "), matterId: id }); toast.success("Case created in Cliniko"); } catch (e) { toast.error(errorMessage(e)); } }}>Create Cliniko case for #{p}</Button>)}</div>
+          )}
         </Panel>
         <Panel title="Money" dense actions={<Button size="xs" variant="ghost" render={<Link href={`/money?matter=${id}`} />}>Money page</Button>}>
           {m.invoices.length === 0 ? <p className="text-sm text-fg-tertiary">No Stripe invoice linked. Raise one from the Money page.</p> : (
