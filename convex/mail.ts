@@ -679,3 +679,14 @@ export const threadDetail = query({
     return { ...t, tasks, autoReplies: log };
   },
 });
+
+/** "Suggest a reply" in the compose window: Claude drafts in the practice's voice; nothing is sent. */
+export const suggestReply = action({
+  args: { subject: v.string(), from: v.string(), text: v.string(), instruction: v.optional(v.string()) },
+  handler: async (ctx, a): Promise<string> => {
+    const me = await ctx.runQuery(internal.googleData.meForAction, {});
+    if (!me) throw new Error("Sign in first.");
+    if (!process.env.ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY is not set on the Convex deployment.");
+    return await ctx.runAction(internal.ai.draftReply, { subject: a.subject, from: a.from, text: a.text.slice(0, 8000), instruction: a.instruction, signOff: me.name.split(" ")[0] });
+  },
+});
