@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ExportMenu } from "@/components/export/export-menu";
+import { useNow } from "@/lib/hooks";
 import { day, when, weekday, time } from "@/lib/format";
 import { cn, errorMessage } from "@/lib/utils";
 
@@ -43,7 +44,7 @@ export function CourtPage({ kind }: { kind: CourtKind }) {
   const [showDone, setShowDone] = useState(false);
   const [q, setQ] = useState("");
 
-  const now = Date.now();
+  const now = useNow();
   const week = now + 7 * 86_400_000;
   const open = (rows ?? []).filter((r) => !r.done);
   const soon = open.filter((r) => r.at && r.at >= now && r.at <= week).length;
