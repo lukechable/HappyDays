@@ -49,7 +49,7 @@ export function MoneyPage() {
   }, [data, flag, q, sort, matterFilter]);
 
   const exportTable = () => ({
-    title: "Invoices and reports", subtitle: `${flag === "all" ? "All invoices" : flag.replace(/_/g, " ")}${q ? ` · search “${q}”` : ""} · ${rows.length} rows`, filename: `invoices-${new Date().toISOString().slice(0, 10)}`,
+    title: "Invoices", subtitle: `${flag === "all" ? "All invoices" : flag.replace(/_/g, " ")}${q ? ` · search “${q}”` : ""} · ${rows.length} rows`, filename: `invoices-${new Date().toISOString().slice(0, 10)}`,
     columns: [{ key: "number", label: "Invoice" }, { key: "client", label: "Client" }, { key: "email", label: "Email" }, { key: "matter", label: "Matter" }, { key: "description", label: "Description" }, { key: "amount", label: "Amount", align: "right" as const }, { key: "status", label: "Status" }, { key: "invoiced", label: "Invoiced" }, { key: "paid", label: "Paid" }, { key: "delivered", label: "Report delivered" }, { key: "via", label: "Delivered via" }, { key: "days", label: "Days invoice→delivery", align: "right" as const }],
     rows: rows.map((r) => ({ number: r.number ?? r.stripeId, client: r.customerName ?? "", email: r.customerEmail ?? "", matter: r.matter?.name ?? "", description: r.description ?? "", amount: (r.amountCents / 100).toFixed(2), status: r.status, invoiced: day(r.createdAt), paid: r.paidAt ? day(r.paidAt) : "", delivered: r.deliveredAt ? day(r.deliveredAt) : "", via: r.deliveredVia ?? "", days: r.daysInvoiceToDelivery ?? "" })),
   });
@@ -57,7 +57,7 @@ export function MoneyPage() {
 
   return (
     <div className="space-y-5">
-      <PageHeader title="Invoices & reports" blurb="Every Stripe invoice next to whether the written report has gone out. Raise report invoices here; bookings pay through Stripe Checkout on their own." actions={<><Button variant="outline" disabled={!setup?.stripe || busy} onClick={async () => { setBusy(true); try { const r = await backfill({}); toast.success(`Refreshed ${r.count} records from Stripe`); } catch (e) { toast.error(errorMessage(e)); } finally { setBusy(false); } }}><RefreshCw className={cn("size-3.5", busy && "animate-spin")} />Sync Stripe</Button><ExportMenu table={exportTable} disabled={!rows.length} /><Button onClick={() => setCreating(true)} disabled={!setup?.stripe}><Plus className="size-3.5" />New invoice</Button></>} />
+      <PageHeader title="Invoices" blurb="Every Stripe invoice next to whether the written report has gone out. Raise report invoices here; bookings pay through Stripe Checkout on their own." actions={<><Button variant="outline" disabled={!setup?.stripe || busy} onClick={async () => { setBusy(true); try { const r = await backfill({}); toast.success(`Refreshed ${r.count} records from Stripe`); } catch (e) { toast.error(errorMessage(e)); } finally { setBusy(false); } }}><RefreshCw className={cn("size-3.5", busy && "animate-spin")} />Sync Stripe</Button><ExportMenu table={exportTable} disabled={!rows.length} /><Button onClick={() => setCreating(true)} disabled={!setup?.stripe}><Plus className="size-3.5" />New invoice</Button></>} />
       {setup && !setup.stripe && <p className="rounded-2xl bg-warning-soft px-4 py-3 text-sm">Stripe isn’t connected. Set STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET on the Convex deployment, then Sync.</p>}
       <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
         <Kpi label="Paid, report not delivered" value={data?.counts.paidNotDelivered ?? "…"} tone={(data?.counts.paidNotDelivered ?? 0) > 0 ? "warn" : undefined} sub="the client is waiting" />
@@ -89,7 +89,7 @@ export function MoneyPage() {
         )}
       </Panel>
       {data && data.payments.length > 0 && (
-        <Panel title="Recent payments" blurb="Checkout and card payments, including online bookings." dense>
+        <Panel title="Recent payments" blurb="Checkout and card payments, including online bookings." dense actions={<Button size="xs" variant="ghost" render={<Link href="/money/transactions" />}>All transactions</Button>}>
           <DataTable head={<><th>When</th><th>Description</th><th>Payer</th><th>Amount</th><th>Status</th></>} minWidth={560}>
             {data.payments.slice(0, 30).map((p) => <tr key={p._id}><td className="text-xs text-fg-tertiary">{day(p.createdAt)}</td><td className="truncate">{p.description ?? p.kind}</td><td className="text-xs">{p.customerEmail ?? "—"}</td><td className="num">{aud(p.amountCents)}</td><td><Pill tone={statusTone(p.status === "succeeded" ? "paid" : p.status)}>{p.status}</Pill></td></tr>)}
           </DataTable>

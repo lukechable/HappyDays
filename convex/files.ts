@@ -8,14 +8,20 @@ import { randomCode, sha256Hex } from "./lib/crypto";
 
 /** These are the practice's own documents (reports, signed forms), the one kind of content Happy Days stores. */
 
+const reportKindV = v.union(v.literal("therapy"), v.literal("family"));
+export type ReportKind = "therapy" | "family";
+/** Older report rows have no kind: a "therapy" in the name puts it on the Therapy list, everything else is a family report. */
+export const kindFromName = (name: string): ReportKind => (/therap/i.test(name) ? "therapy" : "family");
+
 export const uploadUrl = mutation({ args: {}, handler: async (ctx) => { await requireUser(ctx); return await ctx.storage.generateUploadUrl(); } });
 
 export const register = mutation({
-  args: { storageId: v.id("_storage"), name: v.string(), mime: v.string(), size: v.number(), sha256: v.string(), matterId: v.optional(v.id("matters")), isReport: v.optional(v.boolean()), replacesFileId: v.optional(v.id("files")), tagIds: v.optional(v.array(v.id("tags"))) },
+  args: { storageId: v.id("_storage"), name: v.string(), mime: v.string(), size: v.number(), sha256: v.string(), matterId: v.optional(v.id("matters")), isReport: v.optional(v.boolean()), reportKind: v.optional(reportKindV), encrypted: v.optional(v.boolean()), bundleNames: v.optional(v.array(v.string())), replacesFileId: v.optional(v.id("files")), tagIds: v.optional(v.array(v.id("tags"))) },
   handler: async (ctx, a) => {
     const user = await requireUser(ctx);
     const prev = a.replacesFileId ? await ctx.db.get(a.replacesFileId) : null;
-    const id = await ctx.db.insert("files", { name: a.name, mime: a.mime, size: a.size, storageId: a.storageId, sha256: a.sha256, uploadedBy: user._id, matterId: a.matterId ?? prev?.matterId, tagIds: a.tagIds ?? prev?.tagIds ?? [], isReport: a.isReport ?? prev?.isReport ?? /report/i.test(a.name), version: (prev?.version ?? 0) + 1, previousVersionId: prev?._id, createdAt: Date.now() });
+    const isReport = a.isReport ?? prev?.isReport ?? /report/i.test(a.name);
+    const id = await ctx.db.insert("files", { name: a.name, mime: a.mime, size: a.size, storageId: a.storageId, sha256: a.sha256, uploadedBy: user._id, matterId: a.matterId ?? prev?.matterId, tagIds: a.tagIds ?? prev?.tagIds ?? [], isReport, reportKind: a.reportKind ?? prev?.reportKind ?? (isReport ? kindFromName(a.name) : undefined), encrypted: a.encrypted, bundleNames: a.bundleNames, version: (prev?.version ?? 0) + 1, previousVersionId: prev?._id, createdAt: Date.now() });
     if (a.matterId ?? prev?.matterId) await ctx.db.insert("matterLinks", { matterId: (a.matterId ?? prev!.matterId)!, kind: "file", refId: id, createdAt: Date.now() });
     await audit(ctx, { userId: user._id, action: prev ? "file.newVersion" : "file.upload", subjectKind: "file", subjectId: id, detail: a.name });
     return id;
@@ -58,7 +64,7 @@ export const get = query({
 export const url = query({ args: { id: v.id("files") }, handler: async (ctx, { id }) => { await requireUser(ctx); const f = await ctx.db.get(id); return f ? await ctx.storage.getUrl(f.storageId) : null; } });
 
 export const update = mutation({
-  args: { id: v.id("files"), name: v.optional(v.string()), matterId: v.optional(v.id("matters")), isReport: v.optional(v.boolean()), tagIds: v.optional(v.array(v.id("tags"))), annotations: v.optional(v.any()) },
+  args: { id: v.id("files"), name: v.optional(v.string()), matterId: v.optional(v.id("matters")), isReport: v.optional(v.boolean()), reportKind: v.optional(reportKindV), tagIds: v.optional(v.array(v.id("tags"))), annotations: v.optional(v.any()) },
   handler: async (ctx, { id, ...patch }) => { const user = await requireUser(ctx); await ctx.db.patch(id, patch); await audit(ctx, { userId: user._id, action: "file.update", subjectKind: "file", subjectId: id }); },
 });
 
@@ -75,6 +81,64 @@ export const remove = mutation({
     await audit(ctx, { userId: user._id, action: "file.delete", subjectKind: "file", subjectId: id, detail: f.name });
   },
 });
+
+/* ------------------------------ reports ------------------------------ */
+
+/**
+ * The Therapy Reports and Family Reports lists: latest version of every report file of that kind, with its matter's
+ * delivery state, its live download codes and the last time it went out through Send Documents.
+ */
+export const reports = query({
+  args: { kind: reportKindV },
+  handler: async (ctx, { kind }) => {
+    await requireUser(ctx);
+    const all = (await ctx.db.query("files").withIndex("by_created").order("desc").take(500)).filter((f) => f.isReport && !f.encrypted);
+    const latest = all.filter((f) => !all.some((g) => g.previousVersionId === f._id)).filter((f) => (f.reportKind ?? kindFromName(f.name)) === kind);
+    const users = new Map((await ctx.db.query("users").collect()).map((u) => [u._id, firstName(u)]));
+    const matters = new Map((await ctx.db.query("matters").collect()).map((m) => [m._id, m]));
+    const codes = (await ctx.db.query("downloadCodes").withIndex("by_created").order("desc").take(300)).filter((c) => !c.revokedAt && c.expiresAt > Date.now());
+    const sends = await ctx.db.query("documentSends").withIndex("by_sent").order("desc").take(300);
+    return latest.map((f) => {
+      const m = f.matterId ? matters.get(f.matterId) : undefined;
+      const lastSend = sends.find((s) => s.fileNames.includes(f.name) && (!f.matterId || s.matterId === f.matterId));
+      return { ...f, uploadedByName: users.get(f.uploadedBy) ?? "?", matter: m ? { _id: m._id, name: m.name, status: m.status, deliveredAt: m.reportDeliveredAt, deliveredVia: m.reportDeliveredVia } : undefined, activeCodes: codes.filter((c) => c.fileIds.includes(f._id)).map((c) => c.code), lastSentAt: lastSend?.sentAt, lastSentTo: lastSend?.to };
+    });
+  },
+});
+
+/* ------------------------------ send documents ------------------------------ */
+
+/** Written by mail.sendDocuments once Gmail has accepted the message. */
+export const recordSend = internalMutation({
+  args: { fileId: v.id("files"), to: v.string(), toName: v.optional(v.string()), subject: v.string(), sentBy: v.id("users"), gmailThreadId: v.string(), gmailMessageId: v.string(), readReceiptRequested: v.boolean() },
+  handler: async (ctx, a) => {
+    const f = await ctx.db.get(a.fileId);
+    if (!f) throw new Error("File not found.");
+    const id = await ctx.db.insert("documentSends", { fileId: f._id, fileName: f.name, fileNames: f.bundleNames ?? [f.name], to: a.to, toName: a.toName, subject: a.subject, matterId: f.matterId, sentBy: a.sentBy, sentAt: Date.now(), gmailThreadId: a.gmailThreadId, gmailMessageId: a.gmailMessageId, readReceiptRequested: a.readReceiptRequested });
+    await audit(ctx, { userId: a.sentBy, action: "file.send", subjectKind: "file", subjectId: f._id, detail: `${f.name} to ${a.to}${a.readReceiptRequested ? " (read receipt requested)" : ""}` });
+    // A report emailed to its matter's recipient delivers that matter.
+    if (f.isReport && f.matterId) {
+      const m = await ctx.db.get(f.matterId);
+      if (m && !m.reportDeliveredAt && m.status !== "closed") await ctx.db.patch(f.matterId, { reportDeliveredAt: Date.now(), reportDeliveredVia: "email", reportDeliveredBy: a.sentBy, status: "delivered", updatedAt: Date.now() });
+    }
+    return id;
+  },
+});
+
+/** The Sent tab on Send Documents: newest first, with who sent it and where the Gmail thread is. */
+export const sends = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireUser(ctx);
+    const rows = await ctx.db.query("documentSends").withIndex("by_sent").order("desc").take(200);
+    const users = new Map((await ctx.db.query("users").collect()).map((u) => [u._id, firstName(u)]));
+    const matters = new Map((await ctx.db.query("matters").collect()).map((m) => [m._id, m.name]));
+    return rows.map((r) => ({ ...r, sentByName: users.get(r.sentBy) ?? "?", matterName: r.matterId ? matters.get(r.matterId) : undefined }));
+  },
+});
+
+/** The stored bytes of one file, for mail.sendDocuments to attach. */
+export const blobFor = internalQuery({ args: { id: v.id("files") }, handler: async (ctx, { id }) => { const f = await ctx.db.get(id); return f ? { ...f, url: await ctx.storage.getUrl(f.storageId) } : null; } });
 
 /* ------------------------------ download codes ------------------------------ */
 

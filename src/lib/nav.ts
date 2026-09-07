@@ -32,11 +32,24 @@ export const NAV: NavGroup[] = [
   {
     label: "Documents",
     items: [
-      { href: "/files", label: "Files & codes", blurb: "Reports for delivery and their download codes." },
+      { href: "/files", label: "Send Documents", blurb: "Zip, encrypt and email documents with a read receipt; stored files and download codes." },
       { href: "/pdf", label: "PDF tools", blurb: "Sign, mark up, rearrange and merge PDFs; send for signature." },
     ],
   },
-  { label: "Money", items: [{ href: "/money", label: "Invoices & reports", badge: "paidNotDelivered", blurb: "Which invoices are paid and which reports are delivered." }] },
+  {
+    label: "Reports",
+    items: [
+      { href: "/reports/therapy", label: "Therapy Reports", blurb: "Therapy reports the practice has written: matter, delivery and sending." },
+      { href: "/reports/family", label: "Family Reports", blurb: "Family reports for the court: matter, delivery and sending." },
+    ],
+  },
+  {
+    label: "Money",
+    items: [
+      { href: "/money", label: "Invoices", exact: true, badge: "paidNotDelivered", blurb: "Every Stripe invoice and whether its report has gone out." },
+      { href: "/money/transactions", label: "Transactions", blurb: "Every payment and invoice payment through Stripe, as one ledger." },
+    ],
+  },
   { label: "Settings", items: [{ href: "/settings", label: "Settings", blurb: "Google, Cliniko, Stripe, signatures, tags, auto-replies." }] },
 ];
 

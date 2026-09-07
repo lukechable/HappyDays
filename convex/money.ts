@@ -48,6 +48,27 @@ export const table = query({
   },
 });
 
+/**
+ * The Transactions ledger: every Stripe payment (checkout, card, payment intent) and every invoice payment, as one
+ * dated list. Invoices appear on the day they were paid, so the list reads as money actually received.
+ */
+export const transactions = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireUser(ctx);
+    const payments = await ctx.db.query("stripePayments").withIndex("by_created").order("desc").take(500);
+    const invoices = await ctx.db.query("stripeInvoices").withIndex("by_created").order("desc").take(500);
+    const matters = new Map((await ctx.db.query("matters").collect()).map((m) => [m._id, m.name]));
+    const rows = [
+      ...payments.map((p) => ({ _id: p._id as string, at: p.createdAt, kind: "payment" as const, source: p.kind, description: p.description ?? (p.bookingSessionId ? "Online booking" : p.kind.replace("_", " ")), who: p.customerEmail, amountCents: p.amountCents, currency: p.currency, status: p.status, stripeId: p.stripeId, hostedUrl: undefined as string | undefined, matter: undefined as { _id: string; name: string } | undefined, booking: !!p.bookingSessionId })),
+      ...invoices.filter((i) => i.status === "paid" || i.status === "open" || i.status === "uncollectible" || i.status === "void").map((i) => ({ _id: i._id as string, at: i.paidAt ?? i.createdAt, kind: "invoice" as const, source: "invoice" as const, description: i.description ?? `Invoice ${i.number ?? i.stripeId}`, who: i.customerName ?? i.customerEmail, amountCents: i.status === "paid" ? i.amountPaidCents || i.amountDueCents : i.amountDueCents, currency: i.currency, status: i.status, stripeId: i.stripeId, hostedUrl: i.hostedUrl, matter: i.matterId && matters.get(i.matterId) ? { _id: i.matterId as string, name: matters.get(i.matterId)! } : undefined, booking: false })),
+    ].sort((a, b) => b.at - a.at);
+    const received = (r: (typeof rows)[number]) => r.status === "succeeded" || r.status === "paid";
+    const month = new Date(); month.setDate(1); month.setHours(0, 0, 0, 0);
+    return { rows, totals: { receivedCents: rows.filter(received).reduce((s, r) => s + r.amountCents, 0), monthCents: rows.filter((r) => received(r) && r.at >= month.getTime()).reduce((s, r) => s + r.amountCents, 0), count: rows.length, openCents: rows.filter((r) => r.kind === "invoice" && (r.status === "open" || r.status === "uncollectible")).reduce((s, r) => s + r.amountCents, 0) } };
+  },
+});
+
 export const linkInvoiceToMatter = mutation({
   args: { invoiceId: v.id("stripeInvoices"), matterId: v.optional(v.id("matters")) },
   handler: async (ctx, { invoiceId, matterId }) => {

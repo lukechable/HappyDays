@@ -297,11 +297,32 @@ export default defineSchema({
     matterId: v.optional(v.id("matters")),
     tagIds: v.array(v.id("tags")),
     isReport: v.boolean(),
+    /** Which report list a report belongs to. Missing on older rows: the name decides (see files.reports). */
+    reportKind: v.optional(v.union(v.literal("therapy"), v.literal("family"))),
+    /** An AES-256 password-protected zip made by Send Documents; bundleNames are the files inside it. */
+    encrypted: v.optional(v.boolean()),
+    bundleNames: v.optional(v.array(v.string())),
     version: v.number(),
     previousVersionId: v.optional(v.id("files")),
     annotations: v.optional(v.any()),
     createdAt: v.number(),
   }).index("by_matter", ["matterId"]).index("by_created", ["createdAt"]).searchIndex("search_name", { searchField: "name" }),
+
+  /** One row per encrypted bundle emailed from Send Documents, with the Gmail ids so the thread (and any receipt) can be opened. */
+  documentSends: defineTable({
+    fileId: v.id("files"),
+    fileName: v.string(),
+    fileNames: v.array(v.string()),
+    to: v.string(),
+    toName: v.optional(v.string()),
+    subject: v.string(),
+    matterId: v.optional(v.id("matters")),
+    sentBy: v.id("users"),
+    sentAt: v.number(),
+    gmailThreadId: v.string(),
+    gmailMessageId: v.string(),
+    readReceiptRequested: v.boolean(),
+  }).index("by_sent", ["sentAt"]).index("by_file", ["fileId"]),
 
   downloadCodes: defineTable({
     code: v.string(),
