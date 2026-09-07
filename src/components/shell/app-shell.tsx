@@ -9,11 +9,11 @@ import { api } from "../../../convex/_generated/api";
 import { NAV, isActive, navItemFor } from "@/lib/nav";
 import { cn } from "@/lib/utils";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { Button } from "@/components/ui/button";
 import { CommandPalette } from "@/components/shell/command-palette";
 import { NotificationsPopover } from "@/components/shell/notifications";
 import { Dot } from "@/components/primitives";
 import { SignOutButton } from "@/components/auth/auth-mode";
+import { AuthDiagnostics } from "@/components/auth/auth-diagnostics";
 
 export type Me = NonNullable<ReturnType<typeof useQuery<typeof api.users.me>>>;
 
@@ -25,7 +25,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-svh bg-background text-foreground">
       <AuthLoading><Holding>Checking who you are…</Holding></AuthLoading>
-      <Unauthenticated><Holding><p>Sign in with your barbarafraser.net account.</p><Button className="mt-4" render={<Link href="/signin" />}>Sign in</Button></Holding></Unauthenticated>
+      <Unauthenticated><Holding><p>Sign in with your barbarafraser.net account.</p><AuthDiagnostics /></Holding></Unauthenticated>
       <Authenticated><Inner>{children}</Inner></Authenticated>
     </div>
   );
