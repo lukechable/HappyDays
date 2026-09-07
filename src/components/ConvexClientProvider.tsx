@@ -1,7 +1,7 @@
 "use client";
 
-import { ReactNode, useEffect, useState } from "react";
-import { ConvexProvider, ConvexReactClient } from "convex/react";
+import { ReactNode, useCallback, useEffect, useState } from "react";
+import { ConvexProviderWithAuth, ConvexReactClient } from "convex/react";
 import { ConvexProviderWithClerk } from "convex/react-clerk";
 import { useAuth } from "@clerk/nextjs";
 
@@ -16,11 +16,19 @@ export function ConvexClientProvider({ children }: { children: ReactNode }) {
 }
 
 /** Guest sessions: the token comes from the httpOnly cookie via /api/guest/token and is handed to Convex. */
-export function GuestConvexProvider({ children }: { children: ReactNode }) {
-  const [client] = useState(() => new ConvexReactClient(process.env.NEXT_PUBLIC_CONVEX_URL!));
+const guestClient = new ConvexReactClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+
+function useGuestAuth() {
+  const [state, setState] = useState<{ loading: boolean; token: string | null }>({ loading: true, token: null });
   useEffect(() => {
-    client.setAuth(async () => { const r = await fetch("/api/guest/token", { cache: "no-store" }); if (!r.ok) return null; const j = (await r.json()) as { token: string | null }; return j.token; });
-    return () => client.clearAuth();
-  }, [client]);
-  return <ConvexProvider client={client}>{children}</ConvexProvider>;
+    let live = true;
+    fetch("/api/guest/token", { cache: "no-store" }).then(async (r) => { const j = r.ok ? ((await r.json()) as { token: string | null }) : { token: null }; if (live) setState({ loading: false, token: j.token }); }).catch(() => { if (live) setState({ loading: false, token: null }); });
+    return () => { live = false; };
+  }, []);
+  const fetchAccessToken = useCallback(async () => { const r = await fetch("/api/guest/token", { cache: "no-store" }); if (!r.ok) return null; return ((await r.json()) as { token: string | null }).token; }, []);
+  return { isLoading: state.loading, isAuthenticated: !!state.token, fetchAccessToken };
+}
+
+export function GuestConvexProvider({ children }: { children: ReactNode }) {
+  return <ConvexProviderWithAuth client={guestClient} useAuth={useGuestAuth}>{children}</ConvexProviderWithAuth>;
 }
