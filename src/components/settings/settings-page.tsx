@@ -17,6 +17,8 @@ import { cn, errorMessage } from "@/lib/utils";
 import { siteUrl } from "@/lib/public-url";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { AutoRepliesTab } from "./auto-replies";
+import { mailStore } from "@/lib/mail-store";
+import { bytes } from "@/lib/format";
 
 const TABS = [["setup", "Setup"], ["google", "Google"], ["autoreplies", "Auto-replies"], ["cliniko", "Cliniko & pricing"], ["stripe", "Stripe"], ["signatures", "Signatures"], ["tags", "Tags"], ["practice", "Practice"]] as const;
 type Tab = (typeof TABS)[number][0];
@@ -179,6 +181,16 @@ export function PricingRow({ p, color, telehealth, clinikoOnline, onSave }: { p:
   );
 }
 
+function LocalDataPanel() {
+  const [stats, setStats] = useState<{ threads: number; lists: number; bytes?: number } | null>(null);
+  useEffect(() => { let live = true; void mailStore.stats().then((s) => { if (live) setStats(s); }); return () => { live = false; }; }, []);
+  return (
+    <Panel title="Local copy on this device" blurb="Mail you have viewed is kept in this browser so folders, messages and search open instantly. It never leaves your device and is cleared when you sign out." dense actions={<Button size="xs" variant="outline" onClick={async () => { await mailStore.clear(); setStats(await mailStore.stats()); toast.success("Local copy cleared"); }}>Clear local data</Button>}>
+      <Facts items={[["Conversations stored", stats ? String(stats.threads) : "…"], ["Folder views stored", stats ? String(stats.lists) : "…"], ["Space used", stats?.bytes !== undefined ? bytes(stats.bytes) : "—"]]} />
+    </Panel>
+  );
+}
+
 function IntakeFormSetting({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const templates = useLive(api.bookings.formTemplates, {});
   return (
@@ -328,6 +340,7 @@ function PracticeTab() {
           <div className="flex gap-1">{["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d, i) => { const on = (hours.days ?? []).includes(i); return <button key={d} type="button" onClick={() => set({ key: "practice.hours", value: { ...hours, days: on ? (hours.days ?? []).filter((x) => x !== i) : [...(hours.days ?? []), i].sort() } })} className={cn("h-8 rounded-lg px-2.5 text-xs font-medium", on ? "bg-foreground text-background" : "bg-muted text-fg-tertiary")}>{d}</button>; })}</div>
         </div>
       </Panel>
+      <LocalDataPanel />
       <Panel title="Your preferences" dense>
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="text-sm">Overdue after<div className="mt-1 flex items-center gap-2"><Input type="number" min={1} max={240} className="num w-24" defaultValue={me.prefs.overdueHours ?? 48} onBlur={(e) => updatePrefs({ prefs: { overdueHours: Math.max(1, Number(e.target.value) || 48) } })} /><span className="text-fg-tertiary">hours without a reply from either of you</span></div></label>
