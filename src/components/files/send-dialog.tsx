@@ -92,13 +92,13 @@ export function SendDialog({ files, matterId, onClose }: { files: File[]; matter
               <p className="mt-1 text-sm text-fg-secondary">{files.length} file{files.length === 1 ? "" : "s"}, {bytes(total)}. They are zipped and encrypted here in your browser before anything is stored or sent.</p>
             </div>
             <ul className="max-h-28 space-y-0.5 overflow-y-auto rounded-lg border border-border p-2 text-sm">{files.map((f, i) => <li key={`${f.name}-${i}`} className="flex items-center justify-between gap-2"><span className="truncate">{f.name}</span><span className="num shrink-0 text-xs text-fg-tertiary">{bytes(f.size)}</span></li>)}</ul>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-2">
               <div><Label htmlFor="s-name">Recipient name</Label><Input id="s-name" value={form.toName} onChange={(e) => setForm({ ...form, toName: e.target.value })} autoFocus /></div>
               <div><Label htmlFor="s-to">Recipient email</Label><Input id="s-to" type="email" required value={form.to} onChange={(e) => setForm({ ...form, to: e.target.value })} /></div>
             </div>
             <div><Label htmlFor="s-subject">Subject</Label><Input id="s-subject" value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })} /></div>
             <div><Label htmlFor="s-msg">Message</Label><textarea id="s-msg" rows={3} value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} className="mt-1 w-full rounded-lg border border-input bg-card px-3 py-2 text-sm outline-none focus:border-foreground" /></div>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-2">
               <div>
                 <Label htmlFor="s-pw">Zip password</Label>
                 <div className="flex gap-1"><Input id="s-pw" className="num" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} /><Button type="button" variant="outline" size="icon" title="New password" aria-label="New password" onClick={() => setForm({ ...form, password: randomPassword() })}><RefreshCw className="size-3.5" /></Button></div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { Paperclip, Star, Reply, UserCheck, AlarmClock, Bot, CalendarCheck2, CalendarClock, FolderCheck, Tag } from "lucide-react";
+import { Paperclip, Star, Reply, UserCheck, AlarmClock, Bot, CalendarCheck2, CalendarClock, FolderCheck, Folder } from "lucide-react";
 import type { Label } from "./folder-list";
 import type { ListItem, ThreadMeta } from "../../../convex/mail";
 import { cn } from "@/lib/utils";
@@ -34,7 +34,7 @@ export function ThreadList({ items, meta, selectedId, focusedIndex, checked, onO
                     {m?.rescheduleRequested && <span className="inline-flex items-center gap-0.5 rounded-full bg-warning-soft px-1.5 text-[10.5px] font-medium leading-4 text-warning"><CalendarClock className="size-2.5" />Reschedule requested</span>}
                     {m?.assignedTo && <span className="inline-flex items-center gap-0.5 rounded-full bg-warning-soft px-1.5 text-[10.5px] font-medium leading-4 text-warning"><UserCheck className="size-2.5" />{m.assignedTo.first}</span>}
                     {m?.matter && <span className="truncate rounded-full bg-muted px-1.5 text-[10.5px] leading-4 text-fg-secondary">{m.matter.name}</span>}
-                    {folders.map((l) => { const filed = m?.autoFiled?.some((f) => f.labelId === l.id); return <span key={l.id} title={filed ? `Filed automatically into ${l.name}` : l.name} className="inline-flex max-w-[160px] items-center gap-1 truncate rounded-full bg-muted px-1.5 text-[10.5px] leading-4 text-fg-secondary">{filed ? <FolderCheck className="size-2.5 shrink-0 text-success" /> : <Tag className="size-2.5 shrink-0" style={{ color: l.color?.backgroundColor }} />}<span className="truncate">{l.name.split("/").pop()}</span></span>; })}
+                    {folders.map((l) => { const filed = m?.autoFiled?.some((f) => f.labelId === l.id); return <span key={l.id} title={filed ? `Filed automatically into ${l.name}` : l.name} className="inline-flex max-w-[160px] items-center gap-1 truncate rounded-full bg-muted px-1.5 text-[10.5px] leading-4 text-fg-secondary">{filed ? <FolderCheck className="size-2.5 shrink-0 text-success" /> : <Folder className="size-2.5 shrink-0" style={{ color: l.color?.backgroundColor }} />}<span className="truncate">{l.name.split("/").pop()}</span></span>; })}
                     {m?.tags.map((tag) => <span key={tag._id} className={cn("rounded-full px-1.5 text-[10.5px] font-medium leading-4", TONE_CLASS[tag.color])}>{tag.name}</span>)}</>) : null;
           return (
             <li key={t.gmailThreadId} role="option" aria-selected={active} data-index={i} draggable={!!onDragStart} onDragStart={(e) => onDragStart?.(e, t)} onContextMenu={(e) => onContextMenu?.(e, t)} className={cn("hd-row group relative flex cursor-pointer gap-2 border-b border-border/70 px-3 py-2 text-[13px] active:cursor-grabbing", active ? "bg-blue-soft shadow-[inset_2px_0_0_var(--blue)]" : focused ? "bg-muted/70" : "hover:bg-muted/60", t.unread && !active && "bg-card")} onClick={() => onOpen(t.gmailThreadId)}>

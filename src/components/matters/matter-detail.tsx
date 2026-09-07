@@ -42,7 +42,7 @@ export function MatterDetail({ id }: { id: Id<"matters"> }) {
 
       {editing && form && (
         <Panel title="Edit matter" dense>
-          <form className="grid gap-3 sm:grid-cols-2" onSubmit={async (e) => { e.preventDefault(); try { await save({ id, name: form.name, courtFileNo: form.courtFileNo || undefined, court: form.court || undefined, parties: form.parties.split(/[;\n]/).map((p) => p.trim()).filter(Boolean), clinikoPatientIds: form.patients.split(/[,\s]+/).map((x) => x.trim()).filter((x) => /^\d+$/.test(x)), notes: form.notes || undefined, status: m.status }); setEditing(false); toast.success("Saved"); } catch (err) { toast.error(errorMessage(err)); } }}>
+          <form className="grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-2" onSubmit={async (e) => { e.preventDefault(); try { await save({ id, name: form.name, courtFileNo: form.courtFileNo || undefined, court: form.court || undefined, parties: form.parties.split(/[;\n]/).map((p) => p.trim()).filter(Boolean), clinikoPatientIds: form.patients.split(/[,\s]+/).map((x) => x.trim()).filter((x) => /^\d+$/.test(x)), notes: form.notes || undefined, status: m.status }); setEditing(false); toast.success("Saved"); } catch (err) { toast.error(errorMessage(err)); } }}>
             <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Name" required className="sm:col-span-2" />
             <Input value={form.courtFileNo} onChange={(e) => setForm({ ...form, courtFileNo: e.target.value })} placeholder="Court file number" />
             <Input value={form.court} onChange={(e) => setForm({ ...form, court: e.target.value })} placeholder="Court" />
@@ -54,7 +54,7 @@ export function MatterDetail({ id }: { id: Id<"matters"> }) {
         </Panel>
       )}
 
-      <div className="grid gap-3 lg:grid-cols-3">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-3 lg:grid-cols-3">
         <Panel title="Details" dense>
           <Facts items={[["Parties", m.parties.length ? m.parties.join("; ") : "—"], ["Cliniko patients", m.clinikoPatientIds.length ? m.clinikoPatientIds.map((p) => <Link key={p} href={`/bookings/patients/${p}`} className="mr-2 underline">#{p}</Link>) : "—"], ["Cliniko cases", (m.clinikoCases ?? []).length ? (m.clinikoCases ?? []).map((c) => <span key={c.caseId} className="mr-2">{c.name}</span>) : "—"], ["Notes", m.notes ? <span className="whitespace-pre-wrap">{m.notes}</span> : "—"], ["Updated", ago(m.updatedAt)]]} />
           {m.clinikoPatientIds.filter((p) => !(m.clinikoCases ?? []).some((c) => c.patientId === p)).length > 0 && (
@@ -76,7 +76,7 @@ export function MatterDetail({ id }: { id: Id<"matters"> }) {
         </Panel>
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-2">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-3 lg:grid-cols-2">
         <Panel title={`Emails (${m.threads.length})`} blurb="Linked from Mail with the Matter button." dense>
           {m.threads.length === 0 ? <p className="text-sm text-fg-tertiary">Nothing linked yet.</p> : (
             <ul className="divide-y divide-border/70">{m.threads.map((t) => <li key={t.threadId} className="py-1.5 text-sm">{t.gmailThreadId ? <Link href={`/mail?thread=${t.gmailThreadId}`} className="hover:underline">{t.subject}</Link> : <span title="Not in your mailbox">{t.subject}</span>}<div className="flex gap-2 text-xs text-fg-tertiary"><span>{mailDate(t.lastMessageAt)}</span>{t.repliedBy.length > 0 && <span className="text-success">{t.repliedBy.join(", ")} replied</span>}</div></li>)}</ul>

@@ -51,7 +51,7 @@ export function Dashboard() {
         <Kpi label="Paid, report not delivered" value={money?.counts.paidNotDelivered ?? 0} tone={(money?.counts.paidNotDelivered ?? 0) > 0 ? "warn" : undefined} sub={money ? `${aud(money.counts.outstandingCents, { whole: true })} outstanding` : "…"} href="/money" />
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-[3fr_2fr]">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-3 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <Panel title="Today's appointments" blurb="Live from Cliniko. Click one to open it there." actions={<Button variant="ghost" size="sm" render={<Link href="/bookings" />}>Calendar</Button>}>
           {appts === undefined ? <Loading rows={3} /> : apptError ? <ErrorBox title="Couldn't reach Cliniko" message={apptError} /> : appts === null ? <Empty title="Cliniko isn’t connected" body="Add the API key in Settings and today's list appears here." action={<Button size="sm" variant="outline" render={<Link href="/settings#cliniko" />}>Settings</Button>} /> : appts.length === 0 ? <Empty title="No appointments today" /> : (
             <ul className="divide-y divide-border/70">

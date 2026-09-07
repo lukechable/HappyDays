@@ -12,7 +12,7 @@ import { toast } from "sonner";
 import { api } from "../../../convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { Empty, ErrorBox, Pill } from "@/components/primitives";
-import { useLive, useNow } from "@/lib/hooks";
+import { useLive, useNow, useMediaQuery } from "@/lib/hooks";
 import { useCalendarWindow } from "./use-calendar-window";
 import { cn, errorMessage } from "@/lib/utils";
 import { time } from "@/lib/format";
@@ -68,7 +68,9 @@ export function CalendarPage() {
   const params = useSearchParams();
   const router = useRouter();
   const now = useNow();
-  const mode = (params.get("mode") as "day" | "week" | null) ?? "week";
+  // Phones open on the day, as Cliniko's mobile calendar does; wider screens on the week.
+  const narrow = useMediaQuery("(max-width: 639px)");
+  const mode = (params.get("mode") as "day" | "week" | null) ?? (narrow ? "day" : "week");
   const anchor = Number(params.get("d")) || startOfDay(now).getTime();
   const setParams = (next: Record<string, string | undefined>) => replaceSearch("/bookings", next);
   const rangeStart = mode === "day" ? startOfDay(anchor) : startOfWeek(anchor);
@@ -153,7 +155,7 @@ export function CalendarPage() {
 
       {live.error ? <div className="p-6"><ErrorBox title="Couldn’t read the Cliniko calendar" message={live.error} retry={live.reload} /></div> : (
         <div className="min-h-0 flex-1 overflow-auto">
-          <div className="grid min-w-[760px]" style={{ gridTemplateColumns: `56px repeat(${columns.length}, minmax(0, 1fr))` }}>
+          <div className={cn("grid", mode === "week" ? "min-w-[760px]" : "min-w-[300px]")} style={{ gridTemplateColumns: `56px repeat(${columns.length}, minmax(0, 1fr))` }}>
             <div className="sticky top-0 z-10 bg-background" />
             {columns.map((c) => <div key={c.key} className={cn("sticky top-0 z-10 border-b border-l border-border bg-background px-2 py-1.5 text-center text-xs font-medium", c.day.toDateString() === new Date(now).toDateString() && "bg-[#faf1c8] shadow-[inset_0_0_0_1px_#d9c17a] dark:bg-[#4a4320] dark:shadow-[inset_0_0_0_1px_#8a7a3a]")}>{c.label}</div>)}
             <div className="relative" style={{ height: (DAY_END - DAY_START) * HOUR_PX }}>

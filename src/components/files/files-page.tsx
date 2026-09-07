@@ -203,7 +203,7 @@ function CodeDialog({ preselected, onClose }: { preselected: Id<"files">[]; onCl
           <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); void submit(); }}>
             <h2 className="font-display text-xl">New download code</h2>
             <div><Label>Files</Label><div className="mt-1 max-h-40 space-y-0.5 overflow-y-auto rounded-lg border border-border p-2">{(files ?? []).map((f) => <label key={f._id} className="flex items-center gap-2 text-sm"><input type="checkbox" className="size-3.5 accent-foreground" checked={fileIds.includes(f._id)} onChange={(e) => setFileIds(e.target.checked ? [...fileIds, f._id] : fileIds.filter((x) => x !== f._id))} /><span className="truncate">{f.name}</span>{f.isReport && <Pill tone="info">report</Pill>}</label>)}{files?.length === 0 && <span className="text-xs text-fg-tertiary">Upload a file first.</span>}</div></div>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-2">
               <div><Label htmlFor="c-name">Recipient name</Label><Input id="c-name" value={form.recipientName} onChange={(e) => setForm({ ...form, recipientName: e.target.value })} /></div>
               <div><Label htmlFor="c-email">Recipient email</Label><Input id="c-email" type="email" value={form.recipientEmail} onChange={(e) => setForm({ ...form, recipientEmail: e.target.value })} /></div>
               <div><Label htmlFor="c-exp">Expires in (days)</Label><Input id="c-exp" type="number" min={1} max={365} className="num" value={form.expiresInDays} onChange={(e) => setForm({ ...form, expiresInDays: Math.max(1, Number(e.target.value) || 14) })} /></div>

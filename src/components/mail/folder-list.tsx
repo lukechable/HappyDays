@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useAction } from "convex/react";
-import { Inbox, MailOpen, Sparkles, AlarmClock, UserCheck, Star, Send, FileText, Archive, ShieldAlert, Trash2, Tag, Plus, Pencil, X, Check, SlidersHorizontal } from "lucide-react";
+import { Inbox, MailOpen, Sparkles, AlarmClock, UserCheck, Star, Send, FileText, Archive, ShieldAlert, Trash2, Folder, Plus, Pencil, X, Check, SlidersHorizontal } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../../../convex/_generated/api";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -91,7 +91,7 @@ export function FolderList({ view, labelId, labels, badges, onSelect, onLabelsCh
               return (
                 <li key={l.id} className="group" {...dropProps(l.id, { labelId: l.id })}>
                   <div className={cn("hd-row flex items-center gap-1 rounded-lg pr-1", active ? "bg-foreground text-background" : "text-fg-secondary hover:bg-muted hover:text-foreground", isOver && "ring-2 ring-blue ring-offset-1 ring-offset-surface-2 bg-blue-soft text-foreground")} style={{ paddingLeft: depth * 10 }}>
-                    <button type="button" onClick={() => onSelect("label", l.id)} className="flex min-w-0 flex-1 items-center gap-2 px-2 py-[6px] text-[13px] leading-tight"><Tag className="size-3.5 shrink-0" style={{ color: active ? undefined : l.color?.backgroundColor }} /><span className="min-w-0 flex-1 truncate text-left">{short}</span>{l.unread > 0 && <span className={cn("num text-[10.5px] font-semibold", active ? "text-background/80" : "text-fg-tertiary")}>{l.unread}</span>}</button>
+                    <button type="button" onClick={() => onSelect("label", l.id)} className="flex min-w-0 flex-1 items-center gap-2 px-2 py-[6px] text-[13px] leading-tight"><Folder className="size-3.5 shrink-0" style={{ color: active ? undefined : l.color?.backgroundColor }} /><span className="min-w-0 flex-1 truncate text-left">{short}</span>{l.unread > 0 && <span className={cn("num text-[10.5px] font-semibold", active ? "text-background/80" : "text-fg-tertiary")}>{l.unread}</span>}</button>
                     <FolderEditor label={l} onChanged={() => { onLabelsChanged(); }} onDeleted={() => { onLabelsChanged(); if (active) onSelect("inbox"); }} />
                   </div>
                 </li>

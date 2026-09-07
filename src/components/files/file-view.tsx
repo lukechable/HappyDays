@@ -16,7 +16,7 @@ export function FileView({ id }: { id: Id<"files"> }) {
   return (
     <div className="space-y-4">
       <PageHeader title={f.name} blurb={`${bytes(f.size)} · ${f.mime} · uploaded ${when(f.createdAt)}`} actions={<>{f.url && <Button variant="outline" render={<a href={f.url} download={f.name} />}>Download</Button>}{f.mime === "application/pdf" && <Button render={<Link href={`/pdf?file=${f._id}`} />}>Open in PDF tools</Button>}</>} />
-      <div className="grid gap-4 lg:grid-cols-[1fr_300px]">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
         <div className="min-h-[70svh] overflow-hidden rounded-2xl bg-card ring-1 ring-black/[0.06] dark:ring-white/10">
           {f.url && (f.mime === "application/pdf" ? <iframe title={f.name} src={f.url} className="h-[75svh] w-full" /> : f.mime.startsWith("image/") ? <img src={f.url} alt={f.name} className="mx-auto max-h-[75svh]" /> : <div className="p-8 text-center text-sm text-fg-tertiary">No preview for this type. Download it instead.</div>)}
         </div>

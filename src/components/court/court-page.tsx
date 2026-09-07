@@ -99,7 +99,7 @@ export function CourtPage({ kind }: { kind: CourtKind }) {
             <h2 className="font-display text-xl">{draft.id ? "Edit" : copy.new}</h2>
             <div><Label htmlFor="c-title">{kind === "affidavit" ? "Affidavit" : "Appearance"}</Label><Input id="c-title" required autoFocus value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} placeholder={kind === "affidavit" ? "Affidavit of Dr Fraser re Smith" : "Interim hearing, Smith & Smith"} /></div>
             <div><Label htmlFor="c-matter">Matter</Label><select id="c-matter" value={draft.matterId} onChange={(e) => { const m = (matters ?? []).find((x) => x._id === e.target.value); setDraft({ ...draft, matterId: e.target.value, party: draft.party || (kind === "appearance" && m?.court ? m.court : draft.party) }); }} className="mt-1 h-9 w-full rounded-lg border border-input bg-card px-2 text-sm"><option value="">No matter</option>{(matters ?? []).map((m) => <option key={m._id} value={m._id}>{m.name}</option>)}</select></div>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-2">
               <div><Label htmlFor="c-party">{copy.party}</Label><Input id="c-party" value={draft.party} onChange={(e) => setDraft({ ...draft, party: e.target.value })} placeholder={kind === "affidavit" ? "Solicitor or firm" : "Federal Circuit and Family Court"} /></div>
               <div><Label htmlFor="c-at">{copy.at}</Label><Input id="c-at" type={withTime ? "datetime-local" : "date"} className="num" value={draft.at} onChange={(e) => setDraft({ ...draft, at: e.target.value })} /></div>
             </div>
