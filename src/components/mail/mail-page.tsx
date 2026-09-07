@@ -301,7 +301,7 @@ export function MailPage() {
   const togglePane = () => { const next = pane === "below" ? "right" : "below"; setPaneOverride(next); updatePrefs({ prefs: { readingPane: next } }).catch((e: unknown) => toast.error(errorMessage(e))); };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col md:h-[calc(100svh_-_48px)]">
+    <div className="flex min-h-0 flex-1 flex-col md:h-[calc(100svh_-_48px)] md:flex-none">
       <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
         <Button size="sm" onClick={() => setCompose({ mode: "new", to: [], cc: [], bcc: [], subject: "", html: "" })}><PenSquare className="size-3.5" />Compose</Button>
         <form className="relative min-w-0 flex-1 max-w-xl" onSubmit={(e) => { e.preventDefault(); if (searchText.trim()) setParams({ view: "search", q: searchText.trim(), thread: undefined, label: undefined }); else setParams({ view: "inbox", q: undefined }); }}>

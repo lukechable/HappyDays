@@ -89,7 +89,7 @@ export function TasksPage() {
   const title = view === "list" ? lists?.lists.find((l) => l._id === listId)?.name ?? "List" : SMART.find((s) => s.key === view)?.label ?? (view === "done" ? "Completed" : "Tasks");
 
   return (
-    <div className="grid min-h-0 flex-1 grid-cols-1 lg:h-[calc(100svh_-_48px)] lg:grid-cols-[220px_minmax(0,1fr)]">
+    <div className="grid min-h-0 flex-1 grid-cols-1 lg:h-[calc(100svh_-_48px)] lg:flex-none lg:grid-cols-[220px_minmax(0,1fr)]">
       <aside className="hidden min-h-0 overflow-y-auto border-r border-border bg-surface-2/60 px-2 py-3 lg:block [scrollbar-width:thin]">
         <ul className="space-y-px">
           {SMART.map((s) => { const n = lists?.smart[s.count] ?? 0; const active = view === s.key; return <li key={s.key}><button type="button" onClick={() => setParams({ view: s.key, list: undefined })} className={cn("flex w-full items-center gap-2 rounded-lg px-2 py-[6px] text-[13px]", active ? "bg-foreground text-background" : "text-fg-secondary hover:bg-muted hover:text-foreground")}><s.icon className="size-4 opacity-80" /><span className="flex-1 text-left">{s.label}</span>{n > 0 && <span className={cn("num text-[10.5px] font-semibold", active ? "text-background/80" : s.key === "overdue" ? "text-error" : "text-fg-tertiary")}>{n}</span>}</button></li>; })}
