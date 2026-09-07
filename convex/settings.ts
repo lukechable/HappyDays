@@ -58,3 +58,25 @@ export const publicPractice = query({
     return { name: (map["practice.name"] as string | undefined) ?? "Barbara Fraser & Associates", slug: (map["booking.slug"] as string | undefined) ?? "barbara-fraser" };
   },
 });
+
+/** Which secrets are configured on the deployment (booleans only, never values), for the Settings checklist. */
+export const setupStatus = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireUser(ctx);
+    const has = (k: string) => !!process.env[k];
+    return {
+      clerkJwt: has("CLERK_JWT_ISSUER_DOMAIN") && !process.env.CLERK_JWT_ISSUER_DOMAIN!.includes("not-yet-configured"),
+      googleOAuth: has("GOOGLE_CLIENT_ID") && has("GOOGLE_CLIENT_SECRET"),
+      tokenKey: has("TOKEN_ENCRYPTION_KEY"),
+      pubsub: has("GOOGLE_PUBSUB_TOPIC") && has("GOOGLE_PUBSUB_VERIFICATION_TOKEN"),
+      cliniko: has("CLINIKO_API_KEY"),
+      stripe: has("STRIPE_SECRET_KEY"),
+      stripeWebhook: has("STRIPE_WEBHOOK_SECRET"),
+      anthropic: has("ANTHROPIC_API_KEY"),
+      appUrl: process.env.APP_URL ?? null,
+      clinikoShard: process.env.CLINIKO_SHARD ?? "au1",
+      clinikoSubdomain: process.env.CLINIKO_SUBDOMAIN ?? null,
+    };
+  },
+});

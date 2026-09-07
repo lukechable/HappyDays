@@ -5,7 +5,7 @@ Practice operations app for Barbara Fraser's practice. Two users: Barbara Fraser
 Outlook for mail, wraps Cliniko for bookings, and adds tasks/help desk, file
 delivery by download code, PDF signing and page tools, and a money/report table.
 
-Dated 7 Sep 2026. Phases are ordered by dependency and by how much day-to-day
+Dated 7 Sep 2026, updated the same day after Luke's answers. Phases are ordered by dependency and by how much day-to-day
 pain each one removes.
 
 ---
@@ -33,13 +33,13 @@ IMAP kept only as a fallback:
   verification entirely, which is otherwise a multi-week review for Gmail
   scopes.
 
-### 1.2 Two mailboxes, one database
-Each user connects their own Google account. All messages land in one Convex
-database, keyed by mailbox. Threads are unified across mailboxes using RFC
-`Message-ID` / `References` headers, so when Barbara and Luke are both on a
-thread the app can compute "Luke replied", "nobody has replied", and "overdue"
-without either of them seeing the other's unrelated mail. Sharing is by thread,
-not by mailbox.
+### 1.2 Two mailboxes, one database, nothing copied
+Each user connects their own Google account. Luke's rule (7 Sep 2026): Happy Days holds no
+copies of Gmail or Cliniko data. So the database stores only what the two of you add on top,
+plus a header-only index of messages (Gmail ids, RFC Message-ID, sender, recipients, date,
+direction). That index is what lets the app say "Luke replied" or "overdue" across both
+mailboxes without a second round-trip to Gmail. Bodies, attachments and search results are
+fetched live from Gmail every time and never written down. Sharing is by thread, not mailbox.
 
 ### 1.3 Matters as a first-class object
 Court matters are the thing subpoenas, reports, invoices and tasks all hang off.
@@ -49,14 +49,13 @@ export becomes "export this matter", and the money/report table becomes a view
 over matters. Tags stay separate for lightweight labelling such as
 "Family Report" or "Medicare Rebate".
 
-### 1.4 Cliniko stays the system of record for patients and files
-Happy Days never stores patient documents or clinical notes. It mirrors
-appointments, patients (name, contact, DOB only), practitioners and appointment
-types into Convex for speed and offline-safe UI, refreshing via the Cliniko
-API's `updated_at` filter on a schedule. Cliniko has no webhooks, so this is
-polling, kept well inside the 200 requests per minute limit. Patient files open
-as deep links into Cliniko (`https://<subdomain>.cliniko.com/patients/<id>`)
-or via the Patient Attachment endpoint's temporary URL, never copied.
+### 1.4 Cliniko is read live, never mirrored
+Patients, appointments, practitioners, appointment types, availability and attachments are
+fetched from the Cliniko API on every screen that shows them. The only Cliniko-related rows in
+our database are the pricing decision per appointment type (full fee, deposit, not online) and
+the id of an appointment created by a paid online booking. Patient files open through
+Cliniko's own links. Shard `au1`, subdomain `barbara-fraser-and-associates`, API key owned by
+Luke. Known ids: business 77991, practitioner 160550, appointment type 375022 (Full Family Report).
 
 ### 1.5 Stripe is the only payment path
 Cliniko invoicing is bypassed. Each Cliniko appointment type maps to a Stripe
@@ -293,6 +292,26 @@ Confirmed against docs.api.cliniko.com. Base URL `https://api.<shard>.cliniko.co
 Products, Product Suppliers, Stock Adjustments, Billable Items, Concession Types and Prices, Taxes, Group Appointments, Attendees, Bookings (the group-booking record), Signatures (Cliniko's own), Settings, Public Settings, Practitioner Reference Numbers.
 
 ---
+
+## 7. Environment variables (Convex deployment)
+
+Set with `npx convex env set NAME value`. Never commit them.
+
+| Variable | Purpose |
+|---|---|
+| CLERK_JWT_ISSUER_DOMAIN | Clerk JWT template "convex" issuer |
+| ALLOWED_EMAILS | The two staff addresses |
+| GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET | Internal OAuth app on the Workspace |
+| TOKEN_ENCRYPTION_KEY | 32 random bytes, base64 |
+| GOOGLE_PUBSUB_TOPIC / GOOGLE_PUBSUB_VERIFICATION_TOKEN | Optional Gmail push |
+| CLINIKO_API_KEY / CLINIKO_SHARD / CLINIKO_SUBDOMAIN | Cliniko |
+| STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET | Stripe |
+| ANTHROPIC_API_KEY | Claude |
+| APP_URL | Public URL of the app (OAuth redirect) |
+
+Railway staging (project 0815e81e-df8a-4371-838d-3dc174a5fc34) builds only the Next app against
+Convex dev deployment adept-dotterel-438; Convex functions are pushed from the repo with
+`npx convex dev --once`. No deploy key is needed for staging.
 
 ## 6. Open questions
 
