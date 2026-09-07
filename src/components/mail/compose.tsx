@@ -65,7 +65,7 @@ const AddressChips = ({ label, value, onChange, autoFocus }: { label: string; va
 };
 
 /** The compose window: docked bottom-right like Gmail, expandable, autosaves to a Gmail draft every 20s. */
-export function Compose({ draft, onClose, onSent, signatureHtml, signatureAbove }: { draft: ComposeDraft; onClose: () => void; onSent: (r: { gmailThreadId: string }) => void; signatureHtml?: string; signatureAbove: boolean }) {
+export function Compose({ draft, onClose, onSent, signatureHtml, signatureAbove }: { draft: ComposeDraft; onClose: () => void; onSent: (r: { gmailThreadId: string; attachments: number }) => void; signatureHtml?: string; signatureAbove: boolean }) {
   const send = useAction(api.mail.send);
   const saveDraft = useAction(api.mail.saveDraft);
   const discardDraft = useAction(api.mail.discardDraft);
@@ -133,7 +133,7 @@ export function Compose({ draft, onClose, onSent, signatureHtml, signatureAbove 
     if (!to.length && !cc.length && !bcc.length) { toast.error("Add at least one recipient."); return; }
     if (!subject.trim() && !confirm("Send without a subject?")) return;
     setBusy("send");
-    try { const r = await send(payload()); toast.success("Sent"); onSent(r); }
+    try { const r = await send(payload()); toast.success("Sent"); onSent({ ...r, attachments: files.length + forwardAtt.length }); }
     catch (e) { toast.error(errorMessage(e)); }
     finally { setBusy(null); }
   };

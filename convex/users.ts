@@ -19,6 +19,9 @@ export const me = query({
     const overdueHours = user.prefs?.overdueHours ?? 48;
     const overdue = await ctx.db.query("threads").withIndex("by_overdue", (q) => q.eq("bothIncluded", true).eq("lastDirection", "in").lt("lastInboundAt", now - overdueHours * 3_600_000)).collect();
     const signatures = await ctx.db.query("signatures").withIndex("by_user", (q) => q.eq("userId", user._id)).collect();
+    const paidInvoices = (await ctx.db.query("stripeInvoices").withIndex("by_created").order("desc").take(300)).filter((i) => i.status === "paid" && i.matterId);
+    let paidNotDelivered = 0;
+    for (const i of paidInvoices) { const m = await ctx.db.get(i.matterId!); if (m && !m.reportDeliveredAt && m.status !== "closed") paidNotDelivered++; }
     return {
       _id: user._id,
       email: user.email,
@@ -28,7 +31,7 @@ export const me = query({
       prefs: user.prefs ?? {},
       google: google ? { _id: google._id, email: google.email, status: google.status, lastSyncAt: google.lastSyncAt, watchExpiresAt: google.watchExpiresAt } : null,
       signatureCount: signatures.length,
-      badges: { assigned: assigned.length, tasks: tasksDue, overdue: overdue.filter((t) => !t.repliedBy.length).length, notifications: unreadNotifications.length },
+      badges: { assigned: assigned.length, tasks: tasksDue, overdue: overdue.filter((t) => !t.repliedBy.length).length, notifications: unreadNotifications.length, paidNotDelivered },
     };
   },
 });

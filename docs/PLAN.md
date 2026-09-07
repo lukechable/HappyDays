@@ -5,7 +5,9 @@ Practice operations app for Barbara Fraser's practice. Two users: Barbara Fraser
 Outlook for mail, wraps Cliniko for bookings, and adds tasks/help desk, file
 delivery by download code, PDF signing and page tools, and a money/report table.
 
-Dated 7 Sep 2026, updated the same day after Luke's answers. Phases are ordered by dependency and by how much day-to-day
+Dated 7 Sep 2026, updated the same day after Luke's answers. Phases 0 to 6 were built and merged on
+7 Sep 2026; what remains is configuration (Clerk, Google, Cliniko key, Stripe, Claude) and real-use testing.
+Phases are ordered by dependency and by how much day-to-day
 pain each one removes.
 
 ---
