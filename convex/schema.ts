@@ -22,6 +22,8 @@ export default defineSchema({
       signatureAbove: v.optional(v.boolean()),
       overdueHours: v.optional(v.number()),
       showImages: v.optional(v.boolean()),
+      signatureImage: v.optional(v.string()),
+      initialsImage: v.optional(v.string()),
     })),
   }).index("by_clerk", ["clerkId"]).index("by_email", ["email"]),
 

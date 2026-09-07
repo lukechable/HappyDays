@@ -28,6 +28,8 @@ export type ComposeDraft = {
   references?: string[];
   draftId?: string;
   forwardAttachments?: Array<{ gmailMessageId: string; attachmentId: string; filename: string; mime: string; size: number }>;
+  /** Files attached before the window opens (signed PDFs from the PDF tools). */
+  initialAttachments?: Array<{ filename: string; mime: string; base64: string; size: number }>;
   /** Source message text, for "Suggest a reply". */
   sourceText?: string;
   sourceFrom?: string;
@@ -73,7 +75,7 @@ export function Compose({ draft, onClose, onSent, signatureHtml, signatureAbove 
   const [bcc, setBcc] = useState(draft.bcc);
   const [showCc, setShowCc] = useState(draft.cc.length > 0 || draft.bcc.length > 0);
   const [subject, setSubject] = useState(draft.subject);
-  const [files, setFiles] = useState<LocalFile[]>([]);
+  const [files, setFiles] = useState<LocalFile[]>(() => (draft.initialAttachments ?? []).map((a) => ({ file: new File([Uint8Array.from(atob(a.base64), (c) => c.charCodeAt(0))], a.filename, { type: a.mime }), base64: a.base64 })));
   const [forwardAtt, setForwardAtt] = useState(draft.forwardAttachments ?? []);
   const [draftId, setDraftId] = useState(draft.draftId);
   const [busy, setBusy] = useState<"send" | "save" | "ai" | null>(null);

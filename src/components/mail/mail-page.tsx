@@ -90,6 +90,16 @@ export function MailPage() {
   }, [listKey, tick, connected, listThreads]);
   useEffect(() => { refreshLabels(); }, [refreshLabels]);
 
+  // Other pages (PDF tools, Files) hand a prepared message over via sessionStorage and ?compose=handoff.
+  useEffect(() => {
+    if (params.get("compose") !== "handoff") return;
+    try {
+      const raw = sessionStorage.getItem("hd-compose");
+      if (raw) { const d = JSON.parse(raw) as ComposeDraft; sessionStorage.removeItem("hd-compose"); setTimeout(() => setCompose({ ...d, mode: d.mode ?? "new", to: d.to ?? [], cc: d.cc ?? [], bcc: d.bcc ?? [] }), 0); }
+    } catch { /* ignore */ }
+    setParams({ compose: undefined });
+  }, [params, setParams]);
+
   useEffect(() => {
     if (!selectedId || !connected) return;
     let live = true;

@@ -31,7 +31,6 @@ const SECURITY_HEADERS = [
 
 const nextConfig: NextConfig = {
   skipTrailingSlashRedirect: true,
-  serverExternalPackages: ["pdfjs-dist"],
   async headers() {
     return [{ source: "/(.*)", headers: SECURITY_HEADERS }];
   },
