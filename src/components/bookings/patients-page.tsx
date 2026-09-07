@@ -16,7 +16,7 @@ export function PatientsPage() {
   const setup = useQuery(api.settings.setupStatus);
   const recent = useLive(api.bookings.recentPatients, setup?.cliniko ? {} : "skip");
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <PageHeader title="Patients" blurb="Search by name, email or phone. Records, files and notes stay in Cliniko; this page links you there." actions={<PatientSearch onPick={(p) => router.push(`/bookings/patients/${p.id}`)} />} />
       {setup && !setup.cliniko ? <Empty title="Cliniko isn’t connected" action={<Button render={<Link href="/settings?tab=cliniko" />}>Settings</Button>} /> : (
         <Panel title="Recently updated" blurb="The 50 patient records Cliniko changed most recently." actions={<Button size="sm" variant="ghost" onClick={recent.reload}>Refresh</Button>}>

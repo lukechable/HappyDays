@@ -51,7 +51,7 @@ export function FilesPage() {
   };
 
   return (
-    <div className="space-y-6" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); if (e.dataTransfer.files.length) void upload(e.dataTransfer.files); }}>
+    <div className="space-y-5" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); if (e.dataTransfer.files.length) void upload(e.dataTransfer.files); }}>
       <PageHeader title="Files & download codes" blurb="Reports and signed forms the practice stores itself. Give a client a code and they collect the file from a plain page, no login, with every download logged." actions={<><Button variant="outline" onClick={() => inputRef.current?.click()}><Upload className="size-3.5" />{uploading ? `Uploading ${uploading}…` : "Upload"}</Button><input ref={inputRef} type="file" multiple hidden onChange={(e) => e.target.files && void upload(e.target.files)} />{selected.size > 0 && <Button onClick={() => setCodeFor(Array.from(selected))}><KeyRound className="size-3.5" />Code for {selected.size} file{selected.size === 1 ? "" : "s"}</Button>}</>} />
       <div className="flex flex-wrap items-center gap-2 border-b border-border">
         {(["files", "codes"] as const).map((t) => <button key={t} type="button" onClick={() => router.replace(`/files${t === "codes" ? "?tab=codes" : ""}`)} className={cn("-mb-px border-b-2 px-3 py-2 text-sm capitalize", tab === t ? "border-foreground font-medium" : "border-transparent text-fg-tertiary hover:text-foreground")}>{t === "codes" ? "Download codes" : "Files"}</button>)}

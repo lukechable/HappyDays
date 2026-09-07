@@ -88,7 +88,7 @@ export function TasksPage() {
   const title = view === "list" ? lists?.lists.find((l) => l._id === listId)?.name ?? "List" : SMART.find((s) => s.key === view)?.label ?? (view === "done" ? "Completed" : "Tasks");
 
   return (
-    <div className="grid min-h-0 flex-1 grid-cols-1 lg:h-[calc(100svh-56px)] lg:grid-cols-[220px_minmax(0,1fr)]">
+    <div className="grid min-h-0 flex-1 grid-cols-1 lg:h-[calc(100svh-48px)] lg:grid-cols-[220px_minmax(0,1fr)]">
       <aside className="hidden min-h-0 overflow-y-auto border-r border-border bg-surface-2/60 px-2 py-3 lg:block [scrollbar-width:thin]">
         <ul className="space-y-px">
           {SMART.map((s) => { const n = lists?.smart[s.count] ?? 0; const active = view === s.key; return <li key={s.key}><button type="button" onClick={() => setParams({ view: s.key, list: undefined })} className={cn("flex w-full items-center gap-2 rounded-lg px-2 py-[6px] text-[13px]", active ? "bg-foreground text-background" : "text-fg-secondary hover:bg-muted hover:text-foreground")}><s.icon className="size-4 opacity-80" /><span className="flex-1 text-left">{s.label}</span>{n > 0 && <span className={cn("num text-[10.5px] font-semibold", active ? "text-background/80" : s.key === "overdue" ? "text-error" : "text-fg-tertiary")}>{n}</span>}</button></li>; })}
@@ -104,7 +104,7 @@ export function TasksPage() {
         </div>
       </aside>
 
-      <div className="grid min-h-0 grid-cols-1 xl:grid-cols-[minmax(0,1fr)_380px]">
+      <div className="grid min-h-0 grid-cols-1 xl:grid-cols-[minmax(0,1fr)_340px]">
         <section className="flex min-h-0 flex-col">
           <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-4 py-2">
             <h1 className="font-display text-xl">{title}</h1>
@@ -145,7 +145,7 @@ export function TasksPage() {
           </div>
         </section>
         <aside className={cn("min-h-0 border-l border-border bg-surface/60", !selected && "hidden xl:block")}>
-          {selected ? <TaskDetail key={selected} id={selected} onClose={() => setParams({ task: undefined })} /> : <div className="flex h-full items-center justify-center p-6 text-center text-sm text-fg-tertiary">Select a task to see its details, subtasks and comments.</div>}
+          {selected ? <TaskDetail key={selected} id={selected} onClose={() => setParams({ task: undefined })} /> : <div className="p-4 text-[13px] text-fg-tertiary"><p className="font-medium text-fg-secondary">Nothing selected</p><p className="mt-1">Pick a task to edit it, add subtasks or comment. Press <kbd className="rounded border border-border px-1 font-mono text-[10px]">n</kbd> to add one.</p></div>}
         </aside>
       </div>
     </div>

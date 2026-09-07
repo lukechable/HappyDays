@@ -22,7 +22,7 @@ export function AppointmentTypesPage() {
   const byId = new Map((pricing ?? []).map((p) => [p.clinikoAppointmentTypeId, p]));
   const types = (practice.data?.appointmentTypes ?? []).slice().sort((a, b) => a.name.localeCompare(b.name));
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <PageHeader title="Appointment types" blurb="Cliniko owns the types, colours and lengths. Happy Days decides whether each can be booked online and what is paid up front through Stripe." actions={<Button variant="outline" disabled={!practice.data} onClick={async () => { try { const n = await syncPricing({}); toast.success(`${n} appointment types synced`); } catch (e) { toast.error(errorMessage(e)); } }}>Sync pricing rows</Button>} />
       {setup && !setup.cliniko ? <Empty title="Cliniko isn’t connected" action={<Button render={<Link href="/settings?tab=cliniko" />}>Settings</Button>} /> : practice.error ? <ErrorBox title="Couldn’t read appointment types" message={practice.error} retry={practice.reload} /> : !practice.data || pricing === undefined ? <Loading rows={8} /> : (
         <Panel>
