@@ -26,6 +26,8 @@ export default defineSchema({
       initialsImage: v.optional(v.string()),
       pushMail: v.optional(v.boolean()),
       pushActivity: v.optional(v.boolean()),
+      /** Where Mail shows the open conversation: under the list (Outlook's "bottom", the default) or beside it. */
+      readingPane: v.optional(v.union(v.literal("below"), v.literal("right"))),
     })),
   }).index("by_clerk", ["clerkId"]).index("by_email", ["email"]),
 
