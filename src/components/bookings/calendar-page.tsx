@@ -19,13 +19,13 @@ import { time } from "@/lib/format";
 import { PatientSearch } from "./patient-search";
 import { InvoiceDialog } from "./invoice-dialog";
 
-/** Cliniko's own colour for the appointment type is the block's fill, with Cliniko's dark ink on every fill it uses (red included); white ink only on genuinely dark fills. */
+/** Cliniko's own colour for the appointment type is the block's fill, with dark ink on pastels and white ink on the strong fills (red, purple), as Cliniko's calendar does. */
 const FALLBACK = "#8dc3e9";
 function inkOn(hex: string): string {
   const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
   if (!m) return "#1a1a19";
   const [r, g, b] = [0, 2, 4].map((i) => parseInt(m[1].slice(i, i + 2), 16) / 255).map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.12 ? "#1a1a19" : "#ffffff";
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.35 ? "#1a1a19" : "#ffffff";
 }
 
 type Appt = { id: string; startsAt: string; endsAt: string; notes?: string; cancelledAt: string | null; didNotArrive: boolean; arrived: boolean; telehealthUrl?: string; patientId?: string; patientName: string; typeId?: string; typeName: string; color?: string; practitionerId?: string; practitionerName: string; clinikoUrl: string; patientUrl?: string };
@@ -120,7 +120,7 @@ export function CalendarPage() {
         <div className="min-h-0 flex-1 overflow-auto">
           <div className="grid min-w-[760px]" style={{ gridTemplateColumns: `56px repeat(${columns.length}, minmax(0, 1fr))` }}>
             <div className="sticky top-0 z-10 bg-background" />
-            {columns.map((c) => <div key={c.key} className={cn("sticky top-0 z-10 border-b border-l border-border bg-background px-2 py-1.5 text-xs font-medium", c.day.toDateString() === new Date(now).toDateString() && mode === "week" && "text-blue")}>{c.label}</div>)}
+            {columns.map((c) => <div key={c.key} className={cn("sticky top-0 z-10 border-b border-l border-border bg-background px-2 py-1.5 text-center text-xs font-medium", c.day.toDateString() === new Date(now).toDateString() && "bg-[#faf1c8] shadow-[inset_0_0_0_1px_#d9c17a] dark:bg-[#4a4320] dark:shadow-[inset_0_0_0_1px_#8a7a3a]")}>{c.label}</div>)}
             <div className="relative" style={{ height: (DAY_END - DAY_START) * HOUR_PX }}>
               {Array.from({ length: DAY_END - DAY_START }, (_, i) => <div key={i} className="num absolute right-2 -translate-y-1/2 text-[10.5px] text-fg-quaternary" style={{ top: i * HOUR_PX }}>{i + DAY_START > 12 ? `${i + DAY_START - 12}pm` : i + DAY_START === 12 ? "12pm" : `${i + DAY_START}am`}</div>)}
             </div>
@@ -134,7 +134,7 @@ export function CalendarPage() {
                 <div key={c.key} className={cn("relative border-l border-border", busy && "opacity-60")} style={{ height: (DAY_END - DAY_START) * HOUR_PX, backgroundImage: `repeating-linear-gradient(to bottom, transparent 0, transparent ${HOUR_PX - 1}px, var(--border) ${HOUR_PX - 1}px, var(--border) ${HOUR_PX}px)` }} onDragOver={(e) => e.preventDefault()} onDrop={(e) => void onDrop(e, c)} onClick={(e) => onEmptyClick(e, c)}>
                   {avail.map((b) => <div key={`a${b.id}`} className="absolute inset-x-0 bg-success/[0.06]" style={{ top: yFor(b.startsAt), height: hFor(b.startsAt, b.endsAt) }} />)}
                   {unavail.map((b) => <div key={`u${b.id}`} className="absolute inset-x-0 bg-[repeating-linear-gradient(45deg,transparent,transparent_6px,rgba(0,0,0,.05)_6px,rgba(0,0,0,.05)_12px)] px-1 text-[10px] text-fg-tertiary" style={{ top: yFor(b.startsAt), height: hFor(b.startsAt, b.endsAt) }} title={b.notes}>{b.notes}</div>)}
-                  {isToday && <div className="absolute inset-x-0 z-[5] h-px bg-error" style={{ top: yFor(new Date(now).toISOString()) }} />}
+                  {isToday && <div className="pointer-events-none absolute inset-x-0 z-[5] h-0.5 bg-[#e0218a] shadow-[0_0_0_1px_rgba(224,33,138,.25)]" style={{ top: yFor(new Date(now).toISOString()) }} aria-hidden="true" />}
                   {groups.map((g) => (
                     <a key={`g${g.id}`} data-appt href={g.clinikoUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="absolute inset-x-0.5 overflow-hidden rounded-md border-2 border-dashed px-1.5 py-0.5 text-left text-[11px] leading-tight" style={{ top: yFor(g.startsAt), height: hFor(g.startsAt, g.endsAt), borderColor: g.color ?? "#0081f2", background: `${g.color ?? "#0081f2"}22`, color: "var(--foreground)" }} title={g.notes}>
                       <div className="flex items-center gap-1 font-semibold"><Users className="size-3" />{g.typeName}</div>

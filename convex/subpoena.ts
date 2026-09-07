@@ -19,7 +19,7 @@ import { sha256Hex } from "./lib/crypto";
 export type PreviewMessage = { gmailMessageId: string; gmailThreadId: string; from: string; to: string; cc: string; date: number; subject: string; snippet: string; attachments: Array<{ attachmentId: string; filename: string; mime: string; size: number }>; direction: "in" | "out" };
 
 export const preview = action({
-  args: { matterId: v.optional(v.id("matters")), q: v.optional(v.string()), participants: v.optional(v.array(v.string())), from: v.optional(v.string()), to: v.optional(v.string()), tagIds: v.optional(v.array(v.id("tags"))) },
+  args: { matterId: v.optional(v.id("matters")), labelIds: v.optional(v.array(v.string())), q: v.optional(v.string()), participants: v.optional(v.array(v.string())), from: v.optional(v.string()), to: v.optional(v.string()), tagIds: v.optional(v.array(v.id("tags"))) },
   handler: async (ctx, a): Promise<{ messages: PreviewMessage[]; truncated: boolean }> => {
     const me = await ctx.runQuery(internal.googleData.meForAction, {});
     if (!me) throw new Error("Sign in first.");
@@ -37,9 +37,10 @@ export const preview = action({
     if (a.from) parts.push(`after:${a.from.replace(/-/g, "/")}`);
     if (a.to) parts.push(`before:${a.to.replace(/-/g, "/")}`);
     let truncated = false;
-    if (parts.length) {
+    // A Gmail folder (label) as the source: every thread carrying it, narrowed by whatever filters are set.
+    if (parts.length || a.labelIds?.length) {
       let pageToken: string | undefined; let pages = 0;
-      do { const r = await gmail.listThreadIds(token, { q: `${parts.join(" ")} -in:spam -in:trash`, pageToken, maxResults: 100 }); r.ids.forEach((id) => threadIds.add(id)); pageToken = r.nextPageToken; pages++; } while (pageToken && pages < 5);
+      do { const r = await gmail.listThreadIds(token, { q: `${parts.join(" ")} -in:spam -in:trash`.trim(), labelIds: a.labelIds?.length ? a.labelIds : undefined, pageToken, maxResults: 100 }); r.ids.forEach((id) => threadIds.add(id)); pageToken = r.nextPageToken; pages++; } while (pageToken && pages < 5);
       if (pageToken) truncated = true;
     }
     const ids = Array.from(threadIds).slice(0, 500);

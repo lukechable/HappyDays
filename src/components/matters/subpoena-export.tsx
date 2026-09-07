@@ -12,14 +12,24 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn, errorMessage } from "@/lib/utils";
+import { useLive } from "@/lib/hooks";
 import { when, bytes, TONE_CLASS } from "@/lib/format";
 
 /**
  * Subpoena export in three steps: filter, review with a checkbox against every message (and every attachment),
  * then export. Untick to exclude; the cover page records how many were reviewed and left out.
  */
-export function SubpoenaExport({ matterId, matterName, onClose }: { matterId?: Id<"matters">; matterName?: string; onClose: () => void }) {
+export function SubpoenaExport({ matterId: fixedMatterId, matterName, pickSource, onClose }: { matterId?: Id<"matters">; matterName?: string; /** Let the user pick the source: a known matter, or a Gmail folder. */ pickSource?: boolean; onClose: () => void }) {
   const preview = useAction(api.subpoena.preview);
+  const matters = useQuery(api.matters.list, pickSource ? { includeClosed: true } : "skip");
+  const labels = useLive(api.mail.labels, pickSource ? {} : "skip", { ttlMs: 300_000 });
+  const folders = (labels.data ?? []).filter((l) => l.type === "user" && !l.hidden).sort((a, b) => a.name.localeCompare(b.name));
+  const [sourceKind, setSourceKind] = useState<"matter" | "folder">("matter");
+  const [sourceId, setSourceId] = useState("");
+  const matterId = fixedMatterId ?? (pickSource && sourceKind === "matter" && sourceId ? (sourceId as Id<"matters">) : undefined);
+  const labelIds = pickSource && sourceKind === "folder" && sourceId ? [sourceId] : undefined;
+  const sourceName = fixedMatterId ? matterName : sourceKind === "matter" ? matters?.find((m) => m._id === sourceId)?.name : folders.find((l) => l.id === sourceId)?.name;
+  const pickSourceId = (id: string) => { setSourceId(id); const name = sourceKind === "matter" ? matters?.find((m) => m._id === id)?.name : folders.find((l) => l.id === id)?.name; setTitle((t) => (!t || t === sourceName ? name ?? "" : t)); };
   const run = useAction(api.subpoena.run);
   const tags = useQuery(api.tags.list);
   const [q, setQ] = useState("");
@@ -38,7 +48,7 @@ export function SubpoenaExport({ matterId, matterName, onClose }: { matterId?: I
 
   const doPreview = async () => {
     setBusy("preview"); setResult(null);
-    try { const r = await preview({ matterId, q: q || undefined, participants: participants.split(/[,\s;]+/).map((p) => p.trim()).filter(Boolean), from: from || undefined, to: to || undefined, tagIds: tagIds.length ? tagIds : undefined }); setRows(r.messages); setTruncated(r.truncated); setExcluded(new Set()); setExcludedAtt(new Set()); }
+    try { const r = await preview({ matterId, labelIds, q: q || undefined, participants: participants.split(/[,\s;]+/).map((p) => p.trim()).filter(Boolean), from: from || undefined, to: to || undefined, tagIds: tagIds.length ? tagIds : undefined }); setRows(r.messages); setTruncated(r.truncated); setExcluded(new Set()); setExcludedAtt(new Set()); }
     catch (e) { toast.error(errorMessage(e)); }
     finally { setBusy(null); }
   };
@@ -56,18 +66,32 @@ export function SubpoenaExport({ matterId, matterName, onClose }: { matterId?: I
     <div className="fixed inset-0 z-50 flex items-stretch justify-center bg-black/50 p-4 sm:p-8" onClick={onClose}>
       <div className="flex w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-background shadow-float" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Subpoena export">
         <div className="flex items-center gap-3 border-b border-border px-5 py-3">
-          <div><h2 className="font-display text-xl">Subpoena export</h2><p className="text-xs text-fg-tertiary">{matterName ? `Matter: ${matterName}. ` : ""}Find the conversations, untick what shouldn’t go, export one PDF plus an archive of originals.</p></div>
+          <div><h2 className="font-display text-xl">Subpoena export</h2><p className="text-xs text-fg-tertiary">{sourceName ? `${sourceKind === "folder" && !fixedMatterId ? "Folder" : "Matter"}: ${sourceName}. ` : ""}Find the conversations, untick what shouldn’t go, export one PDF plus an archive of originals.</p></div>
           <button type="button" onClick={onClose} className="ml-auto rounded p-1.5 hover:bg-muted" aria-label="Close"><X className="size-4" /></button>
         </div>
         <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[300px_minmax(0,1fr)]">
           <aside className="space-y-3 overflow-y-auto border-r border-border p-4 text-sm">
+            {pickSource && (
+              <div className="rounded-xl border border-border p-3">
+                <Label>Export from</Label>
+                <div className="mt-1 flex gap-0.5 rounded-full bg-muted p-0.5 text-xs">
+                  {(["matter", "folder"] as const).map((k) => <button key={k} type="button" onClick={() => { setSourceKind(k); setSourceId(""); }} className={cn("h-7 flex-1 rounded-full px-2.5", sourceKind === k ? "bg-card shadow-xs" : "text-fg-tertiary hover:text-foreground")}>{k === "matter" ? "A matter" : "A mail folder"}</button>)}
+                </div>
+                {sourceKind === "matter" ? (
+                  <select value={sourceId} onChange={(e) => pickSourceId(e.target.value)} className="mt-2 h-9 w-full rounded-lg border border-input bg-card px-2 text-sm" aria-label="Matter"><option value="">Choose a matter…</option>{(matters ?? []).map((m) => <option key={m._id} value={m._id}>{m.name}{m.status === "closed" ? " (closed)" : ""}</option>)}</select>
+                ) : (
+                  <select value={sourceId} onChange={(e) => pickSourceId(e.target.value)} className="mt-2 h-9 w-full rounded-lg border border-input bg-card px-2 text-sm" aria-label="Folder"><option value="">{labels.data ? "Choose a folder…" : "Loading folders…"}</option>{folders.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}</select>
+                )}
+                <p className="mt-1.5 text-[11px] text-fg-tertiary">{sourceKind === "matter" ? "Every email linked to the matter, plus whatever the filters below find." : "Every conversation in that folder, narrowed by the filters below."}</p>
+              </div>
+            )}
             <div><Label htmlFor="se-title">Export title</Label><Input id="se-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Smith & Jones — email production" /></div>
             <div><Label htmlFor="se-q">Keywords (Gmail syntax)</Label><Input id="se-q" value={q} onChange={(e) => setQ(e.target.value)} placeholder='"family report" OR subpoena' /></div>
             <div><Label htmlFor="se-p">People (emails)</Label><Input id="se-p" value={participants} onChange={(e) => setParticipants(e.target.value)} placeholder="solicitor@firm.com.au, jane@…" /></div>
             <div className="grid grid-cols-2 gap-2"><div><Label htmlFor="se-from">From date</Label><Input id="se-from" type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></div><div><Label htmlFor="se-to">To date</Label><Input id="se-to" type="date" value={to} onChange={(e) => setTo(e.target.value)} /></div></div>
             {tags && tags.length > 0 && <div><Label>Tagged</Label><div className="mt-1 flex flex-wrap gap-1">{tags.map((t) => { const on = tagIds.includes(t._id); return <button key={t._id} type="button" onClick={() => setTagIds(on ? tagIds.filter((x) => x !== t._id) : [...tagIds, t._id])} className={cn("rounded-full px-2 py-0.5 text-[11px]", on ? TONE_CLASS[t.color] : "bg-muted text-fg-tertiary")}>{t.name}</button>; })}</div></div>}
             <div><Label htmlFor="se-note">Note for the cover page</Label><Input id="se-note" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Produced in response to subpoena dated …" /></div>
-            <Button className="w-full" onClick={doPreview} disabled={busy !== null}>{busy === "preview" ? "Searching Gmail…" : rows ? "Search again" : "Find messages"}</Button>
+            <Button className="w-full" onClick={doPreview} disabled={busy !== null || (pickSource && !sourceId)}>{busy === "preview" ? "Searching Gmail…" : rows ? "Search again" : "Find messages"}</Button>
             {matterId && <p className="text-xs text-fg-tertiary">Emails already linked to this matter are always included in the search; filters add more.</p>}
           </aside>
           <section className="flex min-h-0 flex-col">
