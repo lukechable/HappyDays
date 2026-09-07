@@ -40,7 +40,7 @@ export function Prefetch({ me }: { me: Me }) {
   // Each page's opening queries, subscribed here with the same arguments the page uses, so its first visit renders
   // from the client cache. Convex pushes changes, so nothing goes stale.
   useQuery(api.tasks.lists); useQuery(api.tasks.list, { view: "all", listId: undefined, includeDone: false }); useQuery(api.tags.list); useQuery(api.users.all);
-  useQuery(api.matters.list, { includeClosed: false }); useQuery(api.matters.list, {}); useQuery(api.money.table); useQuery(api.money.transactions);
+  useQuery(api.matters.list, { includeClosed: false }); useQuery(api.matters.list, {}); useQuery(api.money.table); useQuery(api.money.transactions); useQuery(api.court.list, { kind: "affidavit" }); useQuery(api.court.list, { kind: "appearance" });
   useQuery(api.files.list, {}); useQuery(api.files.codes); useQuery(api.files.sends); useQuery(api.files.reports, { kind: "therapy" }); useQuery(api.files.reports, { kind: "family" }); useQuery(api.settings.all); useQuery(api.bookings.pricing); useQuery(api.signatures.list);
   // Cliniko reads for Patients and Payments; the slow invoice pull waits until the rest has settled.
   const [later, setLater] = useState(false);

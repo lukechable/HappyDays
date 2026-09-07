@@ -193,6 +193,22 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index("by_status", ["status"]).searchIndex("search_name", { searchField: "name" }),
 
+  /** Court Matters: affidavits solicitors have requested, and appearances to attend. One table, two kinds. */
+  courtItems: defineTable({
+    kind: v.union(v.literal("affidavit"), v.literal("appearance")),
+    title: v.string(),
+    matterId: v.optional(v.id("matters")),
+    /** Affidavit: the solicitor or firm asking. Appearance: the court. */
+    party: v.optional(v.string()),
+    /** Affidavit: when it is due. Appearance: when to be there. */
+    at: v.optional(v.number()),
+    status: v.string(),
+    notes: v.optional(v.string()),
+    createdBy: v.id("users"),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_kind", ["kind", "at"]).index("by_matter", ["matterId"]),
+
   matterLinks: defineTable({
     matterId: v.id("matters"),
     kind: v.union(v.literal("thread"), v.literal("task"), v.literal("file"), v.literal("invoice"), v.literal("appointment")),
