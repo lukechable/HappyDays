@@ -10,6 +10,7 @@ import { api } from "../../../convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { Empty, ErrorBox, Pill } from "@/components/primitives";
 import { useLive, useNow } from "@/lib/hooks";
+import { useCalendarWindow } from "./use-calendar-window";
 import { cn, errorMessage } from "@/lib/utils";
 import { time } from "@/lib/format";
 import { PatientSearch } from "./patient-search";
@@ -39,7 +40,7 @@ export function CalendarPage() {
   const rangeEnd = new Date(rangeStart); rangeEnd.setDate(rangeEnd.getDate() + (mode === "day" ? 1 : 7));
   const setup = useQuery(api.settings.setupStatus);
   const practice = useLive(api.bookings.practice, setup?.cliniko ? {} : "skip");
-  const live = useLive(api.bookings.calendar, setup?.cliniko ? { fromIso: rangeStart.toISOString(), toIso: rangeEnd.toISOString() } : "skip");
+  const live = useCalendarWindow(setup?.cliniko ? { fromIso: rangeStart.toISOString(), toIso: rangeEnd.toISOString() } : null);
   const reschedule = useAction(api.bookings.rescheduleAppointment);
   const cancel = useAction(api.bookings.cancelAppointment);
   const flags = useAction(api.bookings.updateAppointmentFlags);
@@ -94,7 +95,7 @@ export function CalendarPage() {
         <div className="ml-auto flex items-center gap-1 rounded-full bg-muted p-0.5">{(["day", "week"] as const).map((m) => <button key={m} type="button" onClick={() => setParams({ mode: m })} className={cn("h-7 rounded-full px-3 text-xs capitalize", mode === m ? "bg-card shadow-xs" : "text-fg-tertiary hover:text-foreground")}>{m}</button>)}</div>
         <PatientSearch onPick={(p) => router.push(`/bookings/patients/${p.id}`)} />
         <Button size="sm" onClick={() => setCreating({ startsAt: (() => { const d = new Date(now); d.setMinutes(0, 0, 0); d.setHours(d.getHours() + 1); return d; })(), practitionerId: (settings?.["cliniko.practitionerId"] as string | undefined) ?? practitioners[0]?.id })}><Plus className="size-3.5" />Book</Button>
-        <Button size="icon-sm" variant="ghost" aria-label="Refresh" onClick={() => live.reload()}><RefreshCw className={cn("size-3.5", live.loading && "animate-spin")} /></Button>
+        <Button size="icon-sm" variant="ghost" aria-label="Refresh" title={live.fetchedAt ? `Loaded ${new Date(live.fetchedAt).toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit" })}. Checks Cliniko for changes when you come back to a week.` : "Refresh"} onClick={() => live.reload()}><RefreshCw className={cn("size-3.5", (live.loading || live.checking) && "animate-spin")} /></Button>
       </div>
 
       {live.error ? <div className="p-6"><ErrorBox title="Couldn’t read the Cliniko calendar" message={live.error} retry={live.reload} /></div> : (

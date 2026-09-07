@@ -15,11 +15,14 @@ export const NAV: NavGroup[] = [
       { href: "/matters", label: "Matters", blurb: "Court matters: emails, tasks, files, invoices and subpoena export." },
     ],
   },
+  { label: "Work", items: [{ href: "/tasks", label: "Tasks", badge: "tasks", blurb: "Your lists, due today and this week, assigned to you." }] },
   {
-    label: "Work",
+    label: "Cliniko Link",
     items: [
-      { href: "/tasks", label: "Tasks", badge: "tasks", blurb: "Your lists, due today and this week, assigned to you." },
-      { href: "/bookings", label: "Bookings", blurb: "Cliniko calendar and patients, paid through Stripe." },
+      { href: "/bookings", label: "Bookings", exact: true, blurb: "The Cliniko calendar, read live. Drag to reschedule, click to book." },
+      { href: "/bookings/patients", label: "Patients", blurb: "Search Cliniko patients; open a record, its appointments and files." },
+      { href: "/bookings/appointment-types", label: "Appointment Types", blurb: "Every Cliniko appointment type with its colour, length and online price." },
+      { href: "/bookings/payments", label: "Payments", blurb: "Cliniko invoices and Stripe payments side by side." },
     ],
   },
   {
@@ -42,7 +45,7 @@ export function navItemFor(pathname: string, search: string): NavItem {
 }
 
 export function isActive(item: NavItem, pathname: string, search: string): boolean {
-  if (item.exact) return pathname === pathOf(item.href) && (!item.href.includes("?") ? !search.includes("view=") : true);
+  if (item.exact) return pathname === pathOf(item.href) && (item.href.includes("?") || !search.includes("view="));
   if (item.href.includes("?")) return `${pathname}${search}` === item.href || (`${pathname}${search}`).startsWith(item.href);
   return pathname === item.href || pathname.startsWith(item.href + "/");
 }
