@@ -32,7 +32,7 @@ export function SettingsPage() {
     if (g) router.replace("/settings?tab=google");
   }, [params, router]);
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <PageHeader title="Settings" blurb="Connections, pricing, signatures and tags. Secrets live on the Convex deployment, never in this page." />
       <div className="flex flex-wrap gap-1 border-b border-border">
         {TABS.map(([key, label]) => <button key={key} type="button" onClick={() => router.replace(`/settings?tab=${key}`)} className={cn("-mb-px border-b-2 px-3 py-2 text-sm", tab === key ? "border-foreground font-medium text-foreground" : "border-transparent text-fg-tertiary hover:text-foreground")}>{label}</button>)}

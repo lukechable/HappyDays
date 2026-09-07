@@ -4,7 +4,8 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useAction, useMutation, useQuery } from "convex/react";
-import { Download, Plus, RefreshCw, ExternalLink, FileText } from "lucide-react";
+import { Plus, RefreshCw, ExternalLink, FileText } from "lucide-react";
+import { ExportMenu } from "@/components/export/export-menu";
 import { toast } from "sonner";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
@@ -46,19 +47,18 @@ export function MoneyPage() {
     return [...r].sort((a, b) => (val(a) > val(b) ? 1 : val(a) < val(b) ? -1 : 0) * sort.dir);
   }, [data, flag, q, sort, matterFilter]);
 
-  const csv = () => {
-    const head = ["Invoice", "Client", "Email", "Matter", "Description", "Amount", "Status", "Invoiced", "Paid", "Report delivered", "Delivered via", "Days invoice→delivery"];
-    const lines = rows.map((r) => [r.number ?? r.stripeId, r.customerName ?? "", r.customerEmail ?? "", r.matter?.name ?? "", r.description ?? "", (r.amountCents / 100).toFixed(2), r.status, day(r.createdAt), r.paidAt ? day(r.paidAt) : "", r.deliveredAt ? day(r.deliveredAt) : "", r.deliveredVia ?? "", r.daysInvoiceToDelivery ?? ""].map((c) => `"${String(c).replace(/"/g, '""')}"`).join(","));
-    const blob = new Blob([[head.join(","), ...lines].join("\n")], { type: "text/csv" });
-    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `invoices-${new Date().toISOString().slice(0, 10)}.csv`; a.click(); URL.revokeObjectURL(a.href);
-  };
+  const exportTable = () => ({
+    title: "Invoices and reports", subtitle: `${flag === "all" ? "All invoices" : flag.replace(/_/g, " ")}${q ? ` · search “${q}”` : ""} · ${rows.length} rows`, filename: `invoices-${new Date().toISOString().slice(0, 10)}`,
+    columns: [{ key: "number", label: "Invoice" }, { key: "client", label: "Client" }, { key: "email", label: "Email" }, { key: "matter", label: "Matter" }, { key: "description", label: "Description" }, { key: "amount", label: "Amount", align: "right" as const }, { key: "status", label: "Status" }, { key: "invoiced", label: "Invoiced" }, { key: "paid", label: "Paid" }, { key: "delivered", label: "Report delivered" }, { key: "via", label: "Delivered via" }, { key: "days", label: "Days invoice→delivery", align: "right" as const }],
+    rows: rows.map((r) => ({ number: r.number ?? r.stripeId, client: r.customerName ?? "", email: r.customerEmail ?? "", matter: r.matter?.name ?? "", description: r.description ?? "", amount: (r.amountCents / 100).toFixed(2), status: r.status, invoiced: day(r.createdAt), paid: r.paidAt ? day(r.paidAt) : "", delivered: r.deliveredAt ? day(r.deliveredAt) : "", via: r.deliveredVia ?? "", days: r.daysInvoiceToDelivery ?? "" })),
+  });
   const th = (label: string, key: SortKey) => <th><button type="button" onClick={() => setSort((s) => ({ key, dir: s.key === key ? (s.dir === 1 ? -1 : 1) : -1 }))} className={cn("uppercase", sort.key === key && "text-foreground")}>{label}{sort.key === key ? (sort.dir === 1 ? " ↑" : " ↓") : ""}</button></th>;
 
   return (
-    <div className="space-y-6">
-      <PageHeader title="Invoices & reports" blurb="Every Stripe invoice next to whether the written report has gone out. Raise report invoices here; bookings pay through Stripe Checkout on their own." actions={<><Button variant="outline" disabled={!setup?.stripe || busy} onClick={async () => { setBusy(true); try { const r = await backfill({}); toast.success(`Refreshed ${r.count} records from Stripe`); } catch (e) { toast.error(errorMessage(e)); } finally { setBusy(false); } }}><RefreshCw className={cn("size-3.5", busy && "animate-spin")} />Sync Stripe</Button><Button variant="outline" onClick={csv} disabled={!rows.length}><Download className="size-3.5" />CSV</Button><Button onClick={() => setCreating(true)} disabled={!setup?.stripe}><Plus className="size-3.5" />New invoice</Button></>} />
+    <div className="space-y-5">
+      <PageHeader title="Invoices & reports" blurb="Every Stripe invoice next to whether the written report has gone out. Raise report invoices here; bookings pay through Stripe Checkout on their own." actions={<><Button variant="outline" disabled={!setup?.stripe || busy} onClick={async () => { setBusy(true); try { const r = await backfill({}); toast.success(`Refreshed ${r.count} records from Stripe`); } catch (e) { toast.error(errorMessage(e)); } finally { setBusy(false); } }}><RefreshCw className={cn("size-3.5", busy && "animate-spin")} />Sync Stripe</Button><ExportMenu table={exportTable} disabled={!rows.length} /><Button onClick={() => setCreating(true)} disabled={!setup?.stripe}><Plus className="size-3.5" />New invoice</Button></>} />
       {setup && !setup.stripe && <p className="rounded-2xl bg-warning-soft px-4 py-3 text-sm">Stripe isn’t connected. Set STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET on the Convex deployment, then Sync.</p>}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
         <Kpi label="Paid, report not delivered" value={data?.counts.paidNotDelivered ?? "…"} tone={(data?.counts.paidNotDelivered ?? 0) > 0 ? "warn" : undefined} sub="the client is waiting" />
         <Kpi label="Delivered, unpaid" value={data?.counts.deliveredUnpaid ?? "…"} tone={(data?.counts.deliveredUnpaid ?? 0) > 0 ? "bad" : undefined} sub="chase these" />
         <Kpi label="Outstanding" value={data ? aud(data.counts.outstandingCents, { whole: true }) : "…"} sub="open invoices" />

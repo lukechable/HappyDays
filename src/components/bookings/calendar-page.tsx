@@ -92,7 +92,7 @@ export function CalendarPage() {
   if (setup && !setup.cliniko) return <div className="p-8"><Empty title="Cliniko isn’t connected" body="Add CLINIKO_API_KEY on the Convex deployment and the calendar appears here, read live." action={<Button render={<Link href="/settings?tab=cliniko" />}>Settings</Button>} /></div>;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col lg:h-[calc(100svh-56px)]">
+    <div className="flex min-h-0 flex-1 flex-col lg:h-[calc(100svh-48px)]">
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-3 py-2">
         <Button size="sm" variant="outline" onClick={() => setParams({ d: String(startOfDay(now).getTime()) })}>Today</Button>
         <div className="flex items-center"><Button size="icon-sm" variant="ghost" aria-label="Previous" onClick={() => { const d = new Date(rangeStart); d.setDate(d.getDate() - (mode === "day" ? 1 : 7)); setParams({ d: String(d.getTime()) }); }}><ChevronLeft className="size-4" /></Button><Button size="icon-sm" variant="ghost" aria-label="Next" onClick={() => { const d = new Date(rangeStart); d.setDate(d.getDate() + (mode === "day" ? 1 : 7)); setParams({ d: String(d.getTime()) }); }}><ChevronRight className="size-4" /></Button></div>

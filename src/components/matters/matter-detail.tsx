@@ -30,7 +30,7 @@ export function MatterDetail({ id }: { id: Id<"matters"> }) {
   if (m === null) return <Empty title="Matter not found" action={<Button render={<Link href="/matters" />}>All matters</Button>} />;
   const startEdit = () => { setForm({ name: m.name, courtFileNo: m.courtFileNo ?? "", court: m.court ?? "", parties: m.parties.join("; "), notes: m.notes ?? "", patients: m.clinikoPatientIds.join(", ") }); setEditing(true); };
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <PageHeader title={m.name} blurb={[m.courtFileNo, m.court].filter(Boolean).join(" · ") || undefined} meta={<span className="inline-flex items-center gap-2"><Pill tone={statusTone(m.status)}>{m.status.replace("_", " ")}</Pill>{m.reportDeliveredAt && <span>Report delivered {day(m.reportDeliveredAt)} via {m.reportDeliveredVia}{m.deliveredBy ? ` by ${m.deliveredBy}` : ""}</span>}</span>}
         actions={<>
           <select value={m.status} onChange={(e) => setStatus({ id, status: e.target.value as "open" | "report_due" | "delivered" | "closed" })} className="h-8 rounded-lg border border-input bg-card px-2 text-sm"><option value="open">Open</option><option value="report_due">Report due</option><option value="delivered">Delivered</option><option value="closed">Closed</option></select>
@@ -53,7 +53,7 @@ export function MatterDetail({ id }: { id: Id<"matters"> }) {
         </Panel>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid gap-3 lg:grid-cols-3">
         <Panel title="Details" dense>
           <Facts items={[["Parties", m.parties.length ? m.parties.join("; ") : "—"], ["Cliniko patients", m.clinikoPatientIds.length ? m.clinikoPatientIds.map((p) => <Link key={p} href={`/bookings/patients/${p}`} className="mr-2 underline">#{p}</Link>) : "—"], ["Cliniko cases", (m.clinikoCases ?? []).length ? (m.clinikoCases ?? []).map((c) => <span key={c.caseId} className="mr-2">{c.name}</span>) : "—"], ["Notes", m.notes ? <span className="whitespace-pre-wrap">{m.notes}</span> : "—"], ["Updated", ago(m.updatedAt)]]} />
           {m.clinikoPatientIds.filter((p) => !(m.clinikoCases ?? []).some((c) => c.patientId === p)).length > 0 && (
@@ -75,7 +75,7 @@ export function MatterDetail({ id }: { id: Id<"matters"> }) {
         </Panel>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-3 lg:grid-cols-2">
         <Panel title={`Emails (${m.threads.length})`} blurb="Linked from Mail with the Matter button." dense>
           {m.threads.length === 0 ? <p className="text-sm text-fg-tertiary">Nothing linked yet.</p> : (
             <ul className="divide-y divide-border/70">{m.threads.map((t) => <li key={t.threadId} className="py-1.5 text-sm">{t.gmailThreadId ? <Link href={`/mail?thread=${t.gmailThreadId}`} className="hover:underline">{t.subject}</Link> : <span title="Not in your mailbox">{t.subject}</span>}<div className="flex gap-2 text-xs text-fg-tertiary"><span>{mailDate(t.lastMessageAt)}</span>{t.repliedBy.length > 0 && <span className="text-success">{t.repliedBy.join(", ")} replied</span>}</div></li>)}</ul>

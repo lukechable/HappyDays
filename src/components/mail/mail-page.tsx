@@ -209,7 +209,7 @@ export function MailPage() {
   const selectedIds = checked.size ? Array.from(checked) : selectedId ? [selectedId] : [];
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col lg:h-[calc(100svh-56px)]">
+    <div className="flex min-h-0 flex-1 flex-col lg:h-[calc(100svh-48px)]">
       <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
         <Button size="sm" onClick={() => setCompose({ mode: "new", to: [], cc: [], bcc: [], subject: "", html: "" })}><PenSquare className="size-3.5" />Compose</Button>
         <form className="relative min-w-0 flex-1 max-w-xl" onSubmit={(e) => { e.preventDefault(); if (searchText.trim()) setParams({ view: "search", q: searchText.trim(), thread: undefined, label: undefined }); else setParams({ view: "inbox", q: undefined }); }}>

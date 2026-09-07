@@ -33,7 +33,7 @@ export function Dashboard() {
   const reportDue = (matters ?? []).filter((m) => m.status === "report_due");
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <PageHeader title={greeting(me?.first, now)} blurb={today.toLocaleDateString("en-AU", { weekday: "long", day: "numeric", month: "long" })} actions={<Button variant="outline" render={<Link href="/mail?view=overdue" />}>Overdue mail</Button>} />
 
       {me && !me.google && (
@@ -43,19 +43,19 @@ export function Dashboard() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
         <Kpi label="Appointments today" value={appts === undefined ? "…" : appts === null ? "—" : appts.filter((a) => !a.cancelledAt).length} sub={appts === null ? (apptError ? "Cliniko error" : "Cliniko not connected") : "from Cliniko"} href="/bookings" />
         <Kpi label="Overdue mail" value={me?.badges.overdue ?? 0} tone={(me?.badges.overdue ?? 0) > 0 ? "bad" : undefined} sub="both of you on it, nobody replied" href="/mail?view=overdue" />
         <Kpi label="Tasks due today" value={dueToday.length} tone={overdueTasks.length ? "warn" : undefined} sub={overdueTasks.length ? `${overdueTasks.length} overdue` : "nothing overdue"} href="/tasks?view=today" />
         <Kpi label="Paid, report not delivered" value={money?.counts.paidNotDelivered ?? 0} tone={(money?.counts.paidNotDelivered ?? 0) > 0 ? "warn" : undefined} sub={money ? `${aud(money.counts.outstandingCents, { whole: true })} outstanding` : "…"} href="/money" />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[3fr_2fr]">
+      <div className="grid gap-3 lg:grid-cols-[3fr_2fr]">
         <Panel title="Today's appointments" blurb="Live from Cliniko. Click one to open it there." actions={<Button variant="ghost" size="sm" render={<Link href="/bookings" />}>Calendar</Button>}>
           {appts === undefined ? <Loading rows={3} /> : apptError ? <ErrorBox title="Couldn't reach Cliniko" message={apptError} /> : appts === null ? <Empty title="Cliniko isn’t connected" body="Add the API key in Settings and today's list appears here." action={<Button size="sm" variant="outline" render={<Link href="/settings#cliniko" />}>Settings</Button>} /> : appts.length === 0 ? <Empty title="No appointments today" /> : (
             <ul className="divide-y divide-border/70">
               {appts.map((a) => (
-                <li key={a.id} className="flex items-center gap-3 py-2.5">
+                <li key={a.id} className="flex items-center gap-3 py-1.5">
                   <span className="num w-[52px] shrink-0 text-sm text-fg-secondary">{time(a.startsAt)}</span>
                   <span className="size-2.5 shrink-0 rounded-full" style={{ background: a.color ?? "#0081f2" }} aria-hidden />
                   <div className="min-w-0 flex-1">
@@ -69,7 +69,7 @@ export function Dashboard() {
           )}
         </Panel>
 
-        <div className="space-y-4">
+        <div className="space-y-3">
           <Panel title="Overdue mail" blurb="Threads both of you were on, last message inbound, no reply." dense>
             {overdue === undefined ? <Loading rows={2} /> : overdue.length === 0 ? <p className="py-3 text-center text-sm text-fg-tertiary">Nothing overdue.</p> : (
               <ul className="divide-y divide-border/70">

@@ -8,25 +8,25 @@ import { cn } from "@/lib/utils";
 
 export function PageHeader({ title, blurb, actions, meta }: { title: string; blurb?: string; actions?: ReactNode; meta?: ReactNode }) {
   return (
-    <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+    <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2">
       <div className="min-w-0">
-        <h1 className="font-display text-[26px] leading-tight tracking-[-0.01em] sm:text-[30px]">{title}</h1>
-        {blurb && <p className="mt-1.5 max-w-2xl text-sm text-fg-secondary">{blurb}</p>}
-        {meta && <div className="mt-2 text-xs text-fg-tertiary">{meta}</div>}
+        <h1 className="font-display text-[22px] leading-tight tracking-[-0.01em] sm:text-[24px]">{title}</h1>
+        {blurb && <p className="mt-1 max-w-xl text-[13px] leading-snug text-fg-secondary">{blurb}</p>}
+        {meta && <div className="mt-1.5 text-xs text-fg-tertiary">{meta}</div>}
       </div>
-      {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
+      {actions && <div className="flex shrink-0 flex-wrap items-center gap-1.5 sm:pt-0.5">{actions}</div>}
     </div>
   );
 }
 
 export function Panel({ title, blurb, actions, children, className, dense }: { title?: ReactNode; blurb?: string; actions?: ReactNode; children: ReactNode; className?: string; dense?: boolean }) {
   return (
-    <section className={cn("min-w-0 rounded-2xl bg-card ring-1 ring-black/[0.06] dark:ring-white/10", dense ? "p-4" : "p-5", className)}>
+    <section className={cn("min-w-0 rounded-xl bg-card ring-1 ring-black/[0.06] dark:ring-white/10", dense ? "p-3" : "p-4", className)}>
       {(title || actions) && (
-        <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+        <div className="mb-2.5 flex flex-wrap items-start justify-between gap-2">
           <div className="min-w-0">
-            {title && <h2 className="text-[15px] font-semibold leading-snug">{title}</h2>}
-            {blurb && <p className="mt-0.5 text-xs text-fg-tertiary">{blurb}</p>}
+            {title && <h2 className="text-[13.5px] font-semibold leading-snug">{title}</h2>}
+            {blurb && <p className="mt-0.5 text-xs leading-snug text-fg-tertiary">{blurb}</p>}
           </div>
           {actions && <div className="flex shrink-0 items-center gap-1.5">{actions}</div>}
         </div>
@@ -44,13 +44,13 @@ export function Eyebrow({ children, className }: { children: ReactNode; classNam
 
 export function Kpi({ label, value, sub, tone, href, className }: { label: string; value: ReactNode; sub?: ReactNode; tone?: "good" | "warn" | "bad"; href?: string; className?: string }) {
   const body = (
-    <div className={cn("min-w-0 rounded-2xl bg-card p-4 ring-1 ring-black/[0.06] dark:ring-white/10", href && "transition-shadow hover:shadow-sm", className)}>
-      <div className="truncate text-xs text-fg-tertiary">{label}</div>
-      <div className={cn("num mt-1.5 truncate text-[26px] font-semibold leading-none tracking-tight", tone === "good" && "text-success", tone === "warn" && "text-warning", tone === "bad" && "text-error")}>{value}</div>
-      {sub && <div className="mt-2 min-h-4 text-xs text-fg-tertiary">{sub}</div>}
+    <div className={cn("min-w-0 rounded-xl bg-card px-3.5 py-3 ring-1 ring-black/[0.06] dark:ring-white/10", href && "transition-shadow hover:shadow-sm", className)}>
+      <div className="truncate text-[11.5px] text-fg-tertiary">{label}</div>
+      <div className={cn("num mt-1 truncate text-[22px] font-semibold leading-none tracking-tight", tone === "good" && "text-success", tone === "warn" && "text-warning", tone === "bad" && "text-error")}>{value}</div>
+      {sub && <div className="mt-1.5 min-h-4 truncate text-[11.5px] text-fg-tertiary">{sub}</div>}
     </div>
   );
-  return href ? <Link href={href} className="block min-w-0 rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-ring">{body}</Link> : body;
+  return href ? <Link href={href} className="block min-w-0 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring">{body}</Link> : body;
 }
 
 /* --------------------------------- status --------------------------------- */
@@ -87,21 +87,21 @@ export const statusLabel = (s: string | undefined) => (s ?? "").replace(/_/g, " 
 export function DataTable({ head, children, empty, emptyText, className, minWidth = 640 }: { head: ReactNode; children: ReactNode; empty?: boolean; emptyText?: string; className?: string; minWidth?: number }) {
   return (
     <div className={cn("-mx-1 overflow-x-auto", className)}>
-      <table className="w-full border-separate border-spacing-0 text-sm" style={{ minWidth }}>
-        <thead><tr className="text-left text-[11px] font-semibold uppercase tracking-wider text-fg-tertiary [&>th]:border-b [&>th]:border-border [&>th]:px-2 [&>th]:pb-2">{head}</tr></thead>
-        <tbody className="[&>tr>td]:border-b [&>tr>td]:border-border/70 [&>tr>td]:px-2 [&>tr>td]:py-2 [&>tr>td]:align-top [&>tr:last-child>td]:border-0">{children}</tbody>
+      <table className="w-full border-separate border-spacing-0 text-[13px]" style={{ minWidth }}>
+        <thead><tr className="text-left text-[10.5px] font-semibold uppercase tracking-[0.08em] text-fg-tertiary [&>th]:border-b [&>th]:border-border [&>th]:px-2 [&>th]:pb-1.5 [&>th]:whitespace-nowrap">{head}</tr></thead>
+        <tbody className="[&>tr>td]:border-b [&>tr>td]:border-border/60 [&>tr>td]:px-2 [&>tr>td]:py-1.5 [&>tr>td]:align-middle [&>tr:last-child>td]:border-0">{children}</tbody>
       </table>
-      {empty && <div className="px-2 py-8 text-center text-sm text-fg-tertiary">{emptyText ?? "Nothing here."}</div>}
+      {empty && <div className="px-2 py-6 text-center text-[13px] text-fg-tertiary">{emptyText ?? "Nothing here."}</div>}
     </div>
   );
 }
 
 export function Empty({ title, body, action, className }: { title: string; body?: string; action?: ReactNode; className?: string }) {
   return (
-    <div className={cn("rounded-2xl border border-dashed border-border px-6 py-10 text-center", className)}>
-      <p className="text-sm font-medium">{title}</p>
-      {body && <p className="mx-auto mt-1 max-w-md text-sm text-fg-tertiary">{body}</p>}
-      {action && <div className="mt-4 flex justify-center">{action}</div>}
+    <div className={cn("rounded-xl border border-dashed border-border px-5 py-7 text-center", className)}>
+      <p className="text-[13px] font-medium">{title}</p>
+      {body && <p className="mx-auto mt-1 max-w-md text-[13px] leading-snug text-fg-tertiary">{body}</p>}
+      {action && <div className="mt-3 flex justify-center">{action}</div>}
     </div>
   );
 }
@@ -113,7 +113,7 @@ export function Loading({ rows = 3, className }: { rows?: number; className?: st
 /** Key/value pairs in two columns, for detail panels. */
 export function Facts({ items, className }: { items: Array<[string, ReactNode]>; className?: string }) {
   return (
-    <dl className={cn("grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm", className)}>
+    <dl className={cn("grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[13px]", className)}>
       {items.map(([k, val]) => (<div key={k} className="contents"><dt className="text-fg-tertiary">{k}</dt><dd className="min-w-0 break-words">{val ?? "—"}</dd></div>))}
     </dl>
   );
