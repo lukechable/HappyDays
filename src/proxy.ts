@@ -1,16 +1,24 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import { NextResponse, type NextRequest } from "next/server";
 
 /**
  * Everything is staff-only except the public surfaces: online booking, download codes, signing links,
  * the health check and the Stripe/Google callbacks that carry their own verification.
+ * Until Clerk keys are configured the proxy passes everything through so the deployment can show its setup page.
  */
 const isPublic = createRouteMatcher(["/signin(.*)", "/book(.*)", "/d(.*)", "/sign(.*)", "/api/health", "/api/d(.*)", "/api/sign(.*)"]);
+const clerkConfigured = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && !!process.env.CLERK_SECRET_KEY;
 
-export default clerkMiddleware(async (auth, request) => {
+const withClerk = clerkMiddleware(async (auth, request) => {
   if (isPublic(request)) return;
   const { userId, redirectToSignIn } = await auth();
   if (!userId) return redirectToSignIn({ returnBackUrl: publicUrl(request.url, request.headers) });
 });
+
+export default function proxy(request: NextRequest, event: Parameters<typeof withClerk>[1]) {
+  if (!clerkConfigured) return NextResponse.next();
+  return withClerk(request, event);
+}
 
 /** Behind Railway the request URL is the container's; build the browser-facing one for redirects. */
 function publicUrl(url: string, headers: Headers): string {
