@@ -93,6 +93,9 @@ export const listAppointments = (fromIso: string, toIso: string, practitionerId?
 export const getAppointment = (id: string) => call<Appointment>(`/individual_appointments/${id}`);
 export const availableTimes = (businessId: string, practitionerId: string, appointmentTypeId: string, from: string, to: string) => all<AvailableTime>(`/businesses/${businessId}/practitioners/${practitionerId}/appointment_types/${appointmentTypeId}/available_times?from=${from}&to=${to}`, "available_times", 500);
 export const availabilityBlocks = (fromIso: string, toIso: string) => all<AvailabilityBlock>(`/availability_blocks?q[]=starts_at:>=${fromIso}&q[]=starts_at:<${toIso}`, "availability_blocks", 500);
+/** Regular weekly hours per practitioner (Cliniko's Daily Availabilities): day_of_week 0 = Sunday, times are local "HH:MM". */
+export type DailyAvailability = { id: string; day_of_week: number; availabilities: Array<{ starts_at: string; ends_at: string }>; time_zone_identifier?: string; practitioner?: { links: { self: string } }; business?: { links: { self: string } } };
+export const dailyAvailabilities = () => all<DailyAvailability>(`/daily_availabilities`, "daily_availabilities", 200);
 export const unavailableBlocks = (fromIso: string, toIso: string) => all<UnavailableBlock>(`/unavailable_blocks?q[]=starts_at:>=${fromIso}&q[]=starts_at:<${toIso}`, "unavailable_blocks", 500);
 export const recentPatients = (limit = 50) => call<{ patients: Patient[] }>(`/patients?per_page=${limit}&sort=updated_at:desc`).then((r) => r.patients);
 export const listInvoices = (sinceDate: string) => all<Invoice>(`/invoices?q[]=issue_date:>=${sinceDate}&sort=issue_date:desc`, "invoices", 300);

@@ -36,7 +36,7 @@ export const calendar = action({
   args: { fromIso: v.string(), toIso: v.string(), practitionerId: v.optional(v.string()) },
   handler: async (ctx, { fromIso, toIso, practitionerId }) => {
     await ctx.runQuery(internal.bookings.requireStaff, {});
-    const [appointments, availability, unavailable, ref, groups] = await Promise.all([cliniko.listAppointments(fromIso, toIso, practitionerId), cliniko.availabilityBlocks(fromIso, toIso), cliniko.unavailableBlocks(fromIso, toIso), refData(ctx), cliniko.groupAppointments(fromIso, toIso).catch(() => [] as cliniko.GroupAppointment[])]);
+    const [appointments, availability, unavailable, ref, groups, daily] = await Promise.all([cliniko.listAppointments(fromIso, toIso, practitionerId), cliniko.availabilityBlocks(fromIso, toIso), cliniko.unavailableBlocks(fromIso, toIso), refData(ctx), cliniko.groupAppointments(fromIso, toIso).catch(() => [] as cliniko.GroupAppointment[]), cliniko.dailyAvailabilities().catch(() => [] as cliniko.DailyAvailability[])]);
     const { types, practitioners } = ref;
     const attendeeCounts = new Map<string, number>();
     await Promise.all(groups.filter((g) => !g.deleted_at).slice(0, 30).map(async (g) => { try { attendeeCounts.set(g.id, await cliniko.attendeeCount(g.id)); } catch { /* fine */ } }));
@@ -55,6 +55,8 @@ export const calendar = action({
       }),
       groups: groups.filter((g) => !g.deleted_at).map((g) => { const t = typeById.get(cliniko.idFromLink(g.appointment_type) ?? ""); const p = pracById.get(cliniko.idFromLink(g.practitioner) ?? ""); return { id: g.id, startsAt: g.starts_at, endsAt: g.ends_at, notes: g.notes, typeName: t?.name ?? "Group", color: t?.color, practitionerId: p?.id, practitionerName: p ? `${p.first_name} ${p.last_name}` : "", attendees: attendeeCounts.get(g.id), maxAttendees: g.max_attendees, clinikoUrl: cliniko.clinikoWebUrl(`/appointments/${g.id}`) }; }),
       availability: availability.filter((b) => !b.deleted_at).map((b) => ({ id: b.id, startsAt: b.starts_at, endsAt: b.ends_at, practitionerId: cliniko.idFromLink(b.practitioner) })),
+      // Regular hours (what Cliniko paints white on an otherwise grey day), for active practitioners only.
+      weeklyHours: daily.filter((d) => { const id = cliniko.idFromLink(d.practitioner); return id && pracById.get(id)?.active !== false && practitioners.some((p) => p.id === id); }).flatMap((d) => d.availabilities.map((a) => ({ practitionerId: cliniko.idFromLink(d.practitioner)!, dayOfWeek: d.day_of_week, startsAt: a.starts_at, endsAt: a.ends_at }))),
       unavailable: unavailable.filter((b) => !b.deleted_at).map((b) => ({ id: b.id, startsAt: b.starts_at, endsAt: b.ends_at, notes: b.notes, practitionerId: cliniko.idFromLink(b.practitioner) })),
     };
   },
