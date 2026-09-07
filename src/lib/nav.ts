@@ -1,4 +1,8 @@
-/** Rail navigation. Badges are keyed to `users.me().badges`. Blurbs double as ⌘K subtitles. */
+/**
+ * Rail navigation. Badges are keyed to `users.me().badges`. Blurbs double as ⌘K subtitles.
+ * Query values are written the way URLSearchParams serialises them (":" as %3A) so `isActive` and the router's
+ * prefetch cache see the same string as the address bar.
+ */
 export type NavItem = { href: string; label: string; badge?: "assigned" | "tasks" | "overdue" | "notifications" | "paidNotDelivered"; blurb: string; exact?: boolean };
 export type NavGroup = { label: string; items: NavItem[] };
 
@@ -9,7 +13,7 @@ export const NAV: NavGroup[] = [
     items: [
       { href: "/mail", label: "Inbox", exact: true, blurb: "Your Gmail inbox, newest first." },
       { href: "/mail?view=unread", label: "Unread", blurb: "Only what you haven't read." },
-      { href: "/mail?view=smart:primary", label: "Smart", blurb: "Primary, newsletters, notifications and social, separated." },
+      { href: "/mail?view=smart%3Aprimary", label: "Smart", blurb: "Primary, newsletters, notifications and social, separated." },
       { href: "/mail?view=overdue", label: "Overdue", badge: "overdue", blurb: "Threads both of you are on that nobody has answered." },
       { href: "/mail?view=assigned", label: "Assigned to me", badge: "assigned", blurb: "Follow-ups the other person handed you." },
       { href: "/matters", label: "Matters", blurb: "Court matters: emails, tasks, files, invoices and subpoena export." },
