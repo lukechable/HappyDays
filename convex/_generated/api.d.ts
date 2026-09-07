@@ -18,6 +18,7 @@ import type * as google from "../google.js";
 import type * as googleData from "../googleData.js";
 import type * as guest from "../guest.js";
 import type * as http from "../http.js";
+import type * as labelRules from "../labelRules.js";
 import type * as lib_audit from "../lib/audit.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_cliniko from "../lib/cliniko.js";
@@ -54,6 +55,7 @@ declare const fullApi: ApiFromModules<{
   googleData: typeof googleData;
   guest: typeof guest;
   http: typeof http;
+  labelRules: typeof labelRules;
   "lib/audit": typeof lib_audit;
   "lib/auth": typeof lib_auth;
   "lib/cliniko": typeof lib_cliniko;

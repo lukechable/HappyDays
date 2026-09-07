@@ -141,6 +141,28 @@ export default defineSchema({
     createdBy: v.id("users"),
   }).index("by_order", ["order"]),
 
+  /** Folder filing rules. Learned from where staff file mail (sender, sender's domain, matter) or set by hand. Only ever adds Gmail labels. */
+  labelRules: defineTable({
+    accountId: v.id("googleAccounts"),
+    kind: v.union(v.literal("sender"), v.literal("domain"), v.literal("matter"), v.literal("subject")),
+    value: v.string(),
+    labelId: v.string(),
+    labelName: v.string(),
+    count: v.number(),
+    lastAt: v.number(),
+    enabled: v.boolean(),
+    source: v.union(v.literal("learned"), v.literal("manual")),
+  }).index("by_account_kind_value", ["accountId", "kind", "value"]).index("by_account", ["accountId", "lastAt"]),
+
+  labelRuleLog: defineTable({
+    ruleId: v.id("labelRules"),
+    threadId: v.id("threads"),
+    accountId: v.id("googleAccounts"),
+    labelId: v.string(),
+    labelName: v.string(),
+    at: v.number(),
+  }).index("by_thread", ["threadId"]).index("by_rule", ["ruleId"]),
+
   autoReplyLog: defineTable({
     ruleId: v.id("autoReplyRules"),
     threadId: v.id("threads"),

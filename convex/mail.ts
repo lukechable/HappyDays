@@ -8,6 +8,7 @@ import { audit } from "./lib/audit";
 import { notify } from "./notifications";
 import { accessTokenFor } from "./google";
 import * as gmail from "./lib/gmail";
+import { userLabelIds } from "./labelRules";
 import type { GmailMessage, GmailThread } from "./lib/gmail";
 
 /* ------------------------------------------------------------------ */
@@ -272,7 +273,20 @@ export const renameLabel = action({
 });
 export const deleteLabel = action({
   args: { id: v.string() },
-  handler: async (ctx, { id }) => { const { token } = await myAccount(ctx); await gmail.deleteLabel(token, id); },
+  handler: async (ctx, { id }) => { const { token, account } = await myAccount(ctx); await gmail.deleteLabel(token, id); await ctx.runMutation(internal.labelRules.dropLabel, { accountId: account._id, labelId: id }); },
+});
+/** Rename and/or recolour a folder. Gmail only accepts colours from its own palette; the client offers that set. */
+export const updateLabel = action({
+  args: { id: v.string(), name: v.optional(v.string()), color: v.optional(v.union(v.null(), v.object({ textColor: v.string(), backgroundColor: v.string() }))) },
+  handler: async (ctx, { id, name, color }) => {
+    const { token, account } = await myAccount(ctx);
+    const patch: { name?: string; color?: { textColor: string; backgroundColor: string } | null } = {};
+    if (name !== undefined) { if (!name.trim()) throw new Error("Folder needs a name."); patch.name = name.trim(); }
+    if (color !== undefined) patch.color = color;
+    const l = await gmail.updateLabel(token, id, patch);
+    if (patch.name) await ctx.runMutation(internal.labelRules.renameLabel, { accountId: account._id, labelId: id, name: l.name });
+    return { id: l.id, name: l.name, color: l.color };
+  },
 });
 
 /* ------------------------------------------------------------------ */
@@ -282,12 +296,19 @@ export const deleteLabel = action({
 export const modify = action({
   args: { gmailThreadIds: v.array(v.string()), add: v.optional(v.array(v.string())), remove: v.optional(v.array(v.string())), op: v.optional(v.union(v.literal("trash"), v.literal("untrash"), v.literal("deleteForever"))) },
   handler: async (ctx, { gmailThreadIds, add = [], remove = [], op }) => {
-    const { token } = await myAccount(ctx);
+    const { token, account } = await myAccount(ctx);
     for (const id of gmailThreadIds) {
       if (op === "trash") await gmail.trashThread(token, id);
       else if (op === "untrash") await gmail.untrashThread(token, id);
       else if (op === "deleteForever") await gmail.deleteThreadForever(token, id);
       else if (add.length || remove.length) await gmail.modifyThread(token, id, add, remove);
+    }
+    // Filing into a folder (or taking it back out) teaches the folder rules.
+    const userAdd = userLabelIds(add);
+    const userRemove = userLabelIds(remove);
+    if (!op && (userAdd.length || userRemove.length)) {
+      const named = await Promise.all(userAdd.map((id) => gmail.getLabel(token, id).then((l) => ({ id, name: l.name })).catch(() => ({ id, name: id }))));
+      await ctx.runMutation(internal.labelRules.learn, { accountId: account._id, gmailThreadIds, add: named, remove: userRemove });
     }
   },
 });
@@ -559,6 +580,7 @@ export type ThreadMeta = {
   suggestedTags: Array<{ _id: Id<"tags">; name: string; color: Doc<"tags">["color"] }>;
   repliedBy: Array<{ userId?: Id<"users">; email: string; first: string }>;
   autoReplied: boolean;
+  autoFiled: Array<{ labelId: string; labelName: string }>;
   rescheduled: boolean;
   rescheduleRequested: boolean;
   assignedTo?: { userId: Id<"users">; first: string };
@@ -590,12 +612,12 @@ export const meta = query({
       const lk = await ctx.db.query("threadLookup").withIndex("by_account_gmail", (q) => q.eq("accountId", account._id).eq("gmailThreadId", gid)).unique();
       const t = lk ? await ctx.db.get(lk.threadId) : null;
       if (!t) return null;
-      const [matter, tasks] = await Promise.all([t.matterId ? ctx.db.get(t.matterId) : Promise.resolve(null), ctx.db.query("tasks").withIndex("by_thread", (q) => q.eq("sourceThreadId", t._id)).collect()]);
-      return { gid, t, matter, tasks };
+      const [matter, tasks, filed] = await Promise.all([t.matterId ? ctx.db.get(t.matterId) : Promise.resolve(null), ctx.db.query("tasks").withIndex("by_thread", (q) => q.eq("sourceThreadId", t._id)).collect(), ctx.db.query("labelRuleLog").withIndex("by_thread", (q) => q.eq("threadId", t._id)).collect()]);
+      return { gid, t, matter, tasks, filed };
     }));
     for (const r of resolved) {
       if (!r) continue;
-      const { gid, t, matter, tasks } = r;
+      const { gid, t, matter, tasks, filed } = r;
       const pick = (ids: Id<"tags">[]) => ids.map((id) => tags.get(id)).filter((x): x is Doc<"tags"> => !!x).map((x) => ({ _id: x._id, name: x.name, color: x.color }));
       out[gid] = {
         threadId: t._id,
@@ -603,6 +625,7 @@ export const meta = query({
         suggestedTags: pick((t.aiSuggestedTagIds ?? []).filter((id) => !t.tagIds.includes(id))),
         repliedBy: (t.repliedByEmails ?? []).map((email) => ({ userId: allUsers.find((u) => u.email.toLowerCase() === email)?._id, email, first: nameForEmail(email) })),
         autoReplied: !!t.autoRepliedAt,
+        autoFiled: filed.map((f) => ({ labelId: f.labelId, labelName: f.labelName })),
         rescheduled: !!t.rescheduledAt,
         rescheduleRequested: !!t.rescheduleRequest && !t.rescheduledAt,
         assignedTo: t.assignedTo && !t.assignmentDoneAt ? { userId: t.assignedTo, first: users.get(t.assignedTo) ?? "?" } : undefined,

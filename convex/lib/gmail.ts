@@ -161,6 +161,7 @@ export const listDrafts = (token: string) => call<{ drafts?: Array<{ id: string;
 
 export const createLabel = (token: string, name: string, color?: { textColor: string; backgroundColor: string }) => call<GmailLabel>(token, "/labels", { method: "POST", body: JSON.stringify({ name, labelListVisibility: "labelShow", messageListVisibility: "show", color }) });
 export const deleteLabel = (token: string, id: string) => call<void>(token, `/labels/${encodeURIComponent(id)}`, { method: "DELETE" });
+export const updateLabel = (token: string, id: string, patch: { name?: string; color?: { textColor: string; backgroundColor: string } | null }) => call<GmailLabel>(token, `/labels/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(patch) });
 export const renameLabel = (token: string, id: string, name: string) => call<GmailLabel>(token, `/labels/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ name }) });
 
 export const watch = (token: string, topicName: string) => call<{ historyId: string; expiration: string }>(token, "/watch", { method: "POST", body: JSON.stringify({ topicName, labelIds: ["INBOX"], labelFilterBehavior: "INCLUDE" }) });

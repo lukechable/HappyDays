@@ -7,6 +7,7 @@ import { allowedEmails, requireUser } from "./lib/auth";
 import { audit } from "./lib/audit";
 import { accessTokenFor } from "./google";
 import * as gmail from "./lib/gmail";
+import { fileByRules } from "./labelRules";
 
 /* ------------------------------ rule CRUD ------------------------------ */
 
@@ -151,6 +152,9 @@ async function evaluateOne(ctx: ActionCtx, accountId: Id<"googleAccounts">, m: {
   const msg = await gmail.getMessage(token, m.gmailMessageId, "full");
   const from = gmail.parseAddresses(gmail.header(msg, "From"))[0];
   if (!from) return;
+  // Folder rules run for every inbound message, including bulk mail, before any reply guard rails.
+  try { await fileByRules(ctx, { accountId, threadId: m.threadId, gmailThreadId: m.gmailThreadId, senderEmail: from.email, subject: gmail.header(msg, "Subject"), matterId: c.thread.matterId, existingLabelIds: msg.labelIds ?? [], token }); }
+  catch (e) { console.error("auto-file failed", m.gmailMessageId, e); }
   const orgEmails = new Set(allowedEmails().concat(c.account.email));
   if (orgEmails.has(from.email) || gmail.isAutoSubmitted(msg)) return;
   const body = gmail.parseBody(msg.payload);
