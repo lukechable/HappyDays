@@ -98,6 +98,8 @@ export type DailyAvailability = { id: string; day_of_week: number; availabilitie
 export const dailyAvailabilities = () => all<DailyAvailability>(`/daily_availabilities`, "daily_availabilities", 200);
 export const unavailableBlocks = (fromIso: string, toIso: string) => all<UnavailableBlock>(`/unavailable_blocks?q[]=starts_at:>=${fromIso}&q[]=starts_at:<${toIso}`, "unavailable_blocks", 500);
 export const recentPatients = (limit = 50) => call<{ patients: Patient[] }>(`/patients?per_page=${limit}&sort=updated_at:desc`).then((r) => r.patients);
+/** Invoices issued in a date window (YYYY-MM-DD), for matching to the appointments on the calendar. */
+export const invoicesBetween = (fromDate: string, toDate: string) => all<Invoice>(`/invoices?q[]=issue_date:>=${fromDate}&q[]=issue_date:<=${toDate}&sort=issue_date:desc`, "invoices", 500);
 export const listInvoices = (sinceDate: string) => all<Invoice>(`/invoices?q[]=issue_date:>=${sinceDate}&sort=issue_date:desc`, "invoices", 300);
 export const me = () => call<{ id: string; first_name: string; last_name: string; email: string }>("/user");
 

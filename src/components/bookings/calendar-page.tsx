@@ -7,7 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { replaceSearch } from "@/lib/shallow";
 import { useAction } from "convex/react";
 import { useQuery } from "convex-helpers/react/cache/hooks";
-import { ChevronLeft, ChevronRight, RefreshCw, Plus, X, ExternalLink, Video, Users, Receipt } from "lucide-react";
+import { ChevronLeft, ChevronRight, RefreshCw, Plus, X, ExternalLink, Video, Users, Receipt, FileText, Check, Globe, Banknote, ChevronsUpDown } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../../../convex/_generated/api";
 import { Button } from "@/components/ui/button";
@@ -45,7 +45,7 @@ function inkOn(hex: string): string {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.35 ? "#1a1a19" : "#ffffff";
 }
 
-type Appt = { id: string; startsAt: string; endsAt: string; notes?: string; cancelledAt: string | null; didNotArrive: boolean; arrived: boolean; telehealthUrl?: string; patientId?: string; patientName: string; typeId?: string; typeName: string; color?: string; practitionerId?: string; practitionerName: string; clinikoUrl: string; patientUrl?: string };
+type Appt = { id: string; startsAt: string; endsAt: string; notes?: string; hasNotes?: boolean; online?: boolean; invoice?: { id: string; number: number; paid: boolean }; cancelledAt: string | null; didNotArrive: boolean; arrived: boolean; telehealthUrl?: string; patientId?: string; patientName: string; typeId?: string; typeName: string; color?: string; practitionerId?: string; practitionerName: string; clinikoUrl: string; patientUrl?: string };
 type Block = { id: string; startsAt: string; endsAt: string; practitionerId?: string; notes?: string };
 type WeeklyHours = { practitionerId: string; dayOfWeek: number; startsAt: string; endsAt: string };
 /** Regular hours for a column's day: the practitioner's own in day view, everyone's in week view, as Cliniko does. */
@@ -81,6 +81,21 @@ export function CalendarPage() {
   const flags = useAction(api.bookings.updateAppointmentFlags);
   const create = useAction(api.bookings.createAppointment);
   const settings = useQuery(api.settings.all);
+  // Stretching an appointment by its foot: the preview end time while dragging, saved to Cliniko on release.
+  const [resizing, setResizing] = useState<{ id: string; endsAt: string } | null>(null);
+  const startResize = (e: React.PointerEvent, a: Appt) => {
+    e.preventDefault(); e.stopPropagation();
+    const origin = e.clientY; const end0 = new Date(a.endsAt).getTime(); const minEnd = new Date(a.startsAt).getTime() + 15 * 60_000;
+    let endsAt = a.endsAt;
+    const move = (ev: PointerEvent) => { const minutes = Math.round(((ev.clientY - origin) / (HOUR_PX / 60)) / 15) * 15; endsAt = new Date(Math.max(minEnd, end0 + minutes * 60_000)).toISOString(); setResizing({ id: a.id, endsAt }); };
+    const up = async () => {
+      window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up);
+      setResizing(null);
+      if (endsAt === a.endsAt) return;
+      try { await reschedule({ appointmentId: a.id, startsAt: a.startsAt, endsAt }); toast.success(`${a.patientName} now ends ${time(endsAt)}`); live.reload(); } catch (err) { toast.error(errorMessage(err)); }
+    };
+    window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
+  };
   const [selected, setSelected] = useState<Appt | null>(null);
   const [creating, setCreating] = useState<{ startsAt: Date; practitionerId?: string } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -156,7 +171,7 @@ export function CalendarPage() {
                   {avail.map((b) => <div key={`a${b.id}`} className="absolute inset-x-0 bg-background" style={{ top: yFor(b.startsAt), height: hFor(b.startsAt, b.endsAt) }} />)}
                   <div className="pointer-events-none absolute inset-0" style={{ backgroundImage: `repeating-linear-gradient(to bottom, transparent 0, transparent ${HOUR_PX - 1}px, var(--border) ${HOUR_PX - 1}px, var(--border) ${HOUR_PX}px)` }} aria-hidden="true" />
                   {unavail.map((b) => <div key={`u${b.id}`} className="absolute inset-x-0 bg-[repeating-linear-gradient(45deg,transparent,transparent_6px,rgba(0,0,0,.05)_6px,rgba(0,0,0,.05)_12px)] px-1 text-[10px] text-fg-tertiary" style={{ top: yFor(b.startsAt), height: hFor(b.startsAt, b.endsAt) }} title={b.notes}>{b.notes}</div>)}
-                  {isToday && <div className="pointer-events-none absolute inset-x-0 z-[5] h-0.5 bg-[#e0218a] shadow-[0_0_0_1px_rgba(224,33,138,.25)]" style={{ top: yFor(new Date(now).toISOString()) }} aria-hidden="true" />}
+                  {isToday && <div className="pointer-events-none absolute inset-x-0 z-[7] h-0.5 bg-[#e0218a] shadow-[0_0_0_1px_rgba(224,33,138,.25)]" style={{ top: yFor(new Date(now).toISOString()) }} aria-hidden="true" />}
                   {groups.map((g) => (
                     <a key={`g${g.id}`} data-appt href={g.clinikoUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="absolute inset-x-0.5 overflow-hidden rounded-md border-2 border-dashed px-1.5 py-0.5 text-left text-[11px] leading-tight" style={{ top: yFor(g.startsAt), height: hFor(g.startsAt, g.endsAt), borderColor: g.color ?? "#0081f2", background: `${g.color ?? "#0081f2"}22`, color: "var(--foreground)" }} title={g.notes}>
                       <div className="flex items-center gap-1 font-semibold"><Users className="size-3" />{g.typeName}</div>
@@ -164,10 +179,20 @@ export function CalendarPage() {
                     </a>
                   ))}
                   {appts.map((a) => (
-                    <button key={a.id} type="button" data-appt draggable={!a.cancelledAt} onDragStart={(e) => e.dataTransfer.setData("appt", a.id)} onClick={(e) => { e.stopPropagation(); setSelected(a); }} className={cn("hd-lift absolute inset-x-0.5 overflow-hidden rounded-md px-1.5 py-0.5 text-left text-[11px] leading-tight shadow-xs ring-1 ring-black/10 hover:z-[6]", a.cancelledAt && "opacity-40 line-through", a.didNotArrive && "ring-2 ring-error")} style={{ top: yFor(a.startsAt), height: hFor(a.startsAt, a.endsAt), background: clinikoFill(a.color ?? FALLBACK), color: inkOn(clinikoFill(a.color ?? FALLBACK)) }}>
-                      <div className="truncate font-semibold">{a.patientName}</div>
-                      <div className="truncate opacity-90">{time(a.startsAt)} · {a.typeName}</div>
+                    <button key={a.id} type="button" data-appt draggable={!a.cancelledAt && resizing?.id !== a.id} onDragStart={(e) => e.dataTransfer.setData("appt", a.id)} onClick={(e) => { e.stopPropagation(); setSelected(a); }} className={cn("group/appt absolute left-0.5 right-2.5 overflow-hidden rounded-[3px] px-1.5 py-0.5 text-left text-[11px] leading-tight ring-1 ring-black/45 hover:z-[6]", a.cancelledAt && "opacity-40 line-through", a.didNotArrive && "ring-2 ring-error", resizing?.id === a.id && "z-[6] ring-2 ring-black/60")} style={{ top: yFor(a.startsAt), height: hFor(a.startsAt, resizing?.id === a.id ? resizing.endsAt : a.endsAt), background: clinikoFill(a.color ?? FALLBACK), color: inkOn(clinikoFill(a.color ?? FALLBACK)) }}>
+                      <div className="flex items-start gap-1">
+                        <span className="min-w-0 flex-1 truncate font-semibold">{a.patientName}</span>
+                        {/* Cliniko's row of little icons: notes, arrived, booked online, invoice paid (green) or owing (red). */}
+                        <span className="flex shrink-0 items-center gap-0.5 [filter:drop-shadow(0_0_1px_rgba(255,255,255,.95))]">
+                          {a.hasNotes && <FileText className="size-3 text-[#4a4a4a]" aria-label="Has notes" />}
+                          {a.arrived && <Check className="size-3 text-[#2ea043]" strokeWidth={3} aria-label="Arrived" />}
+                          {a.online && <Globe className="size-3 text-[#2f7fd6]" aria-label="Booked online" />}
+                          {a.invoice && <Banknote className={cn("size-3", a.invoice.paid ? "text-[#1f8a3b]" : "text-[#c8161d]")} strokeWidth={2.5} aria-label={a.invoice.paid ? "Invoice paid" : "Invoice owing"} />}
+                        </span>
+                      </div>
+                      <div className="truncate opacity-90">{time(a.startsAt)}{resizing?.id === a.id ? ` – ${time(resizing.endsAt)}` : ""} · {a.typeName}</div>
                       {mode === "week" && practitioners.length > 1 && <div className="truncate opacity-75">{a.practitionerName}</div>}
+                      {!a.cancelledAt && <span onPointerDown={(e) => startResize(e, a)} onClick={(e) => e.stopPropagation()} className="absolute inset-x-0 bottom-0 flex h-3 cursor-ns-resize items-center justify-center opacity-60 hover:opacity-100" title="Drag to change the end time" aria-hidden="true"><span className="text-[9px] leading-none group-hover/appt:hidden">=</span><ChevronsUpDown className="hidden size-3 group-hover/appt:block" /></span>}
                     </button>
                   ))}
                 </div>

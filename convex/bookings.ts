@@ -36,11 +36,16 @@ export const calendar = action({
   args: { fromIso: v.string(), toIso: v.string(), practitionerId: v.optional(v.string()) },
   handler: async (ctx, { fromIso, toIso, practitionerId }) => {
     await ctx.runQuery(internal.bookings.requireStaff, {});
+    // Invoices for these appointments are usually raised the same day, occasionally weeks later.
+    const dateOnly = (iso: string, plusDays = 0) => new Date(Date.parse(iso) + plusDays * 86_400_000).toISOString().slice(0, 10);
+    const invoicesP = cliniko.invoicesBetween(dateOnly(fromIso, -1), dateOnly(toIso, 45)).catch(() => [] as cliniko.Invoice[]);
     const [appointments, availability, unavailable, ref, groups, daily] = await Promise.all([cliniko.listAppointments(fromIso, toIso, practitionerId), cliniko.availabilityBlocks(fromIso, toIso), cliniko.unavailableBlocks(fromIso, toIso), refData(ctx), cliniko.groupAppointments(fromIso, toIso).catch(() => [] as cliniko.GroupAppointment[]), cliniko.dailyAvailabilities().catch(() => [] as cliniko.DailyAvailability[])]);
     const { types, practitioners } = ref;
     const attendeeCounts = new Map<string, number>();
     await Promise.all(groups.filter((g) => !g.deleted_at).slice(0, 30).map(async (g) => { try { attendeeCounts.set(g.id, await cliniko.attendeeCount(g.id)); } catch { /* fine */ } }));
     const typeById = new Map(types.map((t) => [t.id, t]));
+    const invoiceByAppt = new Map<string, cliniko.Invoice>();
+    for (const inv of await invoicesP) { const id = cliniko.idFromLink(inv.appointment); if (id && !invoiceByAppt.has(id)) invoiceByAppt.set(id, inv); }
     const pracById = new Map(practitioners.map((p) => [p.id, p]));
     // Appointments can reference practitioners the list omits (inactive, other business); resolve them by id.
     const missing = Array.from(new Set([...appointments.map((a) => cliniko.idFromLink(a.practitioner)), ...groups.map((g) => cliniko.idFromLink(g.practitioner))].filter((x): x is string => !!x && !pracById.has(x))));
@@ -51,7 +56,8 @@ export const calendar = action({
         const pid = cliniko.idFromLink(a.patient);
         const t = typeById.get(cliniko.idFromLink(a.appointment_type) ?? "");
         const p = pracById.get(cliniko.idFromLink(a.practitioner) ?? "");
-        return { id: a.id, startsAt: a.starts_at, endsAt: a.ends_at, notes: a.notes, cancelledAt: a.cancelled_at ?? null, didNotArrive: !!a.did_not_arrive, arrived: !!a.patient_arrived, telehealthUrl: t?.telehealth_enabled ? a.telehealth_url : undefined, patientId: pid, patientName: a.patient_name ?? "Patient", typeId: t?.id, typeName: t?.name ?? "Appointment", color: t?.color, practitionerId: p?.id, practitionerName: p ? `${p.first_name} ${p.last_name}` : "", clinikoUrl: cliniko.clinikoWebUrl(`/appointments/${a.id}`), patientUrl: pid ? cliniko.clinikoWebUrl(`/patients/${pid}`) : undefined };
+        const inv = invoiceByAppt.get(a.id);
+        return { id: a.id, startsAt: a.starts_at, endsAt: a.ends_at, notes: a.notes, hasNotes: !!a.notes?.trim(), online: !!a.online_booking_policy_accepted, invoice: inv ? { id: inv.id, number: inv.number, paid: !!inv.closed_at } : undefined, cancelledAt: a.cancelled_at ?? null, didNotArrive: !!a.did_not_arrive, arrived: !!a.patient_arrived, telehealthUrl: t?.telehealth_enabled ? a.telehealth_url : undefined, patientId: pid, patientName: a.patient_name ?? "Patient", typeId: t?.id, typeName: t?.name ?? "Appointment", color: t?.color, practitionerId: p?.id, practitionerName: p ? `${p.first_name} ${p.last_name}` : "", clinikoUrl: cliniko.clinikoWebUrl(`/appointments/${a.id}`), patientUrl: pid ? cliniko.clinikoWebUrl(`/patients/${pid}`) : undefined };
       }),
       groups: groups.filter((g) => !g.deleted_at).map((g) => { const t = typeById.get(cliniko.idFromLink(g.appointment_type) ?? ""); const p = pracById.get(cliniko.idFromLink(g.practitioner) ?? ""); return { id: g.id, startsAt: g.starts_at, endsAt: g.ends_at, notes: g.notes, typeName: t?.name ?? "Group", color: t?.color, practitionerId: p?.id, practitionerName: p ? `${p.first_name} ${p.last_name}` : "", attendees: attendeeCounts.get(g.id), maxAttendees: g.max_attendees, clinikoUrl: cliniko.clinikoWebUrl(`/appointments/${g.id}`) }; }),
       availability: availability.filter((b) => !b.deleted_at).map((b) => ({ id: b.id, startsAt: b.starts_at, endsAt: b.ends_at, practitionerId: cliniko.idFromLink(b.practitioner) })),
