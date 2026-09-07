@@ -72,7 +72,8 @@ function Frame({ me, children }: { me: Me; children: ReactNode }) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
-  const wide = pathname.startsWith("/mail") || pathname.startsWith("/bookings") || pathname.startsWith("/pdf");
+  // Edge-to-edge screens (their own panes and scroll areas); everything else gets the page gutters.
+  const wide = pathname === "/mail" || pathname === "/bookings" || pathname === "/pdf";
   return (
     <div className="lg:grid lg:min-h-svh lg:grid-cols-[236px_minmax(0,1fr)]">
       <Rail me={me} pathname={pathname} search={searchStr} className="hidden lg:flex" />

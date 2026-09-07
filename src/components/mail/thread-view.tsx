@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
 import Link from "next/link";
-import { Archive, ArchiveRestore, Reply, ReplyAll, Forward, Star, Trash2, Tag, UserCheck, Briefcase, ListTodo, MailOpen, FolderInput, Paperclip, Download, Eye, ChevronDown, ChevronUp, Sparkles, X } from "lucide-react";
+import { Archive, ArchiveRestore, Reply, ReplyAll, Forward, Star, Trash2, Tag, UserCheck, Briefcase, ListTodo, MailOpen, FolderInput, Paperclip, Download, Eye, ChevronDown, ChevronUp, Sparkles, X, Bot, CalendarCheck2, CalendarClock } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../../../convex/_generated/api";
 import type { MessageView, ThreadMeta } from "../../../convex/mail";
@@ -30,6 +30,7 @@ export function ThreadView({ thread, meta, labels, loading, error, myFirst, show
 }) {
   const finishAssignment = useMutation(api.mail.finishAssignment);
   const setTags = useMutation(api.mail.setTags);
+  const toggleRescheduled = useMutation(api.mail.toggleRescheduled);
   const saveTask = useMutation(api.tasks.save);
   const router = useRouter();
   const [expandedOverride, setExpandedOverride] = useState<{ threadId: string; set: Set<string> } | null>(null);
@@ -78,7 +79,11 @@ export function ThreadView({ thread, meta, labels, loading, error, myFirst, show
           <h2 className="font-display text-[22px] leading-snug">{thread.subject}</h2>
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
             {meta?.overdue && <Pill className="bg-error-soft text-error">Overdue · no reply from either of you</Pill>}
-            {meta?.repliedBy.filter((r) => r.first !== myFirst).map((r) => <Pill key={r.userId} className="bg-success-soft text-success"><Reply className="size-3" />{r.first} replied</Pill>)}
+            {meta?.repliedBy.filter((r) => r.first !== myFirst).map((r) => <Pill key={r.email} className="bg-success-soft text-success"><Reply className="size-3" />{r.first} replied</Pill>)}
+            {meta?.repliedBy.some((r) => r.first === myFirst) && <Pill className="bg-success-soft text-success"><Reply className="size-3" />You replied</Pill>}
+            {meta?.autoReplied && <Pill className="bg-success-soft text-success"><Bot className="size-3" />Auto replied</Pill>}
+            {meta?.rescheduled && <button type="button" title="Click to clear" onClick={() => meta.threadId && toggleRescheduled({ threadId: meta.threadId })}><Pill className="bg-success-soft text-success"><CalendarCheck2 className="size-3" />Already rescheduled</Pill></button>}
+            {meta?.rescheduleRequested && <button type="button" title="Click once the appointment has been moved" onClick={() => meta.threadId && toggleRescheduled({ threadId: meta.threadId })}><Pill className="bg-warning-soft text-warning"><CalendarClock className="size-3" />Reschedule requested · mark done</Pill></button>}
             {meta?.assignedTo && <Pill className="bg-warning-soft text-warning"><UserCheck className="size-3" />{meta.assignedTo.first} to follow up{meta.assignedBy ? ` (from ${meta.assignedBy.first})` : ""}{meta.assignmentNote ? `: ${meta.assignmentNote}` : ""}<button type="button" className="ml-1 underline" onClick={() => meta.threadId && finishAssignment({ threadId: meta.threadId })}>done</button></Pill>}
             {meta?.matter && <Link href={`/matters/${meta.matter._id}`} className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-fg-secondary hover:text-foreground"><Briefcase className="size-3" />{meta.matter.name}</Link>}
             {meta?.tags.map((t) => <Pill key={t._id} className={TONE_CLASS[t.color]}>{t.name}</Pill>)}

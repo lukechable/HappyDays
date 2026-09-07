@@ -32,7 +32,7 @@ export const me = query({
       prefs: user.prefs ?? {},
       google: google ? { _id: google._id, email: google.email, status: google.status, lastSyncAt: google.lastSyncAt, watchExpiresAt: google.watchExpiresAt } : null,
       signatureCount: signatures.length,
-      badges: { assigned: assigned.length, tasks: tasksDue, overdue: overdue.filter((t) => !t.repliedBy.length).length, notifications: unreadNotifications.length, paidNotDelivered },
+      badges: { assigned: assigned.length, tasks: tasksDue, overdue: overdue.filter((t) => !t.repliedBy.length && !(t.repliedByEmails ?? []).length && !t.autoRepliedAt).length, notifications: unreadNotifications.length, paidNotDelivered },
     };
   },
 });

@@ -230,8 +230,11 @@ export const rescheduleAppointment = action({
   args: { appointmentId: v.string(), startsAt: v.string(), endsAt: v.string(), practitionerId: v.optional(v.string()) },
   handler: async (ctx, a) => {
     const me = await ctx.runQuery(internal.bookings.requireStaff, {});
-    await cliniko.updateAppointment(a.appointmentId, { starts_at: a.startsAt, ends_at: a.endsAt, ...(a.practitionerId ? { practitioner_id: a.practitionerId } : {}) });
+    const updated = await cliniko.updateAppointment(a.appointmentId, { starts_at: a.startsAt, ends_at: a.endsAt, ...(a.practitionerId ? { practitioner_id: a.practitionerId } : {}) });
     await ctx.runMutation(internal.bookings.logAccess, { userId: me._id, action: "cliniko.appointmentReschedule", subjectId: a.appointmentId });
+    // Any email from this patient asking for a reschedule is now answered.
+    const pid = cliniko.idFromLink(updated.patient);
+    if (pid) { try { const p = await cliniko.getPatient(pid); if (p.email) await ctx.runMutation(internal.mail.markRescheduledForEmail, { email: p.email }); } catch { /* best effort */ } }
   },
 });
 
@@ -387,6 +390,29 @@ export const completePaid = internalAction({
     } catch (e) {
       await ctx.runMutation(internal.bookings.finishSession, { id: s._id, status: "failed", error: e instanceof Error ? e.message : String(e) });
       throw e;
+    }
+  },
+});
+
+/**
+ * Reschedule requests that were detected in mail: look the sender up in Cliniko and see whether an appointment
+ * now sits on the requested date, or has moved since the request arrived. Runs hourly and right after detection.
+ */
+export const recheckReschedules = internalAction({
+  args: {},
+  handler: async (ctx) => {
+    const open: Array<{ threadId: Id<"threads">; request: { senderEmail: string; fromDate?: string; toDate?: string; detectedAt: number } }> = await ctx.runQuery(internal.mail.openRescheduleRequests, {});
+    if (!open.length || !process.env.CLINIKO_API_KEY) return;
+    for (const { threadId, request } of open.slice(0, 40)) {
+      try {
+        const matches = await cliniko.searchPatients(request.senderEmail).catch(() => [] as cliniko.Patient[]);
+        const patient = matches.find((p) => p.email?.toLowerCase() === request.senderEmail);
+        if (!patient) continue;
+        const appts = (await cliniko.patientAppointments(patient.id)).filter((a) => !a.cancelled_at);
+        const onRequestedDay = request.toDate ? appts.some((a) => new Date(a.starts_at).toLocaleDateString("en-CA", { timeZone: "Australia/Melbourne" }) === request.toDate) : false;
+        const movedSince = appts.some((a) => Date.parse(a.updated_at) > request.detectedAt && Date.parse(a.created_at) < request.detectedAt && Date.parse(a.starts_at) > request.detectedAt);
+        if (onRequestedDay || movedSince) await ctx.runMutation(internal.mail.setRescheduled, { threadId });
+      } catch (e) { console.error("recheck reschedule failed", threadId, e); }
     }
   },
 });

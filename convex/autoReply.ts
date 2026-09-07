@@ -106,6 +106,7 @@ export const record = internalMutation({
     if (a.addTagIds?.length) patch.tagIds = Array.from(new Set([...t.tagIds, ...a.addTagIds]));
     if (a.assignTo && !t.assignedTo) { patch.assignedTo = a.assignTo; patch.assignedAt = Date.now(); patch.assignmentNote = "Assigned by an auto-reply rule"; }
     if (a.aiSummary) patch.aiSummary = a.aiSummary;
+    if (a.action === "sent") patch.autoRepliedAt = Date.now();
     if (a.suggestedTagIds) patch.aiSuggestedTagIds = a.suggestedTagIds;
     if (Object.keys(patch).length) await ctx.db.patch(a.threadId, patch);
   },
@@ -164,6 +165,10 @@ async function evaluateOne(ctx: ActionCtx, accountId: Id<"googleAccounts">, m: {
     try {
       const ai = await ctx.runAction(internal.ai.classifyEmail, { subject, from: from.email, text, tags: c.tags.map((t) => ({ id: t._id, name: t.name, hint: t.aiHint ?? "" })) });
       await ctx.runMutation(internal.autoReply.annotate, { threadId: m.threadId, aiSummary: ai.summary, suggestedTagIds: ai.tagIds as Id<"tags">[], smartCategory: ai.category });
+      if (ai.intent === "reschedule") {
+        await ctx.runMutation(internal.mail.noteRescheduleRequest, { threadId: m.threadId, senderEmail: from.email, fromDate: ai.rescheduleFrom ?? undefined, toDate: ai.rescheduleTo ?? undefined });
+        await ctx.scheduler.runAfter(0, internal.bookings.recheckReschedules, {});
+      }
     } catch (e) { console.error("classify failed", e); }
   }
 

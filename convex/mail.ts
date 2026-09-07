@@ -165,7 +165,7 @@ export const threadIdsForView = internalQuery({
     const hours = user?.prefs?.overdueHours ?? 48;
     let threads: Doc<"threads">[] = [];
     if (view === "overdue") {
-      threads = (await ctx.db.query("threads").withIndex("by_overdue", (q) => q.eq("bothIncluded", true).eq("lastDirection", "in").lt("lastInboundAt", Date.now() - hours * 3_600_000)).order("desc").take(100)).filter((t) => !t.repliedBy.length && !(t.snoozedUntil && t.snoozedUntil > Date.now()));
+      threads = (await ctx.db.query("threads").withIndex("by_overdue", (q) => q.eq("bothIncluded", true).eq("lastDirection", "in").lt("lastInboundAt", Date.now() - hours * 3_600_000)).order("desc").take(100)).filter((t) => !(t.repliedByEmails ?? []).length && !t.repliedBy.length && !t.autoRepliedAt && !(t.snoozedUntil && t.snoozedUntil > Date.now()));
     } else if (view === "assigned") {
       threads = await ctx.db.query("threads").withIndex("by_assignee", (q) => q.eq("assignedTo", userId).eq("assignmentDoneAt", undefined)).order("desc").take(100);
     } else if (view === "matter" && matterId) {
@@ -417,6 +417,16 @@ export const indexHeaders = internalMutation({
         }
       }
       if (!threadId) {
+        // Auto-forwarded copies (Barbara receives Luke's mail) sometimes get a new Message-ID. Same sender, same
+        // subject, within two minutes of an indexed message from another mailbox: treat as the same conversation.
+        const norm = (s: string) => s.replace(/^\s*(re|fwd?|fw)\s*:\s*/i, "").trim().toLowerCase();
+        for (const m of msgs) {
+          const near = await ctx.db.query("messageIndex").withIndex("by_from_date", (q) => q.eq("from", m.from.toLowerCase()).gte("date", m.date - 120_000).lte("date", m.date + 120_000)).take(20);
+          const hit = near.find((r) => r.accountId !== accountId);
+          if (hit) { const th = await ctx.db.get(hit.threadId); if (th && norm(th.subject) === norm(t.subject)) { threadId = hit.threadId; break; } }
+        }
+      }
+      if (!threadId) {
         const earliest = [...msgs].sort((a, b) => a.date - b.date)[0];
         threadId = await ctx.db.insert("threads", { key: earliest.rfcMessageId, subject: t.subject, participants: [], mailboxes: [{ accountId, gmailThreadId: t.gmailThreadId }], firstMessageAt: earliest.date, lastMessageAt: earliest.date, lastDirection: "in", repliedBy: [], bothIncluded: false, tagIds: [] });
         await ctx.db.insert("threadLookup", { accountId, gmailThreadId: t.gmailThreadId, threadId });
@@ -455,7 +465,9 @@ async function recompute(ctx: { db: import("./_generated/server").DatabaseWriter
   const inbound = unique.filter((r) => r.direction === "in");
   const lastInbound = inbound[inbound.length - 1];
   const lastInboundAt = lastInbound?.date;
-  const repliedBy = Array.from(new Set(unique.filter((r) => r.direction === "out" && r.sentByUserId && (lastInboundAt === undefined || r.date > lastInboundAt)).map((r) => r.sentByUserId!)));
+  const replies = unique.filter((r) => r.direction === "out" && (lastInboundAt === undefined || r.date > lastInboundAt));
+  const repliedBy = Array.from(new Set(replies.filter((r) => r.sentByUserId).map((r) => r.sentByUserId!)));
+  const repliedByEmails = Array.from(new Set(replies.map((r) => r.from)));
   const orgOnThread = Array.from(orgEmails).filter((e) => participants.has(e));
   const users = new Set<string>();
   // Both users included = at least two distinct org identities on the thread (a user may appear under one address).
@@ -468,6 +480,7 @@ async function recompute(ctx: { db: import("./_generated/server").DatabaseWriter
     lastInboundAt,
     lastDirection: last.direction,
     repliedBy,
+    repliedByEmails,
     bothIncluded: users.size >= 2,
   });
 }
@@ -544,7 +557,10 @@ export type ThreadMeta = {
   threadId: Id<"threads">;
   tags: Array<{ _id: Id<"tags">; name: string; color: Doc<"tags">["color"] }>;
   suggestedTags: Array<{ _id: Id<"tags">; name: string; color: Doc<"tags">["color"] }>;
-  repliedBy: Array<{ userId: Id<"users">; first: string }>;
+  repliedBy: Array<{ userId?: Id<"users">; email: string; first: string }>;
+  autoReplied: boolean;
+  rescheduled: boolean;
+  rescheduleRequested: boolean;
   assignedTo?: { userId: Id<"users">; first: string };
   assignedBy?: { userId: Id<"users">; first: string };
   assignmentNote?: string;
@@ -565,7 +581,9 @@ export const meta = query({
     const account = await ctx.db.query("googleAccounts").withIndex("by_user", (q) => q.eq("userId", user._id)).first();
     if (!account) return {};
     const hours = user.prefs?.overdueHours ?? 48;
-    const users = new Map((await ctx.db.query("users").collect()).map((u) => [u._id, firstName(u)]));
+    const allUsers = await ctx.db.query("users").collect();
+    const users = new Map(allUsers.map((u) => [u._id, firstName(u)]));
+    const nameForEmail = (email: string) => { const u = allUsers.find((x) => x.email.toLowerCase() === email); if (u) return firstName(u); const local = email.split("@")[0]; return local.charAt(0).toUpperCase() + local.slice(1); };
     const tags = new Map((await ctx.db.query("tags").collect()).map((t) => [t._id, t]));
     const out: Record<string, ThreadMeta> = {};
     const resolved = await Promise.all(gmailThreadIds.map(async (gid) => {
@@ -583,7 +601,10 @@ export const meta = query({
         threadId: t._id,
         tags: pick(t.tagIds),
         suggestedTags: pick((t.aiSuggestedTagIds ?? []).filter((id) => !t.tagIds.includes(id))),
-        repliedBy: t.repliedBy.map((id) => ({ userId: id, first: users.get(id) ?? "?" })),
+        repliedBy: (t.repliedByEmails ?? []).map((email) => ({ userId: allUsers.find((u) => u.email.toLowerCase() === email)?._id, email, first: nameForEmail(email) })),
+        autoReplied: !!t.autoRepliedAt,
+        rescheduled: !!t.rescheduledAt,
+        rescheduleRequested: !!t.rescheduleRequest && !t.rescheduledAt,
         assignedTo: t.assignedTo && !t.assignmentDoneAt ? { userId: t.assignedTo, first: users.get(t.assignedTo) ?? "?" } : undefined,
         assignedBy: t.assignedBy && !t.assignmentDoneAt ? { userId: t.assignedBy, first: users.get(t.assignedBy) ?? "?" } : undefined,
         assignmentNote: t.assignmentDoneAt ? undefined : t.assignmentNote,
@@ -706,4 +727,38 @@ export const sendFromPractice = internalAction({
     const sent = await gmail.sendRaw(token, raw);
     return { gmailMessageId: sent.id, gmailThreadId: sent.threadId };
   },
+});
+
+/* ------------------------------------------------------------------ */
+/*  Reschedule requests: detected by Claude on arrival, marked done    */
+/*  when the appointment actually moves (in Happy Days or in Cliniko). */
+/* ------------------------------------------------------------------ */
+
+export const noteRescheduleRequest = internalMutation({
+  args: { threadId: v.id("threads"), senderEmail: v.string(), fromDate: v.optional(v.string()), toDate: v.optional(v.string()) },
+  handler: async (ctx, a) => { const t = await ctx.db.get(a.threadId); if (!t || t.rescheduledAt) return; await ctx.db.patch(a.threadId, { rescheduleRequest: { senderEmail: a.senderEmail.toLowerCase(), fromDate: a.fromDate, toDate: a.toDate, detectedAt: Date.now() } }); },
+});
+
+/** Mark every open reschedule request from this address as done (called after an appointment moves). */
+export const markRescheduledForEmail = internalMutation({
+  args: { email: v.string(), at: v.optional(v.number()) },
+  handler: async (ctx, { email, at }) => {
+    const open = await ctx.db.query("threads").withIndex("by_reschedule", (q) => q.eq("rescheduledAt", undefined)).order("desc").take(500);
+    let n = 0;
+    for (const t of open) if (t.rescheduleRequest && t.rescheduleRequest.senderEmail === email.toLowerCase()) { await ctx.db.patch(t._id, { rescheduledAt: at ?? Date.now() }); n++; }
+    return n;
+  },
+});
+
+export const openRescheduleRequests = internalQuery({
+  args: {},
+  handler: async (ctx) => (await ctx.db.query("threads").withIndex("by_reschedule", (q) => q.eq("rescheduledAt", undefined)).order("desc").take(300)).filter((t) => t.rescheduleRequest && t.rescheduleRequest.detectedAt > Date.now() - 21 * 86_400_000).map((t) => ({ threadId: t._id, request: t.rescheduleRequest! })),
+});
+
+export const setRescheduled = internalMutation({ args: { threadId: v.id("threads"), at: v.optional(v.number()), clear: v.optional(v.boolean()) }, handler: async (ctx, { threadId, at, clear }) => { await ctx.db.patch(threadId, { rescheduledAt: clear ? undefined : at ?? Date.now() }); } });
+
+/** Staff can set or clear the pill by hand from the reader. */
+export const toggleRescheduled = mutation({
+  args: { threadId: v.id("threads") },
+  handler: async (ctx, { threadId }) => { const user = await requireUser(ctx); const t = await ctx.db.get(threadId); if (!t) return; await ctx.db.patch(threadId, t.rescheduledAt ? { rescheduledAt: undefined } : { rescheduledAt: Date.now(), rescheduleRequest: t.rescheduleRequest ?? { senderEmail: t.participants[0] ?? "", detectedAt: Date.now() } }); await audit(ctx, { userId: user._id, action: "mail.rescheduled", subjectKind: "thread", subjectId: threadId }); },
 });

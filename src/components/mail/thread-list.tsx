@@ -1,6 +1,6 @@
 "use client";
 
-import { Paperclip, Star, Reply, UserCheck, AlarmClock } from "lucide-react";
+import { Paperclip, Star, Reply, UserCheck, AlarmClock, Bot, CalendarCheck2, CalendarClock } from "lucide-react";
 import type { ListItem, ThreadMeta } from "../../../convex/mail";
 import { cn } from "@/lib/utils";
 import { mailDate, TONE_CLASS } from "@/lib/format";
@@ -21,6 +21,7 @@ export function ThreadList({ items, meta, selectedId, focusedIndex, checked, onO
           const active = t.gmailThreadId === selectedId;
           const focused = i === focusedIndex;
           const others = m?.repliedBy.filter((r) => r.first !== myFirst) ?? [];
+          const mine = m?.repliedBy.some((r) => r.first === myFirst) ?? false;
           return (
             <li key={t.gmailThreadId} role="option" aria-selected={active} data-index={i} className={cn("group relative flex cursor-pointer gap-2 border-b border-border/70 px-3 py-2 text-[13px]", active ? "bg-blue-soft" : focused ? "bg-muted/70" : "hover:bg-muted/60", t.unread && !active && "bg-card")} onClick={() => onOpen(t.gmailThreadId)}>
               <div className="flex shrink-0 flex-col items-center gap-1 pt-0.5">
@@ -37,10 +38,14 @@ export function ThreadList({ items, meta, selectedId, focusedIndex, checked, onO
                   <span className="min-w-0 flex-1 truncate text-xs text-fg-tertiary">{t.snippet}</span>
                   {t.hasAttachment && <Paperclip className="size-3 shrink-0 text-fg-quaternary" />}
                 </div>
-                {(m?.tags.length || others.length || m?.assignedTo || m?.overdue || m?.matter) ? (
+                {(m?.tags.length || others.length || mine || m?.assignedTo || m?.overdue || m?.matter || m?.autoReplied || m?.rescheduled || m?.rescheduleRequested) ? (
                   <div className="mt-1 flex flex-wrap items-center gap-1">
                     {m?.overdue && <span className="inline-flex items-center gap-0.5 rounded-full bg-error-soft px-1.5 text-[10.5px] font-medium leading-4 text-error"><AlarmClock className="size-2.5" />overdue</span>}
-                    {others.map((r) => <span key={r.userId} className="inline-flex items-center gap-0.5 rounded-full bg-success-soft px-1.5 text-[10.5px] font-medium leading-4 text-success"><Reply className="size-2.5" />{r.first} replied</span>)}
+                    {others.map((r) => <span key={r.email} className="inline-flex items-center gap-0.5 rounded-full bg-success-soft px-1.5 text-[10.5px] font-medium leading-4 text-success"><Reply className="size-2.5" />{r.first} replied</span>)}
+                    {mine && <span className="inline-flex items-center gap-0.5 rounded-full bg-success-soft px-1.5 text-[10.5px] font-medium leading-4 text-success"><Reply className="size-2.5" />You replied</span>}
+                    {m?.autoReplied && <span className="inline-flex items-center gap-0.5 rounded-full bg-success-soft px-1.5 text-[10.5px] font-medium leading-4 text-success"><Bot className="size-2.5" />Auto replied</span>}
+                    {m?.rescheduled && <span className="inline-flex items-center gap-0.5 rounded-full bg-success-soft px-1.5 text-[10.5px] font-medium leading-4 text-success"><CalendarCheck2 className="size-2.5" />Already rescheduled</span>}
+                    {m?.rescheduleRequested && <span className="inline-flex items-center gap-0.5 rounded-full bg-warning-soft px-1.5 text-[10.5px] font-medium leading-4 text-warning"><CalendarClock className="size-2.5" />Reschedule requested</span>}
                     {m?.assignedTo && <span className="inline-flex items-center gap-0.5 rounded-full bg-warning-soft px-1.5 text-[10.5px] font-medium leading-4 text-warning"><UserCheck className="size-2.5" />{m.assignedTo.first}</span>}
                     {m?.matter && <span className="truncate rounded-full bg-muted px-1.5 text-[10.5px] leading-4 text-fg-secondary">{m.matter.name}</span>}
                     {m?.tags.map((tag) => <span key={tag._id} className={cn("rounded-full px-1.5 text-[10.5px] font-medium leading-4", TONE_CLASS[tag.color])}>{tag.name}</span>)}
