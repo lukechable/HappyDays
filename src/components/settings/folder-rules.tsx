@@ -32,7 +32,7 @@ export function FolderRulesTab() {
   const active = rules?.filter((r) => r.status === "active").length ?? 0;
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
       <Panel title="Folder rules" blurb="Every time you file a conversation into a folder, Happy Days remembers the sender, their organisation and the matter. Once the same sender has gone to the same folder twice, new mail from them is filed there on arrival and marked with a green folder tick. Take a label off again and the rule unlearns. Rules only ever add labels in Gmail; nothing is moved or deleted.">
         {rules === undefined ? <Loading /> : rules.length === 0 ? <Empty title="Nothing learned yet" body="Drag a conversation into a folder in Mail, or add a rule on the right." /> : (
           <div className="overflow-x-auto">

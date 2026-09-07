@@ -14,7 +14,7 @@ export function PageHeader({ title, blurb, actions, meta }: { title: string; blu
         {blurb && <p className="mt-1 max-w-xl text-[13px] leading-snug text-fg-secondary">{blurb}</p>}
         {meta && <div className="mt-1.5 text-xs text-fg-tertiary">{meta}</div>}
       </div>
-      {actions && <div className="flex shrink-0 flex-wrap items-center gap-1.5 sm:pt-0.5">{actions}</div>}
+      {actions && <div className="flex max-w-full flex-wrap items-center gap-1.5 sm:shrink-0 sm:pt-0.5">{actions}</div>}
     </div>
   );
 }

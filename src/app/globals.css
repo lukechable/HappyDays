@@ -282,6 +282,8 @@
 .hd-enter { animation: hd-enter .22s cubic-bezier(.22,1,.36,1) both; }
 .hd-rise-up { animation: hd-rise-up .26s cubic-bezier(.22,1,.36,1) both; }
 .hd-pop { animation: hd-pop .18s cubic-bezier(.22,1,.36,1) both; }
+/* Phones: form controls at 16px so iOS does not zoom the page when one is focused. */
+@media (max-width: 767px) { input, select, textarea { font-size: 16px; } }
 /* Mail reading pane: the pane slides in from the side it moved to, and the toolbar glyph's divider turns to match. */
 @keyframes hd-slide-left { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: none; } }
 @keyframes hd-slide-up { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }

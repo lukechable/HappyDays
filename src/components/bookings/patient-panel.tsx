@@ -38,7 +38,7 @@ export function PatientPanel({ patientId }: { patientId: string }) {
     <div className="space-y-5">
       <PageHeader title={p.name} blurb={[p.dob ? `DOB ${day(p.dob)}` : "", p.email, p.phone].filter(Boolean).join(" · ")} meta={<span>Cliniko record updated {ago(Date.parse(p.updatedAt))}. Nothing here is stored by Happy Days.</span>} actions={<><Button variant="outline" render={<a href={p.clinikoUrl} target="_blank" rel="noreferrer" />}><ExternalLink className="size-3.5" />Open in Cliniko</Button><Button render={<Link href={`/bookings?d=${now}`} />}><Plus className="size-3.5" />Book</Button></>} />
       {(p.alerts.length > 0 || p.medicalAlerts) && <div className="flex items-start gap-2 rounded-2xl bg-warning-soft px-4 py-3 text-sm"><AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" /><div><b className="font-semibold">Alerts:</b> {[...p.alerts, p.medicalAlerts].filter(Boolean).join("; ")}</div></div>}
-      <div className="grid gap-3 lg:grid-cols-3">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-3 lg:grid-cols-3">
         <Panel title="Contact" dense><Facts items={[["Email", p.email ? <a href={`mailto:${p.email}`} className="underline">{p.email}</a> : "—"], ["Phones", p.phones.length ? p.phones.map((x) => `${x.number} (${x.phone_type})`).join(", ") : "—"], ["Address", p.address || "—"], ["Preferred name", p.preferredName || "—"]]} />{p.notes && <p className="mt-3 whitespace-pre-wrap rounded-lg bg-muted px-2.5 py-1.5 text-xs">{p.notes}</p>}</Panel>
         <Panel title="Matters" dense blurb="Happy Days matters that reference this patient.">
           {p.matters.length === 0 ? <p className="text-sm text-fg-tertiary">None yet.</p> : <ul className="space-y-1">{p.matters.map((m) => <li key={m._id}><PrefetchLink href={`/matters/${m._id}`} className="inline-flex items-center gap-1.5 text-sm hover:underline"><Briefcase className="size-3.5" />{m.name}<Pill tone={statusTone(m.status)}>{m.status.replace("_", " ")}</Pill></PrefetchLink></li>)}</ul>}
@@ -48,7 +48,7 @@ export function PatientPanel({ patientId }: { patientId: string }) {
           {p.attachments.length === 0 ? <p className="text-sm text-fg-tertiary">No attachments.</p> : <ul className="space-y-1 text-sm">{p.attachments.map((a) => <li key={a.id} className="flex items-center gap-2"><FileText className="size-3.5 text-fg-tertiary" />{a.url ? <a href={a.url} target="_blank" rel="noreferrer" className="min-w-0 flex-1 truncate hover:underline">{a.filename}</a> : <a href={p.clinikoUrl} target="_blank" rel="noreferrer" className="min-w-0 flex-1 truncate hover:underline">{a.filename}</a>}<span className="text-xs text-fg-tertiary">{day(a.createdAt)}</span></li>)}</ul>}
         </Panel>
       </div>
-      <div className="grid gap-3 lg:grid-cols-3">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-3 lg:grid-cols-3">
         <Panel title="Treatment notes" dense blurb="Titles and dates only. Notes open in Cliniko.">
           {p.treatmentNotes.length === 0 ? <p className="text-sm text-fg-tertiary">No notes.</p> : <ul className="space-y-1 text-sm">{p.treatmentNotes.slice(0, 8).map((n) => <li key={n.id} className="flex items-center gap-2"><NotebookPen className="size-3.5 shrink-0 text-fg-tertiary" /><a href={n.clinikoUrl} target="_blank" rel="noreferrer" className="min-w-0 flex-1 truncate hover:underline">{n.title}</a>{n.draft && <Pill tone="warn">draft</Pill>}<span className="shrink-0 text-xs text-fg-tertiary">{day(n.createdAt)}{n.author ? ` · ${n.author}` : ""}</span></li>)}</ul>}
         </Panel>

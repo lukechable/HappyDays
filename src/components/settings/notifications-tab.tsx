@@ -54,7 +54,7 @@ export function NotificationsTab() {
   };
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
       <div className="space-y-4">
         <Panel title="This device" blurb="Push notifications arrive even when Happy Days is closed. Each browser or phone is turned on separately.">
           {!supported ? (

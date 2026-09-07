@@ -150,7 +150,7 @@ function ClinikoTab() {
     <div className="space-y-4" id="cliniko">
       <Panel title="Cliniko" blurb={`api.${status.clinikoShard}.cliniko.com · ${status.clinikoSubdomain ?? "subdomain not set"}`} actions={practice && <Button size="sm" variant="outline" onClick={async () => { try { const n = await syncPricing({}); toast.success(`${n} appointment types refreshed`); } catch (e) { toast.error(errorMessage(e)); } }}>Refresh appointment types</Button>}>
         {!status.cliniko ? <Empty title="No API key yet" body="Set CLINIKO_API_KEY, CLINIKO_SHARD and CLINIKO_SUBDOMAIN on the Convex deployment. The key inherits Luke's permissions." /> : error ? <p className="text-sm text-error">{error}</p> : practice && (
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-4 sm:grid-cols-3">
             <Facts items={[["Business", practice.businesses.map((b) => b.display_name || b.business_name).join(", ")], ["Default business id", String(settings?.["cliniko.businessId"] ?? practice.businesses[0]?.id ?? "")]]} />
             <Facts items={[["Practitioners", practice.practitioners.map((p) => `${p.first_name} ${p.last_name}`).join(", ")], ["Default practitioner id", String(settings?.["cliniko.practitionerId"] ?? practice.practitioners[0]?.id ?? "")]]} />
             <Facts items={[["Appointment types", String(practice.appointmentTypes.length)], ["Priced for online booking", String(pricing.filter((p) => p.bookableOnline && p.mode !== "none").length)]]} />
@@ -266,7 +266,7 @@ function SignaturesTab() {
         )}
         {editing && (
           <form className="mt-4 space-y-3 rounded-xl bg-muted/50 p-4" onSubmit={async (e) => { e.preventDefault(); try { await save(editing); setEditing(null); toast.success("Signature saved"); } catch (err) { toast.error(errorMessage(err)); } }}>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-2">
               <div><Label htmlFor="sig-name">Name</Label><Input id="sig-name" value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} placeholder="Standard" required /></div>
               <div className="flex items-end gap-4 text-sm"><label className="flex items-center gap-2"><Switch checked={editing.isDefaultNew} onCheckedChange={(v) => setEditing({ ...editing, isDefaultNew: v })} />Default for new</label><label className="flex items-center gap-2"><Switch checked={editing.isDefaultReply} onCheckedChange={(v) => setEditing({ ...editing, isDefaultReply: v })} />Default for replies</label></div>
             </div>
@@ -333,7 +333,7 @@ function PracticeTab() {
   return (
     <div className="space-y-4">
       <Panel title="Practice" dense>
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-2">
           <div><Label htmlFor="pname">Name shown to clients</Label><Input id="pname" value={name ?? (settings["practice.name"] as string | undefined) ?? "Barbara Fraser & Associates"} onChange={(e) => setName(e.target.value)} onBlur={() => name !== null && set({ key: "practice.name", value: name })} /></div>
           <div><Label htmlFor="pslug">Booking page</Label><div className="flex items-center gap-1 text-sm text-fg-tertiary">{site}/book/<Input id="pslug" className="w-44" value={slug ?? (settings["booking.slug"] as string | undefined) ?? "barbara-fraser"} onChange={(e) => setSlug(e.target.value.replace(/[^a-z0-9-]/gi, "-").toLowerCase())} onBlur={() => slug !== null && set({ key: "booking.slug", value: slug })} /></div></div>
         </div>
@@ -347,7 +347,7 @@ function PracticeTab() {
       </Panel>
       <LocalDataPanel />
       <Panel title="Your preferences" dense>
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-4 sm:grid-cols-2">
           <label className="text-sm">Overdue after<div className="mt-1 flex items-center gap-2"><Input type="number" min={1} max={240} className="num w-24" defaultValue={me.prefs.overdueHours ?? 48} onBlur={(e) => updatePrefs({ prefs: { overdueHours: Math.max(1, Number(e.target.value) || 48) } })} /><span className="text-fg-tertiary">hours without a reply from either of you</span></div></label>
           <label className="flex items-center gap-3 text-sm"><Switch checked={me.prefs.showImages ?? false} onCheckedChange={(v) => updatePrefs({ prefs: { showImages: v } })} />Always show remote images in mail</label>
         </div>

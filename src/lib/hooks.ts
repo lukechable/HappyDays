@@ -6,6 +6,11 @@ import { getFunctionName, type FunctionArgs, type FunctionReference, type Functi
 import { fetchLive, readLive, subscribeLive, EMPTY_SLOT, writeLive } from "@/lib/live-cache";
 
 /** The current time, refreshed on an interval, so render stays pure. */
+/** True when the media query matches; false during server render and the first paint. */
+export function useMediaQuery(query: string): boolean {
+  return useSyncExternalStore((cb) => { const m = window.matchMedia(query); m.addEventListener("change", cb); return () => m.removeEventListener("change", cb); }, () => window.matchMedia(query).matches, () => false);
+}
+
 export function useNow(intervalMs = 60_000): number {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), intervalMs); return () => clearInterval(t); }, [intervalMs]);
