@@ -3,11 +3,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useAction, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { PenSquare, Search, RefreshCw, Archive, Trash2, MailOpen, Tag as TagIcon, X } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../../../convex/_generated/api";
 import type { ListItem, MessageView } from "../../../convex/mail";
+import type { Id } from "../../../convex/_generated/dataModel";
 import { FolderList, SMART_TABS, type Label, type ViewKey } from "./folder-list";
 import { ThreadList } from "./thread-list";
 import { ThreadView, type ThreadData } from "./thread-view";
@@ -42,6 +43,7 @@ export function MailPage() {
   const modify = useAction(api.mail.modify);
   const markRead = useAction(api.mail.markMessageRead);
   const labelsAction = useAction(api.mail.labels);
+  const reportSent = useMutation(api.files.reportSentByEmail);
 
   const connected = me?.google?.status === "connected";
   const listKey = JSON.stringify({ view, labelId, q, connected });
@@ -239,7 +241,7 @@ export function MailPage() {
         </section>
       </div>
 
-      {compose && <Compose key={`${compose.mode}-${compose.inReplyTo ?? compose.draftId ?? "new"}`} draft={compose} signatureHtml={defaultSignature} signatureAbove={me?.prefs.signatureAbove ?? true} onClose={() => setCompose(null)} onSent={() => { setCompose(null); reload(); if (selectedId) getThread({ gmailThreadId: selectedId }).then(setThread).catch(() => undefined); }} />}
+      {compose && <Compose key={`${compose.mode}-${compose.inReplyTo ?? compose.draftId ?? "new"}`} draft={compose} signatureHtml={defaultSignature} signatureAbove={me?.prefs.signatureAbove ?? true} onClose={() => setCompose(null)} onSent={(r) => { const matterId = compose.matterId; setCompose(null); reload(); if (selectedId) getThread({ gmailThreadId: selectedId }).then(setThread).catch(() => undefined); if (matterId && r.attachments > 0) toast("Was that the report?", { description: "Mark the matter’s report as delivered by email.", action: { label: "Yes, delivered", onClick: () => reportSent({ matterId: matterId as Id<"matters"> }).then(() => toast.success("Marked delivered")).catch((e: unknown) => toast.error(errorMessage(e))) } }); }} />}
       {view === "search" && q && <span className="sr-only">Showing Gmail results for {q}</span>}
       <TagIcon className="hidden" />
     </div>
