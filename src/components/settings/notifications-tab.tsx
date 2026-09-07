@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useAction, useMutation, useQuery } from "convex/react";
+import { useAction, useMutation } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import { toast } from "sonner";
 import { BellRing, BellOff, Download, Smartphone, Laptop } from "lucide-react";
 import { api } from "../../../convex/_generated/api";

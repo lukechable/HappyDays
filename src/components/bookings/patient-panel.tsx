@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { PrefetchLink } from "@/components/prefetch-link";
 import { useState } from "react";
-import { useAction, useMutation, useQuery } from "convex/react";
+import { useAction, useMutation } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import { ExternalLink, AlertTriangle, FileText, Briefcase, Plus, NotebookPen, FolderOpen, ClipboardList, Send } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../../../convex/_generated/api";
@@ -39,7 +41,7 @@ export function PatientPanel({ patientId }: { patientId: string }) {
       <div className="grid gap-3 lg:grid-cols-3">
         <Panel title="Contact" dense><Facts items={[["Email", p.email ? <a href={`mailto:${p.email}`} className="underline">{p.email}</a> : "—"], ["Phones", p.phones.length ? p.phones.map((x) => `${x.number} (${x.phone_type})`).join(", ") : "—"], ["Address", p.address || "—"], ["Preferred name", p.preferredName || "—"]]} />{p.notes && <p className="mt-3 whitespace-pre-wrap rounded-lg bg-muted px-2.5 py-1.5 text-xs">{p.notes}</p>}</Panel>
         <Panel title="Matters" dense blurb="Happy Days matters that reference this patient.">
-          {p.matters.length === 0 ? <p className="text-sm text-fg-tertiary">None yet.</p> : <ul className="space-y-1">{p.matters.map((m) => <li key={m._id}><Link href={`/matters/${m._id}`} className="inline-flex items-center gap-1.5 text-sm hover:underline"><Briefcase className="size-3.5" />{m.name}<Pill tone={statusTone(m.status)}>{m.status.replace("_", " ")}</Pill></Link></li>)}</ul>}
+          {p.matters.length === 0 ? <p className="text-sm text-fg-tertiary">None yet.</p> : <ul className="space-y-1">{p.matters.map((m) => <li key={m._id}><PrefetchLink href={`/matters/${m._id}`} className="inline-flex items-center gap-1.5 text-sm hover:underline"><Briefcase className="size-3.5" />{m.name}<Pill tone={statusTone(m.status)}>{m.status.replace("_", " ")}</Pill></PrefetchLink></li>)}</ul>}
           {linkable.length > 0 && <select className="mt-2 h-8 w-full rounded-lg border border-input bg-card px-2 text-xs" defaultValue="" onChange={(e) => { const m = linkable.find((x) => x._id === e.target.value); if (m) void link(m); e.target.value = ""; }}><option value="">Link to a matter…</option>{linkable.map((m) => <option key={m._id} value={m._id}>{m.name}</option>)}</select>}
         </Panel>
         <Panel title="Files in Cliniko" dense blurb="Stored in Cliniko. Links open there.">

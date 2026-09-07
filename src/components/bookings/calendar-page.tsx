@@ -2,9 +2,11 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { PrefetchLink } from "@/components/prefetch-link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { replaceSearch } from "@/lib/shallow";
-import { useAction, useQuery } from "convex/react";
+import { useAction } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import { ChevronLeft, ChevronRight, RefreshCw, Plus, X, ExternalLink, Video, Users, Receipt } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../../../convex/_generated/api";
@@ -154,7 +156,7 @@ export function CalendarPage() {
             <div className="mt-2 flex flex-wrap gap-1">{selected.cancelledAt && <Pill tone="bad">cancelled</Pill>}{selected.didNotArrive && <Pill tone="warn">did not arrive</Pill>}{selected.arrived && <Pill tone="good">arrived</Pill>}{selected.telehealthUrl && <a href={selected.telehealthUrl} target="_blank" rel="noreferrer"><Pill tone="info"><Video className="size-3" />telehealth</Pill></a>}</div>
             {selected.notes && <p className="mt-2 whitespace-pre-wrap rounded-lg bg-muted px-2.5 py-1.5 text-xs">{selected.notes}</p>}
             <div className="mt-3 flex flex-wrap gap-1.5">
-              {selected.patientId && <Button size="sm" variant="outline" render={<Link href={`/bookings/patients/${selected.patientId}`} />}>Patient</Button>}
+              {selected.patientId && <Button size="sm" variant="outline" render={<PrefetchLink href={`/bookings/patients/${selected.patientId}`} />}>Patient</Button>}
               <Button size="sm" variant="outline" render={<a href={selected.clinikoUrl} target="_blank" rel="noreferrer" />}><ExternalLink className="size-3.5" />Cliniko</Button>
               {selected.patientId && <Button size="sm" variant="outline" onClick={() => setInvoicing(selected)}><Receipt className="size-3.5" />Invoice in Cliniko</Button>}
               {!selected.cancelledAt && <>

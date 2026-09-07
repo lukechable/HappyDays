@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
-import { useAction, useQuery } from "convex/react";
+import { useAction } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import { PrefetchKind } from "next/dist/client/components/router-reducer/router-reducer-types";
 import { api } from "../../../convex/_generated/api";
 import type { ListItem } from "../../../convex/mail";
@@ -32,6 +33,16 @@ export function Prefetch({ me }: { me: Me }) {
   useLive(api.mail.labels, connected ? {} : "skip", { ttlMs: 300_000 });
   useLive(api.bookings.practice, setup?.cliniko ? {} : "skip", { ttlMs: 600_000 });
   useQuery(api.signaturesEmail.mine);
+  // Each page's opening queries, subscribed here with the same arguments the page uses, so its first visit renders
+  // from the client cache. Convex pushes changes, so nothing goes stale.
+  useQuery(api.tasks.lists); useQuery(api.tasks.list, { view: "all", listId: undefined, includeDone: false }); useQuery(api.tags.list); useQuery(api.users.all);
+  useQuery(api.matters.list, { includeClosed: false }); useQuery(api.matters.list, {}); useQuery(api.money.table);
+  useQuery(api.files.list, {}); useQuery(api.files.codes); useQuery(api.settings.all); useQuery(api.bookings.pricing); useQuery(api.signatures.list);
+  // Cliniko reads for Patients and Payments; the slow invoice pull waits until the rest has settled.
+  const [later, setLater] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setLater(true), 4000); return () => clearTimeout(t); }, []);
+  useLive(api.bookings.recentPatients, setup?.cliniko ? {} : "skip");
+  useLive(api.bookings.clinikoInvoices, setup?.cliniko && later ? { days: 90 } : "skip", { ttlMs: 120_000 });
   const inbox = useSyncExternalStore(subscribeLive, () => readLive<InboxList>(INBOX_KEY), () => EMPTY_SLOT as Slot<InboxList>);
   const ids = inbox.data?.items.map((i) => i.gmailThreadId) ?? [];
   useQuery(api.mail.meta, connected && ids.length ? { gmailThreadIds: ids } : "skip");

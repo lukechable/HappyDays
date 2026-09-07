@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
-import { useMutation, useQuery } from "convex/react";
+import { PrefetchLink } from "@/components/prefetch-link";
+import { useMutation } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import { toast } from "sonner";
 import { api } from "../../../convex/_generated/api";
 import { PageHeader, Panel, Pill, statusTone, Empty, Loading, DataTable } from "@/components/primitives";
@@ -38,7 +39,7 @@ export function MattersList() {
           <DataTable head={<><th>Matter</th><th>Status</th><th>Emails</th><th>Tasks</th><th>Files</th><th>Invoices</th><th>Report</th><th>Updated</th></>} minWidth={760}>
             {matters.map((m) => (
               <tr key={m._id} className="hover:bg-muted/50">
-                <td><Link href={`/matters/${m._id}`} className="font-medium hover:underline">{m.name}</Link>{m.courtFileNo && <div className="text-xs text-fg-tertiary">{m.courtFileNo}</div>}</td>
+                <td><PrefetchLink href={`/matters/${m._id}`} className="font-medium hover:underline">{m.name}</PrefetchLink>{m.courtFileNo && <div className="text-xs text-fg-tertiary">{m.courtFileNo}</div>}</td>
                 <td><Pill tone={statusTone(m.status)}>{m.status.replace("_", " ")}</Pill></td>
                 <td className="num">{m.counts.threads}</td>
                 <td className="num">{m.counts.tasks}</td>

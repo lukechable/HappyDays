@@ -4,6 +4,10 @@ import { ReactNode, useCallback, useEffect, useState } from "react";
 import { ConvexProviderWithAuth, ConvexReactClient } from "convex/react";
 import { ConvexProviderWithClerk } from "convex/react-clerk";
 import { useAuth } from "@clerk/nextjs";
+import { ConvexQueryCacheProvider } from "convex-helpers/react/cache/provider";
+
+/** Keeps a page's query subscriptions alive for five minutes after it unmounts, so coming back to it renders from the client cache with no round trip. */
+const CACHE = { expiration: 300_000, maxIdleEntries: 150 };
 
 const convex = new ConvexReactClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
@@ -12,7 +16,7 @@ const useAuthForConvex = () => useAuth({ treatPendingAsSignedOut: false });
 
 /** Convex client that forwards Clerk's "convex" JWT template to the backend. */
 export function ConvexClientProvider({ children }: { children: ReactNode }) {
-  return <ConvexProviderWithClerk client={convex} useAuth={useAuthForConvex}>{children}</ConvexProviderWithClerk>;
+  return <ConvexProviderWithClerk client={convex} useAuth={useAuthForConvex}><ConvexQueryCacheProvider {...CACHE}>{children}</ConvexQueryCacheProvider></ConvexProviderWithClerk>;
 }
 
 /** Guest sessions: the token comes from the httpOnly cookie via /api/guest/token and is handed to Convex. */
@@ -30,5 +34,5 @@ function useGuestAuth() {
 }
 
 export function GuestConvexProvider({ children }: { children: ReactNode }) {
-  return <ConvexProviderWithAuth client={guestClient} useAuth={useGuestAuth}>{children}</ConvexProviderWithAuth>;
+  return <ConvexProviderWithAuth client={guestClient} useAuth={useGuestAuth}><ConvexQueryCacheProvider {...CACHE}>{children}</ConvexQueryCacheProvider></ConvexProviderWithAuth>;
 }

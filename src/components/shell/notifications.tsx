@@ -2,7 +2,8 @@
 
 import { type ReactNode } from "react";
 import Link from "next/link";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import { api } from "../../../convex/_generated/api";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ago } from "@/lib/format";

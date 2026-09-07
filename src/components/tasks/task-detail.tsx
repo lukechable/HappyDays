@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useMutation, useQuery } from "convex/react";
+import { PrefetchLink } from "@/components/prefetch-link";
+import { useMutation } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import { X, Trash2, Plus, Circle, CheckCircle, Mail, Briefcase, Repeat } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../../../convex/_generated/api";
@@ -73,7 +75,7 @@ export function TaskDetail({ id, onClose }: { id: Id<"tasks">; onClose: () => vo
         {(task.sourceThreadId || task.matterId) && (
           <div className="mt-3 flex flex-wrap gap-2 text-xs">
             {task.sourceThreadId && (gmailThreadId ? <Link href={`/mail?thread=${gmailThreadId}`} className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-1 text-fg-secondary hover:text-foreground"><Mail className="size-3" />{thread?.subject ?? "Open email"}</Link> : <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-1 text-fg-tertiary"><Mail className="size-3" />{thread?.subject ?? "Email"} (not in your mailbox)</span>)}
-            {task.matterId && <Link href={`/matters/${task.matterId}`} className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-1 text-fg-secondary hover:text-foreground"><Briefcase className="size-3" />Matter</Link>}
+            {task.matterId && <PrefetchLink href={`/matters/${task.matterId}`} className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-1 text-fg-secondary hover:text-foreground"><Briefcase className="size-3" />Matter</PrefetchLink>}
           </div>
         )}
 

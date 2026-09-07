@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useQuery } from "convex/react";
+import { PrefetchLink } from "@/components/prefetch-link";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import { X } from "lucide-react";
 import { api } from "../../../convex/_generated/api";
 import { PageHeader, Panel, Pill, Kpi, Empty, Loading, ErrorBox, DataTable } from "@/components/primitives";
@@ -68,7 +69,7 @@ export function PaymentsPage() {
         </div>
         {setup && !setup.cliniko ? <Empty title="Cliniko isn’t connected" action={<Button render={<Link href="/settings?tab=cliniko" />}>Settings</Button>} /> : invoices.error ? <ErrorBox title="Couldn’t read invoices from Cliniko" message={invoices.error} retry={invoices.reload} /> : !invoices.data ? <Loading rows={6} /> : rows.length === 0 ? <Empty title={all.length ? "No invoices match these filters" : `No Cliniko invoices in the last ${days} days`} action={filtered ? <Button size="sm" variant="outline" onClick={() => { setStatus("all"); setCustomer(null); setQ(""); setMin(""); }}>Clear filters</Button> : undefined} /> : (
           <DataTable head={<>{th("Number", "number")}{th("Patient", "patientName")}{th("Issued", "issueDate")}{th("Total", "total", true)}{th("Status", "status")}<th></th></>} minWidth={640}>
-            {rows.map((i) => <tr key={i.id} className="hover:bg-muted/50"><td className="num">{i.number}</td><td>{i.patientId ? <button type="button" onClick={() => setCustomer(i.patientName)} className="hover:underline" title="Show only this customer">{i.patientName || `Patient ${i.patientId}`}</button> : i.patientName || "—"}</td><td className="text-xs text-fg-secondary">{day(i.issueDate)}</td><td className="num text-right">${i.total.toFixed(2)}</td><td><Pill tone={i.closedAt ? "good" : "warn"}>{i.status}</Pill></td><td><div className="flex justify-end gap-2 text-xs">{i.patientId && <Link href={`/bookings/patients/${i.patientId}`} className="text-fg-tertiary hover:text-foreground">patient</Link>}{i.payUrl && <a href={i.payUrl} target="_blank" rel="noreferrer" className="text-fg-tertiary hover:text-foreground">pay link</a>}<a href={i.clinikoUrl} target="_blank" rel="noreferrer" className="text-fg-tertiary hover:text-foreground">Cliniko ↗</a></div></td></tr>)}
+            {rows.map((i) => <tr key={i.id} className="hover:bg-muted/50"><td className="num">{i.number}</td><td>{i.patientId ? <button type="button" onClick={() => setCustomer(i.patientName)} className="hover:underline" title="Show only this customer">{i.patientName || `Patient ${i.patientId}`}</button> : i.patientName || "—"}</td><td className="text-xs text-fg-secondary">{day(i.issueDate)}</td><td className="num text-right">${i.total.toFixed(2)}</td><td><Pill tone={i.closedAt ? "good" : "warn"}>{i.status}</Pill></td><td><div className="flex justify-end gap-2 text-xs">{i.patientId && <PrefetchLink href={`/bookings/patients/${i.patientId}`} className="text-fg-tertiary hover:text-foreground">patient</PrefetchLink>}{i.payUrl && <a href={i.payUrl} target="_blank" rel="noreferrer" className="text-fg-tertiary hover:text-foreground">pay link</a>}<a href={i.clinikoUrl} target="_blank" rel="noreferrer" className="text-fg-tertiary hover:text-foreground">Cliniko ↗</a></div></td></tr>)}
             <tr><td colSpan={3} className="text-xs text-fg-tertiary">{rows.length} invoice{rows.length === 1 ? "" : "s"}{customer ? ` for ${customer}` : ""}</td><td className="num text-right font-semibold">${sum.toFixed(2)}</td><td colSpan={2} className="text-xs text-fg-tertiary">{owing ? `$${owing.toFixed(2)} unpaid` : "all paid"}</td></tr>
           </DataTable>
         )}

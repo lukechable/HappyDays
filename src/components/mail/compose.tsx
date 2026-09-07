@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useAction, useQuery } from "convex/react";
+import { useAction } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Link from "@tiptap/extension-link";

@@ -4,7 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
-import { useAction, useMutation, useQuery } from "convex/react";
+import { useAction, useMutation } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import { PenSquare, Search, RefreshCw, Archive, Trash2, MailOpen, Tag as TagIcon, X, Star, Inbox as InboxIcon, ShieldAlert, FolderInput } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../../../convex/_generated/api";

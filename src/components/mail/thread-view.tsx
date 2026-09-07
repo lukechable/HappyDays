@@ -3,8 +3,10 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import Link from "next/link";
+import { PrefetchLink } from "@/components/prefetch-link";
 import { Archive, ArchiveRestore, Reply, ReplyAll, Forward, Star, Trash2, Tag, UserCheck, Briefcase, ListTodo, MailOpen, FolderInput, Paperclip, Download, Eye, ChevronDown, ChevronUp, Sparkles, X, Bot, CalendarCheck2, CalendarClock } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../../../convex/_generated/api";
@@ -85,7 +87,7 @@ export function ThreadView({ thread, meta, labels, loading, error, myFirst, show
             {meta?.rescheduled && <button type="button" title="Click to clear" onClick={() => meta.threadId && toggleRescheduled({ threadId: meta.threadId })}><Pill className="bg-success-soft text-success"><CalendarCheck2 className="size-3" />Already rescheduled</Pill></button>}
             {meta?.rescheduleRequested && <button type="button" title="Click once the appointment has been moved" onClick={() => meta.threadId && toggleRescheduled({ threadId: meta.threadId })}><Pill className="bg-warning-soft text-warning"><CalendarClock className="size-3" />Reschedule requested · mark done</Pill></button>}
             {meta?.assignedTo && <Pill className="bg-warning-soft text-warning"><UserCheck className="size-3" />{meta.assignedTo.first} to follow up{meta.assignedBy ? ` (from ${meta.assignedBy.first})` : ""}{meta.assignmentNote ? `: ${meta.assignmentNote}` : ""}<button type="button" className="ml-1 underline" onClick={() => meta.threadId && finishAssignment({ threadId: meta.threadId })}>done</button></Pill>}
-            {meta?.matter && <Link href={`/matters/${meta.matter._id}`} className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-fg-secondary hover:text-foreground"><Briefcase className="size-3" />{meta.matter.name}</Link>}
+            {meta?.matter && <PrefetchLink href={`/matters/${meta.matter._id}`} className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-fg-secondary hover:text-foreground"><Briefcase className="size-3" />{meta.matter.name}</PrefetchLink>}
             {meta?.tags.map((t) => <Pill key={t._id} className={TONE_CLASS[t.color]}>{t.name}</Pill>)}
             {meta?.suggestedTags.map((t) => <button key={t._id} type="button" title="Suggested by Claude. Click to apply." onClick={() => meta.threadId && setTags({ threadId: meta.threadId, tagIds: [...meta.tags.map((x) => x._id), t._id] })} className={cn("inline-flex items-center gap-1 rounded-full border border-dashed px-2 py-0.5 text-[11px] font-medium opacity-80 hover:opacity-100", TONE_CLASS[t.color])}><Sparkles className="size-3" />{t.name}</button>)}
             {(detail?.tasks.length ?? 0) > 0 && <Link href={`/tasks?task=${detail!.tasks[0]._id}`} className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] text-fg-secondary hover:text-foreground"><ListTodo className="size-3" />{detail!.tasks.length} task{detail!.tasks.length === 1 ? "" : "s"}</Link>}

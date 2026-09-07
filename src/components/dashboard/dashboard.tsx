@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useQuery } from "convex/react";
+import { PrefetchLink } from "@/components/prefetch-link";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import { api } from "../../../convex/_generated/api";
 import { Kpi, PageHeader, Panel, Pill, statusTone, Empty, Loading, ErrorBox } from "@/components/primitives";
 import { Button } from "@/components/ui/button";
@@ -92,7 +93,7 @@ export function Dashboard() {
             {matters === undefined ? <Loading rows={2} /> : reportDue.length === 0 ? <p className="py-3 text-center text-sm text-fg-tertiary">No matters waiting on a report.</p> : (
               <ul className="divide-y divide-border/70">
                 {reportDue.slice(0, 5).map((m) => (
-                  <li key={m._id}><Link href={`/matters/${m._id}`} className="flex items-center gap-2 py-2"><span className="min-w-0 flex-1 truncate text-sm">{m.name}</span><Pill tone={m.paid ? "good" : "warn"}>{m.paid ? "paid" : "unpaid"}</Pill><Pill tone={statusTone(m.status)}>{m.status.replace("_", " ")}</Pill></Link></li>
+                  <li key={m._id}><PrefetchLink href={`/matters/${m._id}`} className="flex items-center gap-2 py-2"><span className="min-w-0 flex-1 truncate text-sm">{m.name}</span><Pill tone={m.paid ? "good" : "warn"}>{m.paid ? "paid" : "unpaid"}</Pill><Pill tone={statusTone(m.status)}>{m.status.replace("_", " ")}</Pill></PrefetchLink></li>
                 ))}
               </ul>
             )}
