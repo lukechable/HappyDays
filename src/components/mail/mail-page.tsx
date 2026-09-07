@@ -331,8 +331,9 @@ export function MailPage() {
       {/* The folder column joins at lg; the list and reading pane split from md, since without the rail there is room. */}
       <div className={cn("grid min-h-0 flex-1 grid-cols-1", pane === "right" ? "md:grid-cols-[minmax(300px,380px)_minmax(0,1fr)] lg:grid-cols-[200px_minmax(320px,400px)_minmax(0,1fr)]" : "md:grid-cols-[minmax(0,1fr)] lg:grid-cols-[200px_minmax(0,1fr)]")}>
         <aside className="hidden min-h-0 border-r border-border bg-surface-2/60 lg:block"><FolderList view={view} labelId={labelId} labels={labels} badges={{ overdue: me?.badges.overdue ?? 0, assigned: me?.badges.assigned ?? 0 }} onSelect={(v, l) => { setParams({ view: v === "inbox" ? undefined : v, label: l, q: undefined, thread: undefined }); }} onLabelsChanged={refreshLabels} onDropThreads={onDropThreads} /></aside>
-        <div className={cn("contents", pane === "below" && "md:grid md:min-h-0 md:grid-rows-[minmax(0,7fr)_minmax(0,13fr)]")}>
-        <section key={`list-${pane}`} className={cn("flex min-h-0 flex-col", pane === "right" ? "border-r border-border" : "md:min-h-0 md:border-b md:border-border", selectedId && "hidden md:flex")}>
+        {/* min-w-0 and an explicit minmax(0,1fr) column: without them the implicit grid column sizes to the longest row and the whole thing runs off the right of the screen. */}
+        <div className={cn("contents", pane === "below" && "md:grid md:min-h-0 md:min-w-0 md:grid-cols-[minmax(0,1fr)] md:grid-rows-[minmax(0,7fr)_minmax(0,13fr)]")}>
+        <section key={`list-${pane}`} className={cn("flex min-h-0 min-w-0 flex-col", pane === "right" ? "border-r border-border" : "md:min-h-0 md:border-b md:border-border", selectedId && "hidden md:flex")}>
           <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-1.5">
             <span className="truncate text-[13px] font-medium">{title}</span>
             {missing > 0 && <span className="text-[11px] text-fg-tertiary" title="These threads exist only in the other mailbox">{missing} not in your mailbox</span>}
@@ -348,7 +349,7 @@ export function MailPage() {
           </div>
         </section>
         {/* Below (Outlook's layout): the list is a table across the top 35%, the reading pane fills the rest. Right: a column. */}
-        <section key={`pane-${pane}`} className={cn("min-h-0 bg-surface/60", pane === "below" ? "hd-slide-up" : "hd-slide-left", !selectedId && "hidden md:block")}>
+        <section key={`pane-${pane}`} className={cn("min-h-0 min-w-0 bg-surface/60", pane === "below" ? "hd-slide-up" : "hd-slide-left", !selectedId && "hidden md:block")}>
           <ThreadView thread={selectedId ? thread : undefined} meta={selectedId ? meta[selectedId] : undefined} labels={labels ?? []} loading={threadLoading} error={threadError} myFirst={me?.first} showImagesDefault={me?.prefs.showImages ?? false} onAction={(op, payload) => selectedId && act([selectedId], op, payload)} onReply={startCompose} onClose={closeThread} />
         </section>
         </div>
