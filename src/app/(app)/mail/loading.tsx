@@ -1,7 +1,7 @@
 /** Three-pane placeholder so a cold click on Inbox responds at once; the real page replaces it as soon as its code and payload land. */
 export default function Loading() {
   return (
-    <div className="flex min-h-0 flex-1 flex-col lg:h-[calc(100svh_-_48px)]" aria-busy>
+    <div className="flex min-h-0 flex-1 flex-col lg:h-[calc(100svh_-_48px)] lg:flex-none" aria-busy>
       <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
         <div className="h-8 w-24 animate-pulse rounded-lg bg-muted" />
         <div className="h-8 max-w-xl flex-1 animate-pulse rounded-full bg-muted" />
