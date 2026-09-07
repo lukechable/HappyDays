@@ -30,6 +30,8 @@ import type * as settings from "../settings.js";
 import type * as signatures from "../signatures.js";
 import type * as signaturesEmail from "../signaturesEmail.js";
 import type * as stripe from "../stripe.js";
+import type * as subpoena from "../subpoena.js";
+import type * as subpoenaData from "../subpoenaData.js";
 import type * as tags from "../tags.js";
 import type * as tasks from "../tasks.js";
 import type * as users from "../users.js";
@@ -63,6 +65,8 @@ declare const fullApi: ApiFromModules<{
   signatures: typeof signatures;
   signaturesEmail: typeof signaturesEmail;
   stripe: typeof stripe;
+  subpoena: typeof subpoena;
+  subpoenaData: typeof subpoenaData;
   tags: typeof tags;
   tasks: typeof tasks;
   users: typeof users;

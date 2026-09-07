@@ -15,8 +15,9 @@ import { Switch } from "@/components/ui/switch";
 import { ago, aud, TONES, TONE_CLASS, TONE_DOT } from "@/lib/format";
 import { cn, errorMessage } from "@/lib/utils";
 import type { Id } from "../../../convex/_generated/dataModel";
+import { AutoRepliesTab } from "./auto-replies";
 
-const TABS = [["setup", "Setup"], ["google", "Google"], ["cliniko", "Cliniko & pricing"], ["stripe", "Stripe"], ["signatures", "Signatures"], ["tags", "Tags"], ["practice", "Practice"]] as const;
+const TABS = [["setup", "Setup"], ["google", "Google"], ["autoreplies", "Auto-replies"], ["cliniko", "Cliniko & pricing"], ["stripe", "Stripe"], ["signatures", "Signatures"], ["tags", "Tags"], ["practice", "Practice"]] as const;
 type Tab = (typeof TABS)[number][0];
 
 export function SettingsPage() {
@@ -37,6 +38,7 @@ export function SettingsPage() {
       </div>
       {tab === "setup" && <SetupTab />}
       {tab === "google" && <GoogleTab />}
+      {tab === "autoreplies" && <AutoRepliesTab />}
       {tab === "cliniko" && <ClinikoTab />}
       {tab === "stripe" && <StripeTab />}
       {tab === "signatures" && <SignaturesTab />}
