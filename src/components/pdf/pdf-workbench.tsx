@@ -75,7 +75,7 @@ export function PdfWorkbench() {
   };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col lg:h-[calc(100svh-48px)]">
+    <div className="flex min-h-0 flex-1 flex-col lg:h-[calc(100svh_-_48px)]">
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-3 py-2">
         <div className="flex gap-1 rounded-full bg-muted p-0.5 text-xs">{(["pages", "markup", "requests"] as const).map((t) => <button key={t} type="button" onClick={() => setTab(t)} className={cn("h-7 rounded-full px-3", tab === t ? "bg-card shadow-xs" : "text-fg-tertiary hover:text-foreground")}>{t === "pages" ? "Pages" : t === "markup" ? "Mark up & sign" : "Signature requests"}</button>)}</div>
         {pdf && tab !== "requests" && <span className="truncate text-sm font-medium">{name}<span className="num ml-2 text-xs text-fg-tertiary">{pdf.pageCount} pages</span></span>}

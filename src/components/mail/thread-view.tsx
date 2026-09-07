@@ -60,7 +60,7 @@ export function ThreadView({ thread, meta, labels, loading, error, myFirst, show
   return (
     <div className="flex h-full min-w-0 flex-col">
       <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-border px-3 py-2">
-        <Act label="Back" onClick={onClose} className="lg:hidden"><X className="size-4" /></Act>
+        <Act label="Back" onClick={onClose} className="md:hidden"><X className="size-4" /></Act>
         {inTrash ? <Act label="Restore" onClick={() => onAction("untrash")}><ArchiveRestore className="size-4" /></Act> : inInbox ? <Act label="Archive (e)" onClick={() => onAction("archive")}><Archive className="size-4" /></Act> : <Act label="Move to inbox" onClick={() => onAction("unarchive")}><ArchiveRestore className="size-4" /></Act>}
         <Act label={inTrash ? "Delete forever" : "Delete (#)"} onClick={() => onAction("trash")}><Trash2 className="size-4" /></Act>
         <Act label="Mark unread (u)" onClick={() => onAction("unread")}><MailOpen className="size-4" /></Act>

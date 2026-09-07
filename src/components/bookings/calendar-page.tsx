@@ -21,6 +21,23 @@ import { InvoiceDialog } from "./invoice-dialog";
 
 /** Cliniko's own colour for the appointment type is the block's fill, with dark ink on pastels and white ink on the strong fills (red, purple), as Cliniko's calendar does. */
 const FALLBACK = "#8dc3e9";
+/**
+ * Cliniko's API gives the appointment type's raw colour (#f60804, #B8D9FF…); Cliniko's own calendar draws it a
+ * little desaturated and lighter (#f60804 becomes about #e34234). Same softening here so the two calendars match.
+ */
+function clinikoFill(hex: string): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return hex;
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(m[1].slice(i, i + 2), 16) / 255);
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  let h = 0; const l = (max + min) / 2; const d = max - min;
+  let s = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+  if (d !== 0) { h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4; h = (h * 60 + 360) % 360; }
+  s *= 0.78; const l2 = l < 0.55 ? l + 0.06 : l;
+  const c = (1 - Math.abs(2 * l2 - 1)) * s, x = c * (1 - Math.abs(((h / 60) % 2) - 1)), m0 = l2 - c / 2;
+  const [r1, g1, b1] = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x] : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
+  return "#" + [r1, g1, b1].map((v) => Math.round((v + m0) * 255).toString(16).padStart(2, "0")).join("");
+}
 function inkOn(hex: string): string {
   const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
   if (!m) return "#1a1a19";
@@ -71,7 +88,7 @@ export function CalendarPage() {
   // Day columns: every practitioner Cliniko lists, plus any who has an appointment in view but isn't listed.
   const dayPractitioners: Array<{ id: string; name: string }> = [...practitioners.map((p) => ({ id: p.id, name: `${p.first_name} ${p.last_name}`.trim() })), ...(live.data?.practitioners ?? []).filter((p) => !practitioners.some((q) => q.id === p.id) && (live.data?.appointments ?? []).some((a) => a.practitionerId === p.id)).map((p) => ({ id: p.id, name: p.name }))];
   const columns: Array<{ key: string; label: string; day: Date; practitionerId?: string }> = mode === "week"
-    ? Array.from({ length: 7 }, (_, i) => { const d = new Date(rangeStart); d.setDate(d.getDate() + i); return { key: d.toDateString(), label: d.toLocaleDateString("en-AU", { weekday: "short", day: "numeric" }), day: d }; })
+    ? Array.from({ length: 7 }, (_, i) => { const d = new Date(rangeStart); d.setDate(d.getDate() + i); return { key: d.toDateString(), label: d.toLocaleDateString("en-AU", { weekday: "long", day: "numeric" }), day: d }; })
     : (dayPractitioners.length ? dayPractitioners : [{ id: undefined as string | undefined, name: "All" }]).map((p) => ({ key: String(p.id ?? "all"), label: p.name, day: rangeStart, practitionerId: p.id }));
 
   const inColumn = (a: { startsAt: string; practitionerId?: string }, c: (typeof columns)[number]) => { const d = new Date(a.startsAt); return d.toDateString() === c.day.toDateString() && (mode === "week" || c.practitionerId === undefined || a.practitionerId === c.practitionerId); };
@@ -105,7 +122,7 @@ export function CalendarPage() {
   if (setup && !setup.cliniko) return <div className="p-8"><Empty title="Cliniko isn’t connected" body="Add CLINIKO_API_KEY on the Convex deployment and the calendar appears here, read live." action={<Button render={<Link href="/settings?tab=cliniko" />}>Settings</Button>} /></div>;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col lg:h-[calc(100svh-48px)]">
+    <div className="flex min-h-0 flex-1 flex-col lg:h-[calc(100svh_-_48px)]">
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-3 py-2">
         <Button size="sm" variant="outline" onClick={() => setParams({ d: String(startOfDay(now).getTime()) })}>Today</Button>
         <div className="flex items-center"><Button size="icon-sm" variant="ghost" aria-label="Previous" onClick={() => { const d = new Date(rangeStart); d.setDate(d.getDate() - (mode === "day" ? 1 : 7)); setParams({ d: String(d.getTime()) }); }}><ChevronLeft className="size-4" /></Button><Button size="icon-sm" variant="ghost" aria-label="Next" onClick={() => { const d = new Date(rangeStart); d.setDate(d.getDate() + (mode === "day" ? 1 : 7)); setParams({ d: String(d.getTime()) }); }}><ChevronRight className="size-4" /></Button></div>
@@ -131,8 +148,10 @@ export function CalendarPage() {
               const groups = ((live.data?.groups ?? []) as Group[]).filter((g) => inColumn(g, c));
               const isToday = c.day.toDateString() === new Date(now).toDateString();
               return (
-                <div key={c.key} className={cn("relative border-l border-border", busy && "opacity-60")} style={{ height: (DAY_END - DAY_START) * HOUR_PX, backgroundImage: `repeating-linear-gradient(to bottom, transparent 0, transparent ${HOUR_PX - 1}px, var(--border) ${HOUR_PX - 1}px, var(--border) ${HOUR_PX}px)` }} onDragOver={(e) => e.preventDefault()} onDrop={(e) => void onDrop(e, c)} onClick={(e) => onEmptyClick(e, c)}>
-                  {avail.map((b) => <div key={`a${b.id}`} className="absolute inset-x-0 bg-success/[0.06]" style={{ top: yFor(b.startsAt), height: hFor(b.startsAt, b.endsAt) }} />)}
+                <div key={c.key} className={cn("relative border-l border-border bg-muted/70", busy && "opacity-60")} style={{ height: (DAY_END - DAY_START) * HOUR_PX }} onDragOver={(e) => e.preventDefault()} onDrop={(e) => void onDrop(e, c)} onClick={(e) => onEmptyClick(e, c)}>
+                  {/* As in Cliniko: the day is grey, and only the hours the practitioner works are white. */}
+                  {avail.map((b) => <div key={`a${b.id}`} className="absolute inset-x-0 bg-background" style={{ top: yFor(b.startsAt), height: hFor(b.startsAt, b.endsAt) }} />)}
+                  <div className="pointer-events-none absolute inset-0" style={{ backgroundImage: `repeating-linear-gradient(to bottom, transparent 0, transparent ${HOUR_PX - 1}px, var(--border) ${HOUR_PX - 1}px, var(--border) ${HOUR_PX}px)` }} aria-hidden="true" />
                   {unavail.map((b) => <div key={`u${b.id}`} className="absolute inset-x-0 bg-[repeating-linear-gradient(45deg,transparent,transparent_6px,rgba(0,0,0,.05)_6px,rgba(0,0,0,.05)_12px)] px-1 text-[10px] text-fg-tertiary" style={{ top: yFor(b.startsAt), height: hFor(b.startsAt, b.endsAt) }} title={b.notes}>{b.notes}</div>)}
                   {isToday && <div className="pointer-events-none absolute inset-x-0 z-[5] h-0.5 bg-[#e0218a] shadow-[0_0_0_1px_rgba(224,33,138,.25)]" style={{ top: yFor(new Date(now).toISOString()) }} aria-hidden="true" />}
                   {groups.map((g) => (
@@ -142,7 +161,7 @@ export function CalendarPage() {
                     </a>
                   ))}
                   {appts.map((a) => (
-                    <button key={a.id} type="button" data-appt draggable={!a.cancelledAt} onDragStart={(e) => e.dataTransfer.setData("appt", a.id)} onClick={(e) => { e.stopPropagation(); setSelected(a); }} className={cn("hd-lift absolute inset-x-0.5 overflow-hidden rounded-md px-1.5 py-0.5 text-left text-[11px] leading-tight shadow-xs ring-1 ring-black/10 hover:z-[6]", a.cancelledAt && "opacity-40 line-through", a.didNotArrive && "ring-2 ring-error")} style={{ top: yFor(a.startsAt), height: hFor(a.startsAt, a.endsAt), background: a.color ?? FALLBACK, color: inkOn(a.color ?? FALLBACK) }}>
+                    <button key={a.id} type="button" data-appt draggable={!a.cancelledAt} onDragStart={(e) => e.dataTransfer.setData("appt", a.id)} onClick={(e) => { e.stopPropagation(); setSelected(a); }} className={cn("hd-lift absolute inset-x-0.5 overflow-hidden rounded-md px-1.5 py-0.5 text-left text-[11px] leading-tight shadow-xs ring-1 ring-black/10 hover:z-[6]", a.cancelledAt && "opacity-40 line-through", a.didNotArrive && "ring-2 ring-error")} style={{ top: yFor(a.startsAt), height: hFor(a.startsAt, a.endsAt), background: clinikoFill(a.color ?? FALLBACK), color: inkOn(clinikoFill(a.color ?? FALLBACK)) }}>
                       <div className="truncate font-semibold">{a.patientName}</div>
                       <div className="truncate opacity-90">{time(a.startsAt)} · {a.typeName}</div>
                       {mode === "week" && practitioners.length > 1 && <div className="truncate opacity-75">{a.practitionerName}</div>}
@@ -159,7 +178,7 @@ export function CalendarPage() {
         <div className="fixed inset-x-0 bottom-0 z-40 sm:inset-auto sm:right-6 sm:top-20 sm:w-[380px]">
           <div className="hd-rise-up rounded-t-2xl bg-card p-4 shadow-float ring-1 ring-black/10 dark:ring-white/10 sm:rounded-2xl">
             <div className="flex items-start gap-2">
-              <span className="mt-1 size-3 shrink-0 rounded-full" style={{ background: selected.color ?? FALLBACK }} />
+              <span className="mt-1 size-3 shrink-0 rounded-full" style={{ background: clinikoFill(selected.color ?? FALLBACK) }} />
               <div className="min-w-0 flex-1"><div className="font-display text-lg leading-tight">{selected.patientName}</div><div className="text-sm text-fg-secondary">{selected.typeName} · {selected.practitionerName}</div><div className="num text-sm">{new Date(selected.startsAt).toLocaleDateString("en-AU", { weekday: "long", day: "numeric", month: "short" })}, {time(selected.startsAt)}–{time(selected.endsAt)}</div></div>
               <button type="button" onClick={() => setSelected(null)} className="rounded p-1 hover:bg-muted" aria-label="Close"><X className="size-4" /></button>
             </div>
