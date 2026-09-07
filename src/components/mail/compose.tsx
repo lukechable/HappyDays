@@ -155,7 +155,7 @@ export function Compose({ draft, onClose, onSent, signatureHtml, signatureAbove 
   const title = draft.mode === "new" ? "New message" : draft.mode === "forward" ? "Forward" : draft.mode === "draft" ? "Draft" : "Reply";
 
   return (
-    <div className={cn("fixed z-40 flex flex-col overflow-hidden rounded-t-xl bg-card shadow-float ring-1 ring-black/10 dark:ring-white/10", expanded ? "inset-x-4 bottom-0 top-16 sm:inset-x-[10%]" : minimised ? "bottom-0 right-4 h-11 w-[360px]" : "bottom-0 right-4 h-[min(640px,85svh)] w-[min(680px,calc(100vw-2rem))]")} role="dialog" aria-label={title} onDrop={(e) => { e.preventDefault(); void addFiles(e.dataTransfer.files); }} onDragOver={(e) => e.preventDefault()}>
+    <div className={cn("hd-rise-up fixed z-40 flex flex-col overflow-hidden rounded-t-xl bg-card shadow-float ring-1 ring-black/10 dark:ring-white/10", expanded ? "inset-x-4 bottom-0 top-16 sm:inset-x-[10%]" : minimised ? "bottom-0 right-4 h-11 w-[360px]" : "bottom-0 right-4 h-[min(640px,85svh)] w-[min(680px,calc(100vw-2rem))]")} role="dialog" aria-label={title} onDrop={(e) => { e.preventDefault(); void addFiles(e.dataTransfer.files); }} onDragOver={(e) => e.preventDefault()}>
       <div className="flex h-11 shrink-0 items-center gap-1 bg-[#1a1a19] px-3 text-white">
         <span className="min-w-0 flex-1 truncate text-sm">{subject || title}</span>
         <button type="button" onClick={() => setMinimised((m) => !m)} className="rounded p-1 hover:bg-white/10" aria-label="Minimise"><Minus className="size-4" /></button>

@@ -15,6 +15,7 @@ import { Dot } from "@/components/primitives";
 import { SignOutButton } from "@/components/auth/auth-mode";
 import { AuthDiagnostics } from "@/components/auth/auth-diagnostics";
 import { Prefetch } from "@/components/shell/prefetch";
+import { PageEnter } from "@/components/shell/page-enter";
 
 export type Me = NonNullable<ReturnType<typeof useQuery<typeof api.users.me>>>;
 
@@ -84,13 +85,13 @@ function Frame({ me, children }: { me: Me; children: ReactNode }) {
             <SheetContent side="left" className="w-[260px] border-0 bg-[#1a1a19] p-0 text-white"><SheetTitle className="sr-only">Menu</SheetTitle><Rail me={me} pathname={pathname} search={searchStr} className="flex" /></SheetContent>
           </Sheet>
           <div className="min-w-0 flex-1"><div className="truncate text-[13px] font-medium">{item.label}</div></div>
-          <button type="button" onClick={() => setPaletteOpen(true)} className="inline-flex h-8 items-center gap-2 rounded-full border border-border bg-card px-3 text-xs text-fg-tertiary hover:border-input hover:text-foreground" aria-label="Search everything">
+          <button type="button" onClick={() => setPaletteOpen(true)} className="hd-press inline-flex h-8 items-center gap-2 rounded-full border border-border bg-card px-3 text-xs text-fg-tertiary shadow-xs hover:border-input hover:text-foreground" aria-label="Search everything">
             <Search className="size-3.5" /><span className="hidden sm:inline">Search mail, tasks, patients, matters</span><kbd className="hidden rounded border border-border px-1 font-mono text-[10px] sm:inline">⌘K</kbd>
           </button>
           <NotificationsPopover count={me.badges.notifications} trigger={<span className="relative inline-flex size-8 items-center justify-center rounded-lg text-fg-tertiary hover:bg-muted hover:text-foreground" aria-label="Notifications"><Bell className="size-4" />{me.badges.notifications > 0 && <span className="num absolute -right-0.5 -top-0.5 rounded-full bg-error px-1 text-[9px] font-semibold leading-[14px] text-white">{me.badges.notifications}</span>}</span>} />
         </header>
         <main className={cn("min-w-0 flex-1", wide ? "flex flex-col" : "px-4 py-4 sm:px-5 lg:px-6 lg:py-5")}>
-          {wide ? children : <div className="mx-auto w-full max-w-[1320px]">{children}</div>}
+          {wide ? children : <div className="mx-auto w-full max-w-[1320px]"><PageEnter>{children}</PageEnter></div>}
         </main>
       </div>
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
@@ -119,9 +120,9 @@ function Rail({ me, pathname, search, className }: { me: Me; pathname: string; s
                 const n = i.badge ? badges[i.badge] ?? 0 : 0;
                 const alert = i.badge === "overdue" || i.badge === "paidNotDelivered";
                 return (
-                  <Link key={i.href} href={i.href} aria-current={active ? "page" : undefined} className={cn("flex items-center justify-between gap-2 rounded-lg px-2 py-[5px] text-[13px] leading-tight outline-none transition-colors focus-visible:ring-2 focus-visible:ring-white/60", active ? "bg-white/[0.1] text-white" : "text-white/70 hover:bg-white/[0.06] hover:text-white")}>
+                  <Link key={i.href} href={i.href} aria-current={active ? "page" : undefined} className={cn("hd-press flex items-center justify-between gap-2 rounded-lg px-2 py-[5px] text-[13px] leading-tight outline-none focus-visible:ring-2 focus-visible:ring-white/60", active ? "bg-white/[0.1] text-white" : "text-white/70 hover:bg-white/[0.06] hover:text-white")}>
                     <span className="truncate">{i.label}</span>
-                    {n > 0 && <span className={cn("num rounded-full px-1.5 text-[10.5px] font-semibold leading-4", alert ? "bg-error/90 text-white" : "bg-gold text-[#1a1a19]")}>{n > 99 ? "99+" : n}</span>}
+                    {n > 0 && <span className={cn("hd-pop num rounded-full px-1.5 text-[10.5px] font-semibold leading-4", alert ? "bg-error/90 text-white" : "bg-gold text-[#1a1a19]")}>{n > 99 ? "99+" : n}</span>}
                   </Link>
                 );
               })}

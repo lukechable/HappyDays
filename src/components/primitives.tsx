@@ -21,7 +21,7 @@ export function PageHeader({ title, blurb, actions, meta }: { title: string; blu
 
 export function Panel({ title, blurb, actions, children, className, dense }: { title?: ReactNode; blurb?: string; actions?: ReactNode; children: ReactNode; className?: string; dense?: boolean }) {
   return (
-    <section className={cn("min-w-0 rounded-xl bg-card ring-1 ring-black/[0.06] dark:ring-white/10", dense ? "p-3" : "p-4", className)}>
+    <section className={cn("min-w-0 rounded-xl bg-card shadow-xs ring-1 ring-black/[0.06] dark:ring-white/10", dense ? "p-3" : "p-4", className)}>
       {(title || actions) && (
         <div className="mb-2.5 flex flex-wrap items-start justify-between gap-2">
           <div className="min-w-0">
@@ -44,7 +44,7 @@ export function Eyebrow({ children, className }: { children: ReactNode; classNam
 
 export function Kpi({ label, value, sub, tone, href, className }: { label: string; value: ReactNode; sub?: ReactNode; tone?: "good" | "warn" | "bad"; href?: string; className?: string }) {
   const body = (
-    <div className={cn("min-w-0 rounded-xl bg-card px-3.5 py-3 ring-1 ring-black/[0.06] dark:ring-white/10", href && "transition-shadow hover:shadow-sm", className)}>
+    <div className={cn("min-w-0 rounded-xl bg-card px-3.5 py-3 shadow-xs ring-1 ring-black/[0.06] dark:ring-white/10", href && "hd-lift", className)}>
       <div className="truncate text-[11.5px] text-fg-tertiary">{label}</div>
       <div className={cn("num mt-1 truncate text-[22px] font-semibold leading-none tracking-tight", tone === "good" && "text-success", tone === "warn" && "text-warning", tone === "bad" && "text-error")}>{value}</div>
       {sub && <div className="mt-1.5 min-h-4 truncate text-[11.5px] text-fg-tertiary">{sub}</div>}
@@ -67,7 +67,7 @@ export function Dot({ tone, pulse, className }: { tone: Tone; pulse?: boolean; c
 
 const PILL: Record<Tone, string> = { neutral: "bg-muted text-fg-secondary", good: "bg-success-soft text-success", warn: "bg-warning-soft text-warning", bad: "bg-error-soft text-error", info: "bg-blue-soft text-blue" };
 export function Pill({ tone = "neutral", children, className, title }: { tone?: Tone; children: ReactNode; className?: string; title?: string }) {
-  return <span title={title} className={cn("inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium leading-4", PILL[tone], className)}>{children}</span>;
+  return <span title={title} className={cn("hd-pop inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium leading-4", PILL[tone], className)}>{children}</span>;
 }
 
 /** Map every product status string to a tone in one place so every page agrees. */
@@ -89,7 +89,7 @@ export function DataTable({ head, children, empty, emptyText, className, minWidt
     <div className={cn("-mx-1 overflow-x-auto", className)}>
       <table className="w-full border-separate border-spacing-0 text-[13px]" style={{ minWidth }}>
         <thead><tr className="text-left text-[10.5px] font-semibold uppercase tracking-[0.08em] text-fg-tertiary [&>th]:border-b [&>th]:border-border [&>th]:px-2 [&>th]:pb-1.5 [&>th]:whitespace-nowrap">{head}</tr></thead>
-        <tbody className="[&>tr>td]:border-b [&>tr>td]:border-border/60 [&>tr>td]:px-2 [&>tr>td]:py-1.5 [&>tr>td]:align-middle [&>tr:last-child>td]:border-0">{children}</tbody>
+        <tbody className="[&>tr]:transition-colors [&>tr]:duration-100 [&>tr>td]:border-b [&>tr>td]:border-border/60 [&>tr>td]:px-2 [&>tr>td]:py-1.5 [&>tr>td]:align-middle [&>tr:last-child>td]:border-0">{children}</tbody>
       </table>
       {empty && <div className="px-2 py-6 text-center text-[13px] text-fg-tertiary">{emptyText ?? "Nothing here."}</div>}
     </div>
