@@ -1,7 +1,5 @@
-# OS
+# OS / editors
 .DS_Store
-
-# Editors
 .vscode/
 .idea/
 
@@ -12,7 +10,12 @@
 
 # Dependencies / build
 node_modules/
-dist/
-build/
 .next/
+out/
+build/
 *.log
+*.tsbuildinfo
+next-env.d.ts
+
+# Convex local state
+.convex/
