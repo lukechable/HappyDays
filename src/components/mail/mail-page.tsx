@@ -330,8 +330,8 @@ export function MailPage() {
 
       <div className={cn("grid min-h-0 flex-1 grid-cols-1", pane === "right" ? "lg:grid-cols-[200px_minmax(320px,400px)_minmax(0,1fr)]" : "lg:grid-cols-[200px_minmax(0,1fr)]")}>
         <aside className="hidden min-h-0 border-r border-border bg-surface-2/60 lg:block"><FolderList view={view} labelId={labelId} labels={labels} badges={{ overdue: me?.badges.overdue ?? 0, assigned: me?.badges.assigned ?? 0 }} onSelect={(v, l) => { setParams({ view: v === "inbox" ? undefined : v, label: l, q: undefined, thread: undefined }); }} onLabelsChanged={refreshLabels} onDropThreads={onDropThreads} /></aside>
-        <div className={cn("contents", pane === "below" && "lg:flex lg:min-h-0 lg:flex-col")}>
-        <section key={`list-${pane}`} className={cn("flex min-h-0 flex-col", pane === "right" ? "border-r border-border" : "lg:h-[45%] lg:shrink-0 lg:border-b lg:border-border", selectedId && "hidden lg:flex")}>
+        <div className={cn("contents", pane === "below" && "lg:relative lg:flex lg:min-h-0 lg:flex-col lg:overflow-hidden")}>
+        <section key={`list-${pane}`} className={cn("flex min-h-0 flex-col", pane === "right" ? "border-r border-border" : "lg:min-h-0 lg:flex-1", selectedId && "hidden lg:flex")}>
           <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-1.5">
             <span className="truncate text-[13px] font-medium">{title}</span>
             {missing > 0 && <span className="text-[11px] text-fg-tertiary" title="These threads exist only in the other mailbox">{missing} not in your mailbox</span>}
@@ -342,11 +342,12 @@ export function MailPage() {
               {SMART_TABS.map((t) => <button key={t.key} type="button" onClick={() => setParams({ view: t.key, thread: undefined })} className={cn("rounded-full px-2.5 py-0.5 text-xs", view === t.key ? "bg-foreground text-background" : "text-fg-secondary hover:bg-muted")}>{t.label}</button>)}
             </div>
           )}
-          <div className="min-h-0 flex-1">
+          <div className={cn("min-h-0 flex-1", pane === "below" && selectedId && "lg:pb-[55svh]")}>
             <ThreadList items={items} meta={meta} selectedId={selectedId} focusedIndex={focused} checked={checked} onOpen={open} onToggleCheck={toggleCheck} onStar={(i) => act([i.gmailThreadId], i.starred ? "unstar" : "star")} loading={listLoading || appending} error={listError} hasMore={!!nextToken} onMore={() => void loadMore()} emptyText={EMPTY_TEXT[view] ?? "Nothing here."} myFirst={me?.first} labels={labels} onContextMenu={onContextMenu} onDragStart={onDragStart} />
           </div>
         </section>
-        <section key={`pane-${pane}`} className={cn("min-h-0 bg-surface/60", pane === "below" ? "hd-slide-up lg:flex-1" : "hd-slide-left", !selectedId && "hidden lg:block")}>
+        {/* Below: a sheet over the bottom of the viewing area, the list keeps its full height behind it. Right: a column. */}
+        <section key={`pane-${pane}-${selectedId ? "open" : "closed"}`} className={cn("min-h-0", pane === "below" ? "hd-slide-up bg-surface lg:absolute lg:inset-x-0 lg:bottom-0 lg:z-10 lg:h-[55svh] lg:border-t lg:border-border lg:shadow-[0_-14px_36px_-18px_rgba(0,0,0,.45)]" : "hd-slide-left bg-surface/60", !selectedId && (pane === "below" ? "hidden" : "hidden lg:block"))}>
           <ThreadView thread={selectedId ? thread : undefined} meta={selectedId ? meta[selectedId] : undefined} labels={labels ?? []} loading={threadLoading} error={threadError} myFirst={me?.first} showImagesDefault={me?.prefs.showImages ?? false} onAction={(op, payload) => selectedId && act([selectedId], op, payload)} onReply={startCompose} onClose={closeThread} />
         </section>
         </div>
