@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { replaceSearch } from "@/lib/shallow";
 import { useAction, useQuery } from "convex/react";
 import { ChevronLeft, ChevronRight, RefreshCw, Plus, X, ExternalLink, Video, Users, Receipt } from "lucide-react";
 import { toast } from "sonner";
@@ -37,7 +38,7 @@ export function CalendarPage() {
   const now = useNow();
   const mode = (params.get("mode") as "day" | "week" | null) ?? "week";
   const anchor = Number(params.get("d")) || startOfDay(now).getTime();
-  const setParams = (next: Record<string, string | undefined>) => { const p = new URLSearchParams(params.toString()); for (const [k, v] of Object.entries(next)) { if (!v) p.delete(k); else p.set(k, v); } router.replace(`/bookings${p.size ? `?${p}` : ""}`, { scroll: false }); };
+  const setParams = (next: Record<string, string | undefined>) => replaceSearch("/bookings", next);
   const rangeStart = mode === "day" ? startOfDay(anchor) : startOfWeek(anchor);
   const rangeEnd = new Date(rangeStart); rangeEnd.setDate(rangeEnd.getDate() + (mode === "day" ? 1 : 7));
   const setup = useQuery(api.settings.setupStatus);

@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import dynamic from "next/dynamic";
+import { useSearchParams } from "next/navigation";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { PenSquare, Search, RefreshCw, Archive, Trash2, MailOpen, Tag as TagIcon, X, Star, Inbox as InboxIcon, ShieldAlert, FolderInput } from "lucide-react";
 import { toast } from "sonner";
@@ -13,17 +14,18 @@ import { FolderList, SMART_TABS, DRAG_MIME, type DropTarget, type Label, type Vi
 import { ContextMenu, MenuItem, MenuSeparator, MenuHeading } from "./context-menu";
 import { ThreadList } from "./thread-list";
 import { ThreadView, type ThreadData } from "./thread-view";
-import { Compose, type ComposeDraft } from "./compose";
+import type { ComposeDraft } from "./compose";
 import { quoteHtml, textToHtml, sanitiseForEditor } from "@/lib/sanitise";
 import { Button } from "@/components/ui/button";
 import { Empty } from "@/components/primitives";
 import { useLive } from "@/lib/hooks";
 import { readLive, subscribeLive, writeLive } from "@/lib/live-cache";
-import { mailStore } from "@/lib/mail-store";
+import { mailStore, threadText } from "@/lib/mail-store";
+import { replaceSearch } from "@/lib/shallow";
 import { cn, errorMessage } from "@/lib/utils";
 
-/** Searchable text for the device copy: subject, people, then bodies. */
-const threadText = (t: ThreadData) => [t.subject, ...t.messages.flatMap((m) => [m.from.name, m.from.email, ...m.to.map((a) => a.email), m.text ?? m.snippet])].join("\n");
+/** The editor (TipTap, ~150 KB) is only needed when composing, so it stays out of the page's first load. */
+const Compose = dynamic(() => import("./compose").then((m) => m.Compose), { ssr: false });
 
 const EMPTY_TEXT: Record<string, string> = { inbox: "Inbox zero.", unread: "Nothing unread.", overdue: "Nothing overdue. Every shared thread has a reply.", assigned: "Nothing assigned to you.", starred: "No starred conversations.", drafts: "No drafts.", search: "No matches in Gmail.", trash: "Trash is empty.", spam: "No spam." };
 
@@ -33,17 +35,13 @@ const EMPTY_TEXT: Record<string, string> = { inbox: "Inbox zero.", unread: "Noth
  */
 export function MailPage() {
   const params = useSearchParams();
-  const router = useRouter();
   const me = useQuery(api.users.me);
   const view = (params.get("view") as ViewKey | null) ?? "inbox";
   const labelId = params.get("label") ?? undefined;
   const q = params.get("q") ?? undefined;
   const selectedId = params.get("thread") ?? undefined;
-  const setParams = useCallback((next: Record<string, string | undefined>) => {
-    const p = new URLSearchParams(params.toString());
-    for (const [k, v] of Object.entries(next)) { if (v === undefined || v === "") p.delete(k); else p.set(k, v); }
-    router.replace(`/mail${p.size ? `?${p}` : ""}`, { scroll: false });
-  }, [params, router]);
+  // Folder, thread and search changes are URL changes; done shallowly so none of them costs a server round trip.
+  const setParams = useCallback((next: Record<string, string | undefined>) => replaceSearch("/mail", next), []);
 
   const listThreads = useAction(api.mail.listThreads);
   const getThread = useAction(api.mail.getThread);
@@ -110,6 +108,8 @@ export function MailPage() {
     // A list seen in the last minute is shown as is; older ones show instantly and refresh behind the scenes.
     const cached = readLive<{ items: ListItem[] }>(listCacheKey);
     if (tick === 0 && cached.fetchedAt && Date.now() - cached.fetchedAt < 60_000) return; // shown from the cache already
+    // The shell may already be fetching this list (Prefetch); show its result rather than asking Gmail twice.
+    if (tick === 0 && cached.inflight) { let live = true; void cached.inflight.then(() => { if (live && !readLive(listCacheKey).fetchedAt) setTick((t) => t + 1); }); return () => { live = false; }; }
     let live = true;
     const args = JSON.parse(listKey) as { view: ViewKey; labelId?: string; q?: string };
     listThreads({ view: args.view, labelId: args.labelId, q: args.q }).then((r) => {
@@ -125,6 +125,9 @@ export function MailPage() {
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [listKey, tick, connected, listThreads]);
+
+  // Fetch the editor chunk in the background so Compose and Reply open without a wait.
+  useEffect(() => { const t = setTimeout(() => { void import("./compose"); }, 2000); return () => clearTimeout(t); }, []);
 
   // Other pages (PDF tools, Files) hand a prepared message over via sessionStorage and ?compose=handoff.
   useEffect(() => {

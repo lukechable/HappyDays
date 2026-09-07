@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { replaceUrl } from "@/lib/shallow";
 import { useMutation, useQuery } from "convex/react";
 import { Upload, FileText, Download, KeyRound, Trash2, Eye, PenLine, RefreshCw, Copy, Mail, Ban, CalendarPlus } from "lucide-react";
 import { toast } from "sonner";
@@ -20,7 +21,6 @@ import { siteUrl } from "@/lib/public-url";
 /** The practice's own documents (reports, signed forms) and the download codes that deliver them. */
 export function FilesPage() {
   const params = useSearchParams();
-  const router = useRouter();
   const tab = params.get("tab") === "codes" ? "codes" : "files";
   const matterFilter = params.get("matter") as Id<"matters"> | null;
   const [q, setQ] = useState("");
@@ -54,8 +54,8 @@ export function FilesPage() {
     <div className="space-y-5" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); if (e.dataTransfer.files.length) void upload(e.dataTransfer.files); }}>
       <PageHeader title="Files & download codes" blurb="Reports and signed forms the practice stores itself. Give a client a code and they collect the file from a plain page, no login, with every download logged." actions={<><Button variant="outline" onClick={() => inputRef.current?.click()}><Upload className="size-3.5" />{uploading ? `Uploading ${uploading}…` : "Upload"}</Button><input ref={inputRef} type="file" multiple hidden onChange={(e) => e.target.files && void upload(e.target.files)} />{selected.size > 0 && <Button onClick={() => setCodeFor(Array.from(selected))}><KeyRound className="size-3.5" />Code for {selected.size} file{selected.size === 1 ? "" : "s"}</Button>}</>} />
       <div className="flex flex-wrap items-center gap-2 border-b border-border">
-        {(["files", "codes"] as const).map((t) => <button key={t} type="button" onClick={() => router.replace(`/files${t === "codes" ? "?tab=codes" : ""}`)} className={cn("-mb-px border-b-2 px-3 py-2 text-sm capitalize", tab === t ? "border-foreground font-medium" : "border-transparent text-fg-tertiary hover:text-foreground")}>{t === "codes" ? "Download codes" : "Files"}</button>)}
-        {tab === "files" && <><Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search files" className="ml-auto h-8 w-56" /><select value={matterFilter ?? ""} onChange={(e) => router.replace(`/files${e.target.value ? `?matter=${e.target.value}` : ""}`)} className="h-8 rounded-lg border border-input bg-card px-2 text-xs"><option value="">All matters</option>{(matters ?? []).map((m) => <option key={m._id} value={m._id}>{m.name}</option>)}</select></>}
+        {(["files", "codes"] as const).map((t) => <button key={t} type="button" onClick={() => replaceUrl(`/files${t === "codes" ? "?tab=codes" : ""}`)} className={cn("-mb-px border-b-2 px-3 py-2 text-sm capitalize", tab === t ? "border-foreground font-medium" : "border-transparent text-fg-tertiary hover:text-foreground")}>{t === "codes" ? "Download codes" : "Files"}</button>)}
+        {tab === "files" && <><Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search files" className="ml-auto h-8 w-56" /><select value={matterFilter ?? ""} onChange={(e) => replaceUrl(`/files${e.target.value ? `?matter=${e.target.value}` : ""}`)} className="h-8 rounded-lg border border-input bg-card px-2 text-xs"><option value="">All matters</option>{(matters ?? []).map((m) => <option key={m._id} value={m._id}>{m.name}</option>)}</select></>}
       </div>
 
       {tab === "files" ? (

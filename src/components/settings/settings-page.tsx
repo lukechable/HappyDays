@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useLive } from "@/lib/hooks";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
+import { replaceUrl } from "@/lib/shallow";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { toast } from "sonner";
 import { api } from "../../../convex/_generated/api";
@@ -26,19 +27,18 @@ type Tab = (typeof TABS)[number][0];
 
 export function SettingsPage() {
   const params = useSearchParams();
-  const router = useRouter();
   const tab = (params.get("tab") as Tab | null) ?? (params.get("google") ? "google" : "setup");
   useEffect(() => {
     const g = params.get("google");
     if (g === "connected") toast.success(`Google connected as ${params.get("email")}`);
     if (g === "error") toast.error(params.get("message") ?? "Google connection failed");
-    if (g) router.replace("/settings?tab=google");
-  }, [params, router]);
+    if (g) replaceUrl("/settings?tab=google");
+  }, [params]);
   return (
     <div className="space-y-5">
       <PageHeader title="Settings" blurb="Connections, pricing, signatures and tags. Secrets live on the Convex deployment, never in this page." />
       <div className="flex flex-wrap gap-1 border-b border-border">
-        {TABS.map(([key, label]) => <button key={key} type="button" onClick={() => router.replace(`/settings?tab=${key}`)} className={cn("-mb-px border-b-2 px-3 py-2 text-sm", tab === key ? "border-foreground font-medium text-foreground" : "border-transparent text-fg-tertiary hover:text-foreground")}>{label}</button>)}
+        {TABS.map(([key, label]) => <button key={key} type="button" onClick={() => replaceUrl(`/settings?tab=${key}`)} className={cn("-mb-px border-b-2 px-3 py-2 text-sm", tab === key ? "border-foreground font-medium text-foreground" : "border-transparent text-fg-tertiary hover:text-foreground")}>{label}</button>)}
       </div>
       {tab === "setup" && <SetupTab />}
       {tab === "google" && <GoogleTab />}

@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
+import { replaceSearch } from "@/lib/shallow";
 import { useMutation, useQuery } from "convex/react";
 import { Inbox, Sun, CalendarDays, AlarmClock, UserCheck, Send, CheckCircle2, List as ListIcon, Plus, LayoutGrid, Calendar, Rows3, Circle, CheckCircle, Flag, MessageSquare, Paperclip, GitBranch } from "lucide-react";
 import { toast } from "sonner";
@@ -33,12 +34,11 @@ const PRI_COLOR: Record<string, string> = { high: "text-error", medium: "text-wa
 /** Tasks: TickTick-style lists on the left, quick add and grouped rows in the middle, detail on the right. */
 export function TasksPage() {
   const params = useSearchParams();
-  const router = useRouter();
   const view = (params.get("view") as View | null) ?? "all";
   const listId = params.get("list") as Id<"taskLists"> | null;
   const mode = (params.get("mode") as Mode | null) ?? "list";
   const selected = params.get("task") as Id<"tasks"> | null;
-  const setParams = (next: Record<string, string | undefined>) => { const p = new URLSearchParams(params.toString()); for (const [k, v] of Object.entries(next)) { if (!v) p.delete(k); else p.set(k, v); } router.replace(`/tasks${p.size ? `?${p}` : ""}`, { scroll: false }); };
+  const setParams = (next: Record<string, string | undefined>) => replaceSearch("/tasks", next);
 
   const me = useQuery(api.users.me);
   const users = useQuery(api.users.all);

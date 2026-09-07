@@ -26,6 +26,9 @@ const tx = async <T,>(store: string, mode: IDBTransactionMode, fn: (s: IDBObject
   return new Promise<T>((resolve, reject) => { const r = fn(d.transaction(store, mode).objectStore(store)); r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error); });
 };
 
+/** Searchable text for the device copy: subject, people, then bodies. */
+export const threadText = (t: { subject: string; messages: Array<{ from: { name: string; email: string }; to: Array<{ email: string }>; text?: string; snippet: string }> }) => [t.subject, ...t.messages.flatMap((m) => [m.from.name, m.from.email, ...m.to.map((a) => a.email), m.text ?? m.snippet])].join("\n");
+
 export const mailStore = {
   async getList<T>(key: string): Promise<{ items: T[]; nextToken?: string; missing: number; fetchedAt: number } | undefined> { try { const r = await tx<ListRecord | undefined>("lists", "readonly", (s) => s.get(key) as IDBRequest<ListRecord | undefined>); return r ? { items: r.items as T[], nextToken: r.nextToken, missing: r.missing, fetchedAt: r.fetchedAt } : undefined; } catch { return undefined; } },
   async putList(key: string, v: { items: unknown[]; nextToken?: string; missing: number; fetchedAt: number }) { try { await tx("lists", "readwrite", (s) => s.put({ key, ...v })); } catch { /* storage full or blocked */ } },
