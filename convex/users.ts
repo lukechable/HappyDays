@@ -66,7 +66,7 @@ export const ensure = mutation({
 });
 
 export const updatePrefs = mutation({
-  args: { prefs: v.object({ signatureAbove: v.optional(v.boolean()), overdueHours: v.optional(v.number()), showImages: v.optional(v.boolean()), signatureImage: v.optional(v.string()), initialsImage: v.optional(v.string()) }) },
+  args: { prefs: v.object({ signatureAbove: v.optional(v.boolean()), overdueHours: v.optional(v.number()), showImages: v.optional(v.boolean()), signatureImage: v.optional(v.string()), initialsImage: v.optional(v.string()), pushMail: v.optional(v.boolean()), pushActivity: v.optional(v.boolean()) }) },
   handler: async (ctx, { prefs }) => {
     const user = await requireUser(ctx);
     await ctx.db.patch(user._id, { prefs: { ...(user.prefs ?? {}), ...prefs } });

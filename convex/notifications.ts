@@ -3,9 +3,12 @@ import { v } from "convex/values";
 import type { MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { requireUser } from "./lib/auth";
+import { internal } from "./_generated/api";
 
 export async function notify(ctx: MutationCtx, n: { userId: Id<"users">; kind: string; title: string; body?: string; href?: string }) {
   await ctx.db.insert("notifications", { ...n, createdAt: Date.now() });
+  const user = await ctx.db.get(n.userId);
+  if (user?.prefs?.pushActivity !== false) await ctx.scheduler.runAfter(0, internal.push.sendToUser, { userId: n.userId, title: n.title, body: n.body, href: n.href, tag: `${n.kind}` });
 }
 
 export const list = query({

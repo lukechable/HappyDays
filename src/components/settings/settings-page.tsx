@@ -18,10 +18,11 @@ import { siteUrl } from "@/lib/public-url";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { AutoRepliesTab } from "./auto-replies";
 import { FolderRulesTab } from "./folder-rules";
+import { NotificationsTab } from "./notifications-tab";
 import { mailStore } from "@/lib/mail-store";
 import { bytes } from "@/lib/format";
 
-const TABS = [["setup", "Setup"], ["google", "Google"], ["autoreplies", "Auto-replies"], ["folders", "Folder rules"], ["cliniko", "Cliniko & pricing"], ["stripe", "Stripe"], ["signatures", "Signatures"], ["tags", "Tags"], ["practice", "Practice"]] as const;
+const TABS = [["setup", "Setup"], ["google", "Google"], ["autoreplies", "Auto-replies"], ["folders", "Folder rules"], ["notifications", "Notifications"], ["cliniko", "Cliniko & pricing"], ["stripe", "Stripe"], ["signatures", "Signatures"], ["tags", "Tags"], ["practice", "Practice"]] as const;
 type Tab = (typeof TABS)[number][0];
 
 export function SettingsPage() {
@@ -44,6 +45,7 @@ export function SettingsPage() {
       {tab === "google" && <GoogleTab />}
       {tab === "autoreplies" && <AutoRepliesTab />}
       {tab === "folders" && <FolderRulesTab />}
+      {tab === "notifications" && <NotificationsTab />}
       {tab === "cliniko" && <ClinikoTab />}
       {tab === "stripe" && <StripeTab />}
       {tab === "signatures" && <SignaturesTab />}
