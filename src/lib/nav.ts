@@ -12,14 +12,19 @@ export const NAV: NavGroup[] = [
     label: "Mail",
     items: [
       { href: "/mail", label: "Inbox", exact: true, blurb: "Your Gmail inbox, newest first." },
-      { href: "/mail?view=unread", label: "Unread", blurb: "Only what you haven't read." },
-      { href: "/mail?view=smart%3Aprimary", label: "Smart", blurb: "Primary, newsletters, notifications and social, separated." },
       { href: "/mail?view=overdue", label: "Overdue", badge: "overdue", blurb: "Threads both of you are on that nobody has answered." },
       { href: "/mail?view=assigned", label: "Assigned to me", badge: "assigned", blurb: "Follow-ups the other person handed you." },
-      { href: "/matters", label: "Matters", blurb: "Court matters: emails, tasks, files, invoices and subpoena export." },
+      { href: "/matters", label: "Subpoena Export", blurb: "One record per court matter: emails, tasks, files, invoices, exported for a subpoena." },
     ],
   },
   { label: "Work", items: [{ href: "/tasks", label: "Tasks", badge: "tasks", blurb: "Your lists, due today and this week, assigned to you." }] },
+  {
+    label: "Court Matters",
+    items: [
+      { href: "/court/affidavits", label: "Affidavit Requests", blurb: "Affidavits solicitors have asked for: who wants them, when they are due, where each one is up to." },
+      { href: "/court/appearances", label: "Court Appearances", blurb: "Hearings, mentions and trials you must attend, with the court, the matter and the date." },
+    ],
+  },
   {
     label: "Cliniko Link",
     items: [
