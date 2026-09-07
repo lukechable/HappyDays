@@ -372,6 +372,34 @@ export const send = action({
   },
 });
 
+/**
+ * Send Documents: emails one stored file (an AES-256 zip made in the browser) as an attachment from the signed-in
+ * account, asking the recipient's mail client for a read receipt (Disposition-Notification-To, RFC 8098) and a
+ * delivery receipt (Return-Receipt-To). Receipts arrive as ordinary replies in the same Gmail thread.
+ */
+export const sendDocuments = action({
+  args: { fileId: v.id("files"), to: addressV, subject: v.string(), html: v.string(), readReceipt: v.boolean() },
+  handler: async (ctx, a): Promise<{ gmailMessageId: string; gmailThreadId: string }> => {
+    const { me, account, token } = await myAccount(ctx);
+    const file = await ctx.runQuery(internal.files.blobFor, { id: a.fileId });
+    if (!file?.url) throw new Error("That file is no longer stored.");
+    if (file.size > 24 * 1024 * 1024) throw new Error("Gmail accepts attachments up to about 25 MB. Send fewer files at once.");
+    const res = await fetch(file.url);
+    if (!res.ok) throw new Error("Couldn't read the file from storage.");
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    let bin = "";
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    const receipt: Record<string, string> = a.readReceipt ? { "Disposition-Notification-To": account.email, "Return-Receipt-To": account.email } : {};
+    const raw = gmail.buildRaw({ from: { name: me.name, email: account.email }, to: [a.to], subject: a.subject, html: a.html, attachments: [{ filename: file.name, mime: file.mime, base64: btoa(bin) }], extraHeaders: { "X-Mailer": "Happy Days", ...receipt } });
+    const sent = await gmail.sendRaw(token, raw);
+    const full = await gmail.getThread(token, sent.threadId, "metadata");
+    await ctx.runMutation(internal.mail.indexHeaders, { accountId: account._id, threads: [toIndex(full)] });
+    await ctx.runMutation(internal.mail.logSend, { userId: me._id, gmailThreadId: sent.threadId, to: [a.to.email], subject: a.subject });
+    await ctx.runMutation(internal.files.recordSend, { fileId: a.fileId, to: a.to.email, toName: a.to.name || undefined, subject: a.subject, sentBy: me._id, gmailThreadId: sent.threadId, gmailMessageId: sent.id, readReceiptRequested: a.readReceipt });
+    return { gmailMessageId: sent.id, gmailThreadId: sent.threadId };
+  },
+});
+
 export const saveDraft = action({
   args: outgoingArgs,
   handler: async (ctx, a): Promise<{ draftId: string; gmailThreadId?: string }> => {

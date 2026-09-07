@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { replaceUrl } from "@/lib/shallow";
 import { useMutation } from "convex/react";
 import { useQuery } from "convex-helpers/react/cache/hooks";
-import { Upload, FileText, Download, KeyRound, Trash2, Eye, PenLine, RefreshCw, Copy, Mail, Ban, CalendarPlus } from "lucide-react";
+import { Upload, FileText, Download, KeyRound, Trash2, Eye, PenLine, RefreshCw, Copy, Mail, Ban, CalendarPlus, Lock, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
@@ -18,11 +18,15 @@ import { openCompose, sha256 } from "@/lib/compose-handoff";
 import { bytes, day, ago, when } from "@/lib/format";
 import { cn, errorMessage } from "@/lib/utils";
 import { siteUrl } from "@/lib/public-url";
+import { SendDialog, useStoredFileLoader } from "@/components/files/send-dialog";
 
-/** The practice's own documents (reports, signed forms) and the download codes that deliver them. */
+/**
+ * Send Documents: pick files, they are zipped and AES-256 encrypted in the browser, stored, and emailed from Gmail with
+ * a read receipt requested. The same page keeps the practice's stored files and the download codes that deliver them.
+ */
 export function FilesPage() {
   const params = useSearchParams();
-  const tab = params.get("tab") === "codes" ? "codes" : "files";
+  const tab = params.get("tab") === "codes" ? "codes" : params.get("tab") === "sent" ? "sent" : "files";
   const matterFilter = params.get("matter") as Id<"matters"> | null;
   const [q, setQ] = useState("");
   const files = useQuery(api.files.list, { matterId: matterFilter ?? undefined, q: q.trim().length >= 2 ? q : undefined });
@@ -35,6 +39,12 @@ export function FilesPage() {
   const [codeFor, setCodeFor] = useState<Id<"files">[] | null>(null);
   const [selected, setSelected] = useState<Set<Id<"files">>>(new Set());
   const inputRef = useRef<HTMLInputElement>(null);
+  const sendRef = useRef<HTMLInputElement>(null);
+  const [toSend, setToSend] = useState<{ files: File[]; matterId?: Id<"matters"> | null } | null>(null);
+  const loadStored = useStoredFileLoader();
+  const sendStored = async (f: { _id: Id<"files">; name: string; mime: string; matterId?: Id<"matters"> }) => {
+    try { setToSend({ files: [await loadStored(f._id, f.name, f.mime)], matterId: f.matterId ?? matterFilter }); } catch (e) { toast.error(errorMessage(e)); }
+  };
 
   const upload = async (list: FileList | File[], replaces?: Id<"files">) => {
     const arr = Array.from(list);
@@ -52,27 +62,28 @@ export function FilesPage() {
   };
 
   return (
-    <div className="space-y-5" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); if (e.dataTransfer.files.length) void upload(e.dataTransfer.files); }}>
-      <PageHeader title="Files & download codes" blurb="Reports and signed forms the practice stores itself. Give a client a code and they collect the file from a plain page, no login, with every download logged." actions={<><Button variant="outline" onClick={() => inputRef.current?.click()}><Upload className="size-3.5" />{uploading ? `Uploading ${uploading}…` : "Upload"}</Button><input ref={inputRef} type="file" multiple hidden onChange={(e) => e.target.files && void upload(e.target.files)} />{selected.size > 0 && <Button onClick={() => setCodeFor(Array.from(selected))}><KeyRound className="size-3.5" />Code for {selected.size} file{selected.size === 1 ? "" : "s"}</Button>}</>} />
+    <div className="space-y-5" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); if (e.dataTransfer.files.length) setToSend({ files: Array.from(e.dataTransfer.files), matterId: matterFilter }); }}>
+      <PageHeader title="Send documents" blurb="Drop documents here or click Send: they are zipped and encrypted in your browser, then emailed from your Gmail with a read receipt requested. The practice's stored reports and download codes live here too." actions={<><Button variant="outline" onClick={() => inputRef.current?.click()}><Upload className="size-3.5" />{uploading ? `Uploading ${uploading}…` : "Upload only"}</Button><input ref={inputRef} type="file" multiple hidden onChange={(e) => e.target.files && void upload(e.target.files)} /><input ref={sendRef} type="file" multiple hidden onChange={(e) => { if (e.target.files?.length) setToSend({ files: Array.from(e.target.files), matterId: matterFilter }); e.target.value = ""; }} />{selected.size > 0 && <Button variant="outline" onClick={() => setCodeFor(Array.from(selected))}><KeyRound className="size-3.5" />Code for {selected.size} file{selected.size === 1 ? "" : "s"}</Button>}<Button onClick={() => sendRef.current?.click()}><Lock className="size-3.5" />Send documents</Button></>} />
       <div className="flex flex-wrap items-center gap-2 border-b border-border">
-        {(["files", "codes"] as const).map((t) => <button key={t} type="button" onClick={() => replaceUrl(`/files${t === "codes" ? "?tab=codes" : ""}`)} className={cn("-mb-px border-b-2 px-3 py-2 text-sm capitalize", tab === t ? "border-foreground font-medium" : "border-transparent text-fg-tertiary hover:text-foreground")}>{t === "codes" ? "Download codes" : "Files"}</button>)}
+        {(["files", "sent", "codes"] as const).map((t) => <button key={t} type="button" onClick={() => replaceUrl(`/files${t === "files" ? "" : `?tab=${t}`}`)} className={cn("-mb-px border-b-2 px-3 py-2 text-sm capitalize", tab === t ? "border-foreground font-medium" : "border-transparent text-fg-tertiary hover:text-foreground")}>{t === "codes" ? "Download codes" : t === "sent" ? "Sent" : "Files"}</button>)}
         {tab === "files" && <><Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search files" className="ml-auto h-8 w-56" /><select value={matterFilter ?? ""} onChange={(e) => replaceUrl(`/files${e.target.value ? `?matter=${e.target.value}` : ""}`)} className="h-8 rounded-lg border border-input bg-card px-2 text-xs"><option value="">All matters</option>{(matters ?? []).map((m) => <option key={m._id} value={m._id}>{m.name}</option>)}</select></>}
       </div>
 
       {tab === "files" ? (
         <Panel>
-          {files === undefined ? <Loading rows={4} /> : files.length === 0 ? <Empty title="No files yet" body="Drop a PDF anywhere on this page, or click Upload. Files named “…report…” are marked as reports automatically." /> : (
+          {files === undefined ? <Loading rows={4} /> : files.length === 0 ? <Empty title="No files yet" body="Drop documents anywhere on this page to encrypt and send them, or click Upload only to store a file for a download code. Files named “…report…” are marked as reports automatically." /> : (
             <DataTable head={<><th className="w-6"></th><th>File</th><th>Matter</th><th>Uploaded</th><th>Codes</th><th></th></>} minWidth={720}>
               {files.map((f) => (
                 <tr key={f._id} className="group hover:bg-muted/50">
                   <td><input type="checkbox" className="size-3.5 accent-foreground" checked={selected.has(f._id)} onChange={(e) => setSelected((s) => { const n = new Set(s); if (e.target.checked) n.add(f._id); else n.delete(f._id); return n; })} aria-label="Select" /></td>
-                  <td><div className="flex items-center gap-2"><FileText className="size-4 shrink-0 text-fg-tertiary" /><div className="min-w-0"><div className="flex items-center gap-1.5"><span className="truncate font-medium">{f.name}</span>{f.isReport && <Pill tone="info">report</Pill>}{f.version > 1 && <span className="text-[10px] text-fg-quaternary">v{f.version}</span>}</div><div className="text-xs text-fg-tertiary">{bytes(f.size)} · {f.mime.split("/")[1] ?? f.mime}</div></div></div></td>
+                  <td><div className="flex items-center gap-2"><FileText className="size-4 shrink-0 text-fg-tertiary" /><div className="min-w-0"><div className="flex items-center gap-1.5"><span className="truncate font-medium">{f.name}</span>{f.encrypted && <Pill title="AES-256 encrypted zip"><Lock className="mr-0.5 inline size-2.5" />encrypted</Pill>}{f.isReport && <Pill tone="info">report</Pill>}{f.version > 1 && <span className="text-[10px] text-fg-quaternary">v{f.version}</span>}</div><div className="truncate text-xs text-fg-tertiary">{bytes(f.size)} · {f.bundleNames?.length ? f.bundleNames.join(", ") : f.mime.split("/")[1] ?? f.mime}</div></div></div></td>
                   <td><select value={f.matterId ?? ""} onChange={(e) => update({ id: f._id, matterId: (e.target.value || undefined) as Id<"matters"> | undefined })} className="h-7 max-w-[180px] rounded-md border border-transparent bg-transparent text-xs hover:border-input"><option value="">—</option>{(matters ?? []).map((m) => <option key={m._id} value={m._id}>{m.name}</option>)}</select></td>
                   <td className="text-xs text-fg-tertiary">{day(f.createdAt)}<br />{f.uploadedByName}</td>
                   <td className="num text-xs">{f.activeCodes.length ? f.activeCodes.join(", ") : <span className="text-fg-quaternary">—</span>}</td>
                   <td><div className="flex justify-end gap-0.5 opacity-60 group-hover:opacity-100">
                     <FileAction label="Preview / download" href={`/files/${f._id}`} icon={<Eye className="size-3.5" />} />
                     {f.mime === "application/pdf" && <FileAction label="Open in PDF tools" href={`/pdf?file=${f._id}`} icon={<PenLine className="size-3.5" />} />}
+                    {!f.encrypted && <FileAction label="Encrypt and send" onClick={() => void sendStored(f)} icon={<Lock className="size-3.5" />} />}
                     <FileAction label="Create download code" onClick={() => setCodeFor([f._id])} icon={<KeyRound className="size-3.5" />} />
                     <FileAction label={f.isReport ? "Unmark as report" : "Mark as report"} onClick={() => update({ id: f._id, isReport: !f.isReport })} icon={<span className="text-[10px] font-semibold">R</span>} />
                     <FileAction label="Upload new version" onClick={() => { const i = document.createElement("input"); i.type = "file"; i.onchange = () => i.files && void upload(i.files, f._id); i.click(); }} icon={<RefreshCw className="size-3.5" />} />
@@ -83,8 +94,9 @@ export function FilesPage() {
             </DataTable>
           )}
         </Panel>
-      ) : <CodesTab onNew={() => setCodeFor([])} />}
+      ) : tab === "sent" ? <SentTab /> : <CodesTab onNew={() => setCodeFor([])} />}
       {codeFor && <CodeDialog preselected={codeFor} onClose={() => { setCodeFor(null); setSelected(new Set()); }} />}
+      {toSend && <SendDialog files={toSend.files} matterId={toSend.matterId} onClose={(sent) => { setToSend(null); if (sent && tab !== "sent") replaceUrl("/files?tab=sent"); }} />}
     </div>
   );
 }
@@ -92,6 +104,33 @@ export function FilesPage() {
 function FileAction({ label, onClick, href, icon }: { label: string; onClick?: () => void; href?: string; icon: React.ReactNode }) {
   const cls = "inline-flex size-7 items-center justify-center rounded-md text-fg-secondary hover:bg-muted hover:text-foreground";
   return href ? <PrefetchLink href={href} className={cls} title={label} aria-label={label}>{icon}</PrefetchLink> : <button type="button" onClick={onClick} className={cls} title={label} aria-label={label}>{icon}</button>;
+}
+
+/* ------------------------------ sent ------------------------------ */
+
+/** Every encrypted bundle that has gone out, with the Gmail thread where a read receipt would land. */
+function SentTab() {
+  const sends = useQuery(api.files.sends);
+  if (sends === undefined) return <Loading rows={4} />;
+  return (
+    <Panel>
+      {sends.length === 0 ? <Empty title="Nothing sent yet" body="Click Send documents, pick the files and the recipient. The zip is encrypted before it leaves your browser, and the email asks for a read receipt." /> : (
+        <DataTable head={<><th>Sent</th><th>To</th><th>Documents</th><th>Matter</th><th>Receipt</th><th>By</th><th></th></>} minWidth={760}>
+          {sends.map((s) => (
+            <tr key={s._id} className="hover:bg-muted/50">
+              <td className="text-xs text-fg-tertiary" title={when(s.sentAt)}>{day(s.sentAt)}<br />{ago(s.sentAt)}</td>
+              <td><div className="text-sm">{s.toName || s.to}</div>{s.toName && <div className="truncate text-xs text-fg-tertiary">{s.to}</div>}</td>
+              <td className="max-w-[260px]"><div className="flex items-center gap-1 text-xs"><Lock className="size-3 shrink-0 text-fg-tertiary" /><span className="truncate">{s.fileName}</span></div>{s.fileNames.map((n) => <div key={n} className="truncate pl-4 text-xs text-fg-tertiary">{n}</div>)}</td>
+              <td className="text-xs">{s.matterName ?? <span className="text-fg-quaternary">—</span>}</td>
+              <td>{s.readReceiptRequested ? <Pill tone="info">requested</Pill> : <Pill>not asked</Pill>}</td>
+              <td className="text-xs text-fg-tertiary">{s.sentByName}</td>
+              <td><div className="flex justify-end gap-0.5"><FileAction label="Open the email thread" href={`/mail?thread=${s.gmailThreadId}`} icon={<ExternalLink className="size-3.5" />} /></div></td>
+            </tr>
+          ))}
+        </DataTable>
+      )}
+    </Panel>
+  );
 }
 
 /* ------------------------------ codes ------------------------------ */
