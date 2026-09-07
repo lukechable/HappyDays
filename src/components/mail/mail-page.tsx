@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAction, useMutation, useQuery } from "convex/react";
@@ -16,6 +16,8 @@ import { Compose, type ComposeDraft } from "./compose";
 import { quoteHtml, textToHtml, sanitiseForEditor } from "@/lib/sanitise";
 import { Button } from "@/components/ui/button";
 import { Empty } from "@/components/primitives";
+import { useLive } from "@/lib/hooks";
+import { readLive, subscribeLive, writeLive } from "@/lib/live-cache";
 import { cn, errorMessage } from "@/lib/utils";
 
 const EMPTY_TEXT: Record<string, string> = { inbox: "Inbox zero.", unread: "Nothing unread.", overdue: "Nothing overdue. Every shared thread has a reply.", assigned: "Nothing assigned to you.", starred: "No starred conversations.", drafts: "No drafts.", search: "No matches in Gmail.", trash: "Trash is empty.", spam: "No spam." };
@@ -42,7 +44,7 @@ export function MailPage() {
   const getThread = useAction(api.mail.getThread);
   const modify = useAction(api.mail.modify);
   const markRead = useAction(api.mail.markMessageRead);
-  const labelsAction = useAction(api.mail.labels);
+  const labelsLive = useLive(api.mail.labels, me?.google?.status === "connected" ? {} : "skip", { ttlMs: 300_000 });
   const reportSent = useMutation(api.files.reportSentByEmail);
 
   const connected = me?.google?.status === "connected";
@@ -50,23 +52,25 @@ export function MailPage() {
   const [list, setList] = useState<{ key: string; items: ListItem[]; nextToken?: string; error?: string; missing: number; tick: number }>({ key: "", items: [], missing: 0, tick: 0 });
   const [tick, setTick] = useState(0);
   const [appending, setAppending] = useState(false);
-  const [labels, setLabels] = useState<Label[] | undefined>();
+  const labels = labelsLive.data as Label[] | undefined;
   const [threadState, setThreadState] = useState<{ id: string; thread?: ThreadData; error?: string }>({ id: "" });
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [focused, setFocused] = useState(0);
   const [compose, setCompose] = useState<ComposeDraft | null>(null);
   const [searchText, setSearchText] = useState(q ?? "");
   const lastChecked = useRef<string | null>(null);
+  const listCacheKey = `mail:list:${listKey}`;
+  const cachedList = useSyncExternalStore(subscribeLive, () => readLive<{ items: ListItem[]; nextToken?: string; missing: number }>(listCacheKey), () => readLive<{ items: ListItem[]; nextToken?: string; missing: number }>(""));
   const listFresh = list.key === listKey && list.tick === tick;
-  const items = list.key === listKey ? list.items : [];
-  const nextToken = listFresh ? list.nextToken : undefined;
-  const listLoading = connected && !listFresh;
+  const items = list.key === listKey ? list.items : cachedList.data?.items ?? [];
+  const nextToken = listFresh ? list.nextToken : cachedList.data?.nextToken;
+  const listLoading = connected && !listFresh && !cachedList.data;
   const listError = listFresh ? list.error : undefined;
-  const missing = listFresh ? list.missing : 0;
+  const missing = listFresh ? list.missing : cachedList.data?.missing ?? 0;
   const thread = threadState.id === selectedId ? threadState.thread : undefined;
   const threadError = threadState.id === selectedId ? threadState.error : undefined;
   const threadLoading = !!selectedId && threadState.id !== selectedId;
-  const setItems = (fn: (cur: ListItem[]) => ListItem[]) => setList((cur) => ({ ...cur, items: fn(cur.items) }));
+  const setItems = (fn: (cur: ListItem[]) => ListItem[]) => setList((cur) => { const next = { ...cur, key: listKey, items: fn(cur.key === listKey ? cur.items : items) }; writeLive(listCacheKey, { data: { items: next.items, nextToken: next.nextToken, missing: next.missing } }); return next; });
   const setThread = (t: ThreadData | undefined) => setThreadState((cur) => ({ ...cur, thread: t }));
 
   const meta = useQuery(api.mail.meta, connected && items.length ? { gmailThreadIds: items.map((i) => i.gmailThreadId) } : "skip") ?? {};
@@ -81,16 +85,19 @@ export function MailPage() {
     finally { setAppending(false); }
   };
 
-  const refreshLabels = useCallback(() => { if (connected) labelsAction({}).then(setLabels).catch(() => undefined); }, [connected, labelsAction]);
+  const refreshLabels = labelsLive.reload;
 
   useEffect(() => {
     if (!connected) return;
+    // A list seen in the last minute is shown as is; older ones show instantly and refresh behind the scenes.
+    const cached = readLive<{ items: ListItem[] }>(listCacheKey);
+    if (tick === 0 && cached.fetchedAt && Date.now() - cached.fetchedAt < 60_000) return; // shown from the cache already
     let live = true;
     const args = JSON.parse(listKey) as { view: ViewKey; labelId?: string; q?: string };
-    listThreads({ view: args.view, labelId: args.labelId, q: args.q }).then((r) => { if (!live) return; setList({ key: listKey, items: r.items, nextToken: r.nextPageToken, missing: r.missing ?? 0, tick }); setChecked(new Set()); setFocused(0); }).catch((e: unknown) => { if (live) setList({ key: listKey, items: [], error: errorMessage(e), missing: 0, tick }); });
+    listThreads({ view: args.view, labelId: args.labelId, q: args.q }).then((r) => { if (!live) return; writeLive(listCacheKey, { data: { items: r.items, nextToken: r.nextPageToken, missing: r.missing ?? 0 }, fetchedAt: Date.now() }); setList({ key: listKey, items: r.items, nextToken: r.nextPageToken, missing: r.missing ?? 0, tick }); setChecked(new Set()); setFocused(0); }).catch((e: unknown) => { if (live) setList({ key: listKey, items: cached.data?.items ?? [], error: errorMessage(e), missing: 0, tick }); });
     return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [listKey, tick, connected, listThreads]);
-  useEffect(() => { refreshLabels(); }, [refreshLabels]);
 
   // Other pages (PDF tools, Files) hand a prepared message over via sessionStorage and ?compose=handoff.
   useEffect(() => {
@@ -105,8 +112,11 @@ export function MailPage() {
   useEffect(() => {
     if (!selectedId || !connected) return;
     let live = true;
-    getThread({ gmailThreadId: selectedId }).then((t) => {
+    const cachedThread = readLive<ThreadData>(`mail:thread:${selectedId}`);
+    const useCached = cachedThread.data && cachedThread.fetchedAt && Date.now() - cachedThread.fetchedAt < 120_000;
+    (useCached ? Promise.resolve(cachedThread.data as ThreadData) : getThread({ gmailThreadId: selectedId })).then((t) => {
       if (!live) return;
+      if (!useCached) writeLive(`mail:thread:${selectedId}`, { data: t, fetchedAt: Date.now() });
       setThreadState({ id: selectedId, thread: t });
       const unread = t.messages.filter((m) => m.unread).map((m) => m.gmailMessageId);
       if (unread.length) { void markRead({ gmailMessageIds: unread, read: true }); setList((cur) => ({ ...cur, items: cur.items.map((i) => (i.gmailThreadId === selectedId ? { ...i, unread: false } : i)) })); }
