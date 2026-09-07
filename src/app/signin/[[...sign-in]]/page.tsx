@@ -1,4 +1,4 @@
-import { SignIn } from "@clerk/nextjs";
+import { StaffSignIn } from "@/components/auth/staff-sign-in";
 import { GuestLogin } from "@/components/auth/guest-login";
 
 export const metadata = { title: "Sign in" };
@@ -12,7 +12,7 @@ export default function SignInPage() {
         <p className="font-display text-3xl">Happy Days</p>
         <p className="mt-2 text-sm text-fg-tertiary">Barbara Fraser &amp; Associates. Staff only.</p>
       </div>
-      {clerk ? <SignIn /> : (
+      {clerk ? <StaffSignIn /> : (
         <div className="w-full max-w-md rounded-2xl bg-card p-5 text-sm ring-1 ring-black/[0.06] dark:ring-white/10">
           <p className="font-medium">Staff sign-in isn’t configured yet</p>
           <ol className="mt-2 list-decimal space-y-1 pl-5 text-fg-secondary">
