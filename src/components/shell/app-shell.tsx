@@ -4,7 +4,6 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { Authenticated, AuthLoading, Unauthenticated, useConvexAuth, useMutation, useQuery } from "convex/react";
-import { useClerk } from "@clerk/nextjs";
 import { Bell, LogOut, Menu, Search } from "lucide-react";
 import { api } from "../../../convex/_generated/api";
 import { NAV, isActive, navItemFor } from "@/lib/nav";
@@ -14,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { CommandPalette } from "@/components/shell/command-palette";
 import { NotificationsPopover } from "@/components/shell/notifications";
 import { Dot } from "@/components/primitives";
+import { SignOutButton } from "@/components/auth/auth-mode";
 
 export type Me = NonNullable<ReturnType<typeof useQuery<typeof api.users.me>>>;
 
@@ -51,12 +51,11 @@ function Inner({ children }: { children: ReactNode }) {
 }
 
 function NotOnList() {
-  const { signOut } = useClerk();
   return (
     <Holding>
       <p className="font-display text-2xl text-foreground">This account isn’t on the list.</p>
       <p className="mt-2">Happy Days is for Barbara and Luke. Sign in with your barbarafraser.net Google account.</p>
-      <div className="mt-5 flex gap-2"><Button variant="outline" onClick={() => void signOut({ redirectUrl: "/signin" })}>Switch account</Button></div>
+      <div className="mt-5 flex gap-2"><SignOutButton className="inline-flex h-8 items-center rounded-lg border border-border px-3 text-sm hover:bg-muted">Switch account</SignOutButton></div>
     </Holding>
   );
 }
@@ -98,7 +97,6 @@ function Frame({ me, children }: { me: Me; children: ReactNode }) {
 }
 
 function Rail({ me, pathname, search, className }: { me: Me; pathname: string; search: string; className?: string }) {
-  const { signOut } = useClerk();
   const badges = me.badges as Record<string, number>;
   return (
     <aside className={cn("sticky top-0 h-svh flex-col bg-[#1a1a19] text-white", className)} aria-label="Navigation">
@@ -135,7 +133,7 @@ function Rail({ me, pathname, search, className }: { me: Me; pathname: string; s
             <div className="truncate text-xs text-white/85">{me.email}</div>
             <div className="truncate text-[10.5px] uppercase tracking-wider text-white/40">{me.google?.status === "connected" ? "Gmail connected" : me.google ? "Gmail needs attention" : "Gmail not connected"}</div>
           </div>
-          <button type="button" onClick={() => void signOut({ redirectUrl: "/signin" })} className="inline-flex size-7 items-center justify-center rounded-md text-white/50 hover:bg-white/10 hover:text-white" aria-label="Sign out" title="Sign out"><LogOut className="size-3.5" /></button>
+          <SignOutButton className="inline-flex size-7 items-center justify-center rounded-md text-white/50 hover:bg-white/10 hover:text-white"><LogOut className="size-3.5" /></SignOutButton>
         </div>
       </div>
     </aside>

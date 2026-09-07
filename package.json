@@ -30,6 +30,7 @@
     "convex": "^1.45.0",
     "date-fns": "^4.4.0",
     "dompurify": "^3.2.6",
+    "jose": "^6.2.12",
     "jszip": "^3.10.1",
     "lucide-react": "^1.38.0",
     "motion": "^13.1.1",

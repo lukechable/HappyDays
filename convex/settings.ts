@@ -55,7 +55,7 @@ export const publicPractice = query({
   handler: async (ctx) => {
     const rows = await ctx.db.query("settings").collect();
     const map = Object.fromEntries(rows.map((r) => [r.key, r.value])) as Record<string, unknown>;
-    return { name: (map["practice.name"] as string | undefined) ?? "Barbara Fraser & Associates", slug: (map["booking.slug"] as string | undefined) ?? "barbara-fraser" };
+    return { name: (map["practice.name"] as string | undefined) ?? "Barbara Fraser & Associates", slug: (map["booking.slug"] as string | undefined) ?? "barbara-fraser", guestEnabled: !!process.env.GUEST_PASSWORD };
   },
 });
 
@@ -74,6 +74,7 @@ export const setupStatus = query({
       stripe: has("STRIPE_SECRET_KEY"),
       stripeWebhook: has("STRIPE_WEBHOOK_SECRET"),
       anthropic: has("ANTHROPIC_API_KEY"),
+      guest: has("GUEST_PASSWORD"),
       appUrl: process.env.APP_URL ?? null,
       clinikoShard: process.env.CLINIKO_SHARD ?? "au1",
       clinikoSubdomain: process.env.CLINIKO_SUBDOMAIN ?? null,

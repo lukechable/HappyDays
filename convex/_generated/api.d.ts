@@ -16,6 +16,7 @@ import type * as crons from "../crons.js";
 import type * as files from "../files.js";
 import type * as google from "../google.js";
 import type * as googleData from "../googleData.js";
+import type * as guest from "../guest.js";
 import type * as http from "../http.js";
 import type * as lib_audit from "../lib/audit.js";
 import type * as lib_auth from "../lib/auth.js";
@@ -51,6 +52,7 @@ declare const fullApi: ApiFromModules<{
   files: typeof files;
   google: typeof google;
   googleData: typeof googleData;
+  guest: typeof guest;
   http: typeof http;
   "lib/audit": typeof lib_audit;
   "lib/auth": typeof lib_auth;
