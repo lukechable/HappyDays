@@ -55,11 +55,11 @@ export const publicByToken = query({
 });
 
 export const publicViewed = mutation({
-  args: { token: v.string(), ip: v.optional(v.string()), userAgent: v.optional(v.string()) },
-  handler: async (ctx, { token, ip, userAgent }) => {
+  args: { token: v.string(), userAgent: v.optional(v.string()) },
+  handler: async (ctx, { token, userAgent }) => {
     const r = await ctx.db.query("signatureRequests").withIndex("by_token", (q) => q.eq("token", token)).unique();
     if (!r || r.status !== "sent") return;
-    await ctx.db.patch(r._id, { status: "viewed", audit: [...r.audit, { at: Date.now(), event: "Opened by signer", ip, userAgent }] });
+    await ctx.db.patch(r._id, { status: "viewed", audit: [...r.audit, { at: Date.now(), event: "Opened by signer", userAgent: userAgent?.slice(0, 200) }] });
   },
 });
 
@@ -74,17 +74,17 @@ export const publicUploadUrl = mutation({
 
 /** The browser flattens the signature into the PDF with pdf-lib and uploads the result here. */
 export const publicComplete = mutation({
-  args: { token: v.string(), storageId: v.id("_storage"), size: v.number(), sha256: v.string(), ip: v.optional(v.string()), userAgent: v.optional(v.string()) },
-  handler: async (ctx, { token, storageId, size, sha256, ip, userAgent }) => {
+  args: { token: v.string(), storageId: v.id("_storage"), size: v.number(), sha256: v.string(), userAgent: v.optional(v.string()) },
+  handler: async (ctx, { token, storageId, size, sha256, userAgent }) => {
     const r = await ctx.db.query("signatureRequests").withIndex("by_token", (q) => q.eq("token", token)).unique();
     if (!r || (r.status !== "sent" && r.status !== "viewed") || r.expiresAt < Date.now()) throw new Error("This signing link is no longer active.");
     const original = await ctx.db.get(r.fileId);
     if (!original) throw new Error("Original file is missing.");
     const signedId = await ctx.db.insert("files", { name: original.name.replace(/\.pdf$/i, "") + " (signed).pdf", mime: "application/pdf", size, storageId, sha256, uploadedBy: r.createdBy, matterId: r.matterId ?? original.matterId, tagIds: original.tagIds, isReport: false, version: 1, createdAt: Date.now() });
-    await ctx.db.patch(r._id, { status: "signed", signedFileId: signedId, audit: [...r.audit, { at: Date.now(), event: `Signed by ${r.signerName} (${r.signerEmail})`, ip, userAgent }] });
+    await ctx.db.patch(r._id, { status: "signed", signedFileId: signedId, audit: [...r.audit, { at: Date.now(), event: `Signed by ${r.signerName} (${r.signerEmail})`, userAgent: userAgent?.slice(0, 200) }] });
     if (r.matterId ?? original.matterId) await ctx.db.insert("matterLinks", { matterId: (r.matterId ?? original.matterId)!, kind: "file", refId: signedId, createdAt: Date.now() });
     await notify(ctx, { userId: r.createdBy, kind: "signature.signed", title: `${r.signerName} signed ${original.name}`, href: "/pdf?tab=signatures" });
-    await ctx.db.insert("auditLog", { action: "signature.signed", subjectKind: "signatureRequest", subjectId: r._id, detail: r.signerEmail, ip, at: Date.now() });
+    await ctx.db.insert("auditLog", { action: "signature.signed", subjectKind: "signatureRequest", subjectId: r._id, detail: r.signerEmail, at: Date.now() });
     return { signedFileId: signedId };
   },
 });

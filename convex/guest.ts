@@ -13,6 +13,14 @@ import { v } from "convex/values";
  */
 
 export const GUEST_AUDIENCE = "happydays-guest";
+
+/** Compare two strings without leaking their common prefix length through timing. */
+function timingSafeEqual(a: string, b: string): boolean {
+  const ea = new TextEncoder().encode(a), eb = new TextEncoder().encode(b);
+  let diff = ea.length ^ eb.length;
+  for (let i = 0; i < Math.max(ea.length, eb.length); i++) diff |= (ea[i] ?? 0) ^ (eb[i] ?? 0);
+  return diff === 0;
+}
 export const GUEST_EMAIL = "guest@barbarafraser.net";
 
 type KeyPair = { privatePem: string; publicJwk: Record<string, string>; kid: string };
@@ -45,7 +53,15 @@ export const issueToken = action({
   handler: async (ctx, { password, hours }): Promise<{ token: string; expiresAt: number }> => {
     const expected = process.env.GUEST_PASSWORD;
     if (!expected) throw new Error("Guest access is switched off on this deployment.");
-    if (password !== expected) { await new Promise((r) => setTimeout(r, 800)); throw new Error("That password isn’t right."); }
+    const lock = ((await ctx.runQuery(internal.settings.getInternal, { key: "guest.failures" })) as { count: number; at: number } | null) ?? { count: 0, at: 0 };
+    const withinHour = Date.now() - lock.at < 3_600_000;
+    if (withinHour && lock.count >= 10) throw new Error("Too many attempts. Try again in an hour.");
+    if (!timingSafeEqual(password, expected)) {
+      await ctx.runMutation(internal.settings.setInternal, { key: "guest.failures", value: { count: withinHour ? lock.count + 1 : 1, at: Date.now() } });
+      await new Promise((r) => setTimeout(r, 800));
+      throw new Error("That password isn’t right.");
+    }
+    if (lock.count) await ctx.runMutation(internal.settings.setInternal, { key: "guest.failures", value: { count: 0, at: 0 } });
     const k = await keys(ctx);
     const pk = await importPKCS8(k.privatePem, "RS256");
     const ttl = Math.min(24 * 7, Math.max(1, hours ?? 1));

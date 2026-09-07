@@ -22,7 +22,7 @@ export function GuestLogin() {
       const j = (await r.json()) as { error?: string };
       if (!r.ok) { setError(j.error ?? "Sign-in failed"); return; }
       const to = params.get("redirect_url") ?? "/";
-      window.location.assign(to.startsWith("/") ? to : "/");
+      window.location.assign(/^\/(?![\/\\])/.test(to) ? to : "/");
     } catch { setError("Sign-in failed. Try again."); }
     finally { setBusy(false); }
   };

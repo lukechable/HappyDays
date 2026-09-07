@@ -20,8 +20,9 @@ export const me = query({
     const overdue = await ctx.db.query("threads").withIndex("by_overdue", (q) => q.eq("bothIncluded", true).eq("lastDirection", "in").lt("lastInboundAt", now - overdueHours * 3_600_000)).collect();
     const signatures = await ctx.db.query("signatures").withIndex("by_user", (q) => q.eq("userId", user._id)).collect();
     const paidInvoices = (await ctx.db.query("stripeInvoices").withIndex("by_created").order("desc").take(300)).filter((i) => i.status === "paid" && i.matterId);
-    let paidNotDelivered = 0;
-    for (const i of paidInvoices) { const m = await ctx.db.get(i.matterId!); if (m && !m.reportDeliveredAt && m.status !== "closed") paidNotDelivered++; }
+    const matterIds = Array.from(new Set(paidInvoices.map((i) => i.matterId!)));
+    const matters = new Map((await Promise.all(matterIds.map((id) => ctx.db.get(id)))).filter((m): m is NonNullable<typeof m> => !!m).map((m) => [m._id, m]));
+    const paidNotDelivered = paidInvoices.filter((i) => { const m = matters.get(i.matterId!); return m && !m.reportDeliveredAt && m.status !== "closed"; }).length;
     return {
       _id: user._id,
       email: user.email,

@@ -83,6 +83,7 @@ export const createCode = mutation({
   handler: async (ctx, a) => {
     const user = await requireUser(ctx);
     if (!a.fileIds.length) throw new Error("Pick at least one file.");
+    if (a.pin !== undefined && a.pin !== "" && !/^\d{4,8}$/.test(a.pin)) throw new Error("A PIN is 4 to 8 digits.");
     let code = randomCode(8);
     while (await ctx.db.query("downloadCodes").withIndex("by_code", (q) => q.eq("code", code)).unique()) code = randomCode(8);
     const files = await Promise.all(a.fileIds.map((id) => ctx.db.get(id)));
@@ -99,11 +100,16 @@ export const codes = query({
     await requireUser(ctx);
     const rows = await ctx.db.query("downloadCodes").withIndex("by_created").order("desc").take(200);
     const users = new Map((await ctx.db.query("users").collect()).map((u) => [u._id, firstName(u)]));
+    const fileIds = Array.from(new Set(rows.flatMap((c) => c.fileIds)));
+    const fileById = new Map((await Promise.all(fileIds.map((id) => ctx.db.get(id)))).filter((f): f is NonNullable<typeof f> => !!f).map((f) => [f._id, f]));
+    const matterIds = Array.from(new Set(rows.map((c) => c.matterId).filter((x): x is NonNullable<typeof x> => !!x)));
+    const matterById = new Map((await Promise.all(matterIds.map((id) => ctx.db.get(id)))).filter((m): m is NonNullable<typeof m> => !!m).map((m) => [m._id, m]));
+    const eventsByCode = new Map(await Promise.all(rows.map(async (c) => [c._id, await ctx.db.query("downloadEvents").withIndex("by_code", (q) => q.eq("codeId", c._id)).order("desc").take(20)] as const)));
     const out = [];
     for (const c of rows) {
-      const files = (await Promise.all(c.fileIds.map((id) => ctx.db.get(id)))).filter((f): f is NonNullable<typeof f> => !!f);
-      const events = await ctx.db.query("downloadEvents").withIndex("by_code", (q) => q.eq("codeId", c._id)).order("desc").take(20);
-      const matter = c.matterId ? await ctx.db.get(c.matterId) : null;
+      const files = c.fileIds.map((id) => fileById.get(id)).filter((f): f is NonNullable<typeof f> => !!f);
+      const events = eventsByCode.get(c._id) ?? [];
+      const matter = c.matterId ? matterById.get(c.matterId) ?? null : null;
       const state = c.revokedAt ? "revoked" : c.expiresAt < Date.now() ? "expired" : c.maxDownloads && c.downloadCount >= c.maxDownloads ? "used" : c.downloadCount ? "downloaded" : "waiting";
       out.push({ ...c, files: files.map((f) => ({ _id: f._id, name: f.name, size: f.size })), events, createdByName: users.get(c.createdBy) ?? "?", matterName: matter?.name, state, hasPin: !!c.pinHash });
     }
@@ -140,7 +146,12 @@ export const publicRedeem = internalMutation({
     if (c.revokedAt) return fail("revoked");
     if (c.expiresAt < Date.now()) return fail("expired");
     if (c.maxDownloads && c.downloadCount >= c.maxDownloads) return fail("limit");
-    if (c.pinHash && (await sha256Hex(`${c.code}:${pin ?? ""}`)) !== c.pinHash) return fail("bad_pin");
+    if (c.pinHash) {
+      // Brute-force guard: five wrong PINs in an hour locks the code until the hour passes.
+      const recent = await ctx.db.query("downloadEvents").withIndex("by_code", (q) => q.eq("codeId", c._id).gt("at", Date.now() - 3_600_000)).collect();
+      if (recent.filter((e) => e.outcome === "bad_pin").length >= 5) return fail("bad_pin");
+      if ((await sha256Hex(`${c.code}:${pin ?? ""}`)) !== c.pinHash) return fail("bad_pin");
+    }
     const ids = fileId ? c.fileIds.filter((x) => x === fileId) : c.fileIds;
     const files = (await Promise.all(ids.map((id) => ctx.db.get(id)))).filter((f): f is NonNullable<typeof f> => !!f);
     const out = [];
@@ -155,7 +166,7 @@ export const publicRedeem = internalMutation({
       const matterId = c.matterId ?? report?.matterId;
       if (report && matterId) {
         const m = await ctx.db.get(matterId);
-        if (m && !m.reportDeliveredAt) await ctx.db.patch(matterId, { reportDeliveredAt: Date.now(), reportDeliveredVia: "download", reportDeliveredBy: c.createdBy, status: "delivered", updatedAt: Date.now() });
+        if (m && !m.reportDeliveredAt && m.status !== "closed") await ctx.db.patch(matterId, { reportDeliveredAt: Date.now(), reportDeliveredVia: "download", reportDeliveredBy: c.createdBy, status: "delivered", updatedAt: Date.now() });
       }
     }
     await ctx.db.insert("auditLog", { action: "download.redeem", subjectKind: "downloadCode", subjectId: c._id, detail: files.map((f) => f.name).join(", "), ip, at: Date.now() });
@@ -172,7 +183,7 @@ export const reportSentByEmail = mutation({
   handler: async (ctx, { matterId }) => {
     const user = await requireUser(ctx);
     const m = await ctx.db.get(matterId);
-    if (m && !m.reportDeliveredAt) { await ctx.db.patch(matterId, { reportDeliveredAt: Date.now(), reportDeliveredVia: "email", reportDeliveredBy: user._id, status: "delivered", updatedAt: Date.now() }); await audit(ctx, { userId: user._id, action: "matter.delivered", subjectKind: "matter", subjectId: matterId, detail: "email" }); }
+    if (m && !m.reportDeliveredAt && m.status !== "closed") { await ctx.db.patch(matterId, { reportDeliveredAt: Date.now(), reportDeliveredVia: "email", reportDeliveredBy: user._id, status: "delivered", updatedAt: Date.now() }); await audit(ctx, { userId: user._id, action: "matter.delivered", subjectKind: "matter", subjectId: matterId, detail: "email" }); }
   },
 });
 

@@ -6,7 +6,7 @@ import type { NextConfig } from "next";
  */
 const CSP = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.clerk.accounts.dev https://clerk.barbarafraser.net https://js.stripe.com https://challenges.cloudflare.com",
+  "script-src 'self' 'unsafe-inline' https://*.clerk.accounts.dev https://clerk.barbarafraser.net https://js.stripe.com https://challenges.cloudflare.com",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "img-src 'self' data: blob: https:",
   "font-src 'self' data: https://fonts.gstatic.com",

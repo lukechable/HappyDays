@@ -569,13 +569,16 @@ export const meta = query({
     const users = new Map((await ctx.db.query("users").collect()).map((u) => [u._id, firstName(u)]));
     const tags = new Map((await ctx.db.query("tags").collect()).map((t) => [t._id, t]));
     const out: Record<string, ThreadMeta> = {};
-    for (const gid of gmailThreadIds) {
+    const resolved = await Promise.all(gmailThreadIds.map(async (gid) => {
       const lk = await ctx.db.query("threadLookup").withIndex("by_account_gmail", (q) => q.eq("accountId", account._id).eq("gmailThreadId", gid)).unique();
-      if (!lk) continue;
-      const t = await ctx.db.get(lk.threadId);
-      if (!t) continue;
-      const matter = t.matterId ? await ctx.db.get(t.matterId) : null;
-      const tasks = await ctx.db.query("tasks").withIndex("by_thread", (q) => q.eq("sourceThreadId", t._id)).collect();
+      const t = lk ? await ctx.db.get(lk.threadId) : null;
+      if (!t) return null;
+      const [matter, tasks] = await Promise.all([t.matterId ? ctx.db.get(t.matterId) : Promise.resolve(null), ctx.db.query("tasks").withIndex("by_thread", (q) => q.eq("sourceThreadId", t._id)).collect()]);
+      return { gid, t, matter, tasks };
+    }));
+    for (const r of resolved) {
+      if (!r) continue;
+      const { gid, t, matter, tasks } = r;
       const pick = (ids: Id<"tags">[]) => ids.map((id) => tags.get(id)).filter((x): x is Doc<"tags"> => !!x).map((x) => ({ _id: x._id, name: x.name, color: x.color }));
       out[gid] = {
         threadId: t._id,
@@ -618,8 +621,7 @@ export const assign = mutation({
     if (!toUserId) { await ctx.db.patch(threadId, { assignedTo: undefined, assignedBy: undefined, assignedAt: undefined, assignmentNote: undefined, assignmentDoneAt: undefined }); return; }
     await ctx.db.patch(threadId, { assignedTo: toUserId, assignedBy: user._id, assignedAt: Date.now(), assignmentNote: note, assignmentDoneAt: undefined });
     if (toUserId !== user._id) {
-      const mine = t.mailboxes.find((m) => m.accountId !== undefined);
-      await notify(ctx, { userId: toUserId, kind: "mail.assigned", title: `${firstName(user)} asked you to follow up`, body: [subject ?? t.subject, note].filter(Boolean).join(" — "), href: mine ? `/mail?view=assigned` : "/mail?view=assigned" });
+      await notify(ctx, { userId: toUserId, kind: "mail.assigned", title: `${firstName(user)} asked you to follow up`, body: [subject ?? t.subject, note].filter(Boolean).join(" — "), href: "/mail?view=assigned" });
     }
     await audit(ctx, { userId: user._id, action: "mail.assign", subjectKind: "thread", subjectId: threadId, detail: note });
   },
@@ -696,7 +698,8 @@ export const sendFromPractice = internalAction({
   args: { to: addressV, subject: v.string(), html: v.string() },
   handler: async (ctx, a) => {
     const accounts = await ctx.runQuery(internal.googleData.connectedAccounts, {});
-    const account = accounts[0];
+    const preferred = (await ctx.runQuery(internal.settings.getInternal, { key: "mail.practiceAccountEmail" })) as string | null;
+    const account = accounts.find((a) => a.email === preferred?.toLowerCase()) ?? accounts[0];
     if (!account) throw new Error("No connected Google account to send from.");
     const owner = await ctx.runQuery(internal.googleData.ownerName, { accountId: account._id });
     const token = await accessTokenFor(ctx, account._id);

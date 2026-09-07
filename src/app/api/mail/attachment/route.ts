@@ -11,9 +11,11 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const messageId = url.searchParams.get("message");
   const attachmentId = url.searchParams.get("id");
-  const name = url.searchParams.get("name") ?? "attachment";
-  const mime = url.searchParams.get("mime") ?? "application/octet-stream";
-  const disposition = url.searchParams.get("inline") === "1" ? "inline" : "attachment";
+  const name = (url.searchParams.get("name") ?? "attachment").replace(/[\r\n"\\]/g, "_").slice(0, 200);
+  const requested = (url.searchParams.get("mime") ?? "application/octet-stream").toLowerCase();
+  const INLINE_OK = ["image/png", "image/jpeg", "image/gif", "image/webp", "application/pdf", "text/plain"];
+  const mime = /^[a-z0-9.+-]+\/[a-z0-9.+-]+$/.test(requested) && !/html|xml|svg|javascript/.test(requested) ? requested : "application/octet-stream";
+  const disposition = url.searchParams.get("inline") === "1" && INLINE_OK.includes(mime) ? "inline" : "attachment";
   if (!messageId || !attachmentId) return new Response("Missing message or attachment id", { status: 400 });
   const client = await convexForUser();
   if (!client) return new Response("Sign in", { status: 401 });
@@ -23,7 +25,7 @@ export async function GET(req: Request) {
   if (!res.ok) return new Response(`Gmail returned ${res.status}`, { status: res.status });
   const { data } = (await res.json()) as { data: string };
   const bytes = Buffer.from(data.replace(/-/g, "+").replace(/_/g, "/"), "base64");
-  const safeName = name.replace(/["\r\n]/g, "_");
+  const safeName = name;
   return new Response(bytes, {
     headers: {
       "Content-Type": mime,

@@ -13,7 +13,7 @@ import { FolderList, SMART_TABS, type Label, type ViewKey } from "./folder-list"
 import { ThreadList } from "./thread-list";
 import { ThreadView, type ThreadData } from "./thread-view";
 import { Compose, type ComposeDraft } from "./compose";
-import { quoteHtml, textToHtml } from "@/lib/sanitise";
+import { quoteHtml, textToHtml, sanitiseForEditor } from "@/lib/sanitise";
 import { Button } from "@/components/ui/button";
 import { Empty } from "@/components/primitives";
 import { cn, errorMessage } from "@/lib/utils";
@@ -152,7 +152,7 @@ export function MailPage() {
   const startCompose = (mode: "reply" | "replyAll" | "forward", m: MessageView) => {
     if (!thread || !me) return;
     const myEmail = me.google?.email ?? me.email;
-    const bodyHtml = m.html ?? textToHtml(m.text ?? "");
+    const bodyHtml = sanitiseForEditor(m.html ?? textToHtml(m.text ?? ""));
     const fromLabel = `${m.from.name} <${m.from.email}>`;
     if (mode === "forward") {
       setCompose({ mode, to: [], cc: [], bcc: [], subject: /^fwd?:/i.test(m.subject) ? m.subject : `Fwd: ${m.subject}`, html: quoteHtml({ from: fromLabel, date: m.date, to: m.to.map((a) => a.email).join(", "), subject: m.subject, html: bodyHtml, mode: "forward" }), gmailThreadId: thread.gmailThreadId, references: [...m.references, m.rfcMessageId].filter(Boolean), forwardAttachments: m.attachments.filter((a) => a.attachmentId && !a.inline).map((a) => ({ gmailMessageId: m.gmailMessageId, attachmentId: a.attachmentId, filename: a.filename, mime: a.mime, size: a.size })), sourceText: m.text ?? m.snippet, sourceFrom: fromLabel });
@@ -168,7 +168,7 @@ export function MailPage() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
-      if (compose || t.closest("input, textarea, [contenteditable=true], [role=dialog]")) return;
+      if (compose || e.metaKey || e.ctrlKey || e.altKey || t.closest("input, textarea, [contenteditable=true], [role=dialog]")) return;
       const cur = items[focused];
       const key = e.key;
       if (key === "j" || key === "ArrowDown") { e.preventDefault(); setFocused((f) => Math.min(items.length - 1, f + 1)); }
@@ -241,7 +241,7 @@ export function MailPage() {
         </section>
       </div>
 
-      {compose && <Compose key={`${compose.mode}-${compose.inReplyTo ?? compose.draftId ?? "new"}`} draft={compose} signatureHtml={defaultSignature} signatureAbove={me?.prefs.signatureAbove ?? true} onClose={() => setCompose(null)} onSent={(r) => { const matterId = compose.matterId; setCompose(null); reload(); if (selectedId) getThread({ gmailThreadId: selectedId }).then(setThread).catch(() => undefined); if (matterId && r.attachments > 0) toast("Was that the report?", { description: "Mark the matter’s report as delivered by email.", action: { label: "Yes, delivered", onClick: () => reportSent({ matterId: matterId as Id<"matters"> }).then(() => toast.success("Marked delivered")).catch((e: unknown) => toast.error(errorMessage(e))) } }); }} />}
+      {compose && signatures !== undefined && <Compose key={`${compose.mode}-${compose.inReplyTo ?? compose.draftId ?? "new"}`} draft={compose} signatureHtml={defaultSignature} signatureAbove={me?.prefs.signatureAbove ?? true} onClose={() => setCompose(null)} onSent={(r) => { const matterId = compose.matterId; setCompose(null); reload(); if (selectedId) getThread({ gmailThreadId: selectedId }).then(setThread).catch(() => undefined); if (matterId && r.attachments > 0) toast("Was that the report?", { description: "Mark the matter’s report as delivered by email.", action: { label: "Yes, delivered", onClick: () => reportSent({ matterId: matterId as Id<"matters"> }).then(() => toast.success("Marked delivered")).catch((e: unknown) => toast.error(errorMessage(e))) } }); }} />}
       {view === "search" && q && <span className="sr-only">Showing Gmail results for {q}</span>}
       <TagIcon className="hidden" />
     </div>

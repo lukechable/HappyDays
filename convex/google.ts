@@ -72,6 +72,7 @@ export const disconnect = action({
     const account = await ctx.runQuery(internal.googleData.accountForUser, { userId: me._id });
     if (!account) return;
     try { const token = await accessTokenFor(ctx, account._id); await stopWatch(token); } catch { /* token may already be dead */ }
+    try { const refresh = await decrypt(account.refreshTokenEnc); await fetch("https://oauth2.googleapis.com/revoke", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ token: refresh }) }); } catch { /* best effort */ }
     await ctx.runMutation(internal.googleData.setStatus, { accountId: account._id, status: "disconnected" });
   },
 });

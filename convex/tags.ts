@@ -23,10 +23,10 @@ export const remove = mutation({
   args: { id: v.id("tags") },
   handler: async (ctx, { id }) => {
     await requireUser(ctx);
-    const threads = await ctx.db.query("threads").collect();
-    for (const t of threads) if (t.tagIds.includes(id)) await ctx.db.patch(t._id, { tagIds: t.tagIds.filter((x) => x !== id) });
-    const tasks = await ctx.db.query("tasks").collect();
-    for (const t of tasks) if (t.tagIds.includes(id)) await ctx.db.patch(t._id, { tagIds: t.tagIds.filter((x) => x !== id) });
+    const threads = await ctx.db.query("threads").withIndex("by_lastMessage").order("desc").take(5000);
+    await Promise.all(threads.filter((t) => t.tagIds.includes(id)).map((t) => ctx.db.patch(t._id, { tagIds: t.tagIds.filter((x) => x !== id) })));
+    const tasks = await ctx.db.query("tasks").withIndex("by_due").take(5000);
+    await Promise.all(tasks.filter((t) => t.tagIds.includes(id)).map((t) => ctx.db.patch(t._id, { tagIds: t.tagIds.filter((x) => x !== id) })));
     await ctx.db.delete(id);
   },
 });
