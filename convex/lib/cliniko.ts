@@ -40,27 +40,27 @@ async function all<T>(path: string, key: string, max = 1000): Promise<T[]> {
 
 /* ------------------------------ types ------------------------------ */
 
-export type Business = { id: number; business_name: string; display_name?: string; address_1?: string; address_2?: string; city?: string; post_code?: string; state?: string; country?: string; time_zone?: string; time_zone_identifier?: string; email_reply_to?: string; website_address?: string; show_in_online_bookings?: boolean };
-export type Practitioner = { id: number; first_name: string; last_name: string; display_name?: string; title?: string; designation?: string; active: boolean; show_in_online_bookings?: boolean; description?: string; user?: { links: { self: string } } };
-export type AppointmentType = { id: number; name: string; category?: string; color?: string; duration_in_minutes: number; description?: string; show_in_online_bookings: boolean; online_bookings_lead_time_hours?: number; max_attendees?: number; telehealth_enabled?: boolean; archived_at?: string | null; billable_items?: unknown; practitioners?: { links: { self: string } } };
-export type Patient = { id: number; first_name: string; last_name: string; preferred_first_name?: string; title?: string; email?: string; date_of_birth?: string; sex?: string; address_1?: string; address_2?: string; city?: string; post_code?: string; state?: string; country?: string; notes?: string; created_at: string; updated_at: string; archived_at?: string | null; medical_alerts?: string; patient_phone_numbers?: Array<{ number: string; phone_type: string }>; referral_source?: unknown; links?: { self: string } };
-export type Appointment = { id: number; starts_at: string; ends_at: string; notes?: string; cancelled_at?: string | null; cancellation_reason?: number; cancellation_note?: string; did_not_arrive?: boolean; patient_arrived?: boolean; telehealth_url?: string; online_booking_policy_accepted?: boolean; created_at: string; updated_at: string; patient?: { links: { self: string } }; practitioner?: { links: { self: string } }; appointment_type?: { links: { self: string } }; business?: { links: { self: string } }; invoices?: { links: { self: string } }; patient_name?: string; conflicts?: { exists: boolean } };
+export type Business = { id: string; business_name: string; display_name?: string; address_1?: string; address_2?: string; city?: string; post_code?: string; state?: string; country?: string; time_zone?: string; time_zone_identifier?: string; email_reply_to?: string; website_address?: string; show_in_online_bookings?: boolean };
+export type Practitioner = { id: string; first_name: string; last_name: string; display_name?: string; title?: string; designation?: string; active: boolean; show_in_online_bookings?: boolean; description?: string; user?: { links: { self: string } } };
+export type AppointmentType = { id: string; name: string; category?: string; color?: string; duration_in_minutes: number; description?: string; show_in_online_bookings: boolean; online_bookings_lead_time_hours?: number; max_attendees?: number; telehealth_enabled?: boolean; archived_at?: string | null; billable_items?: unknown; practitioners?: { links: { self: string } } };
+export type Patient = { id: string; first_name: string; last_name: string; preferred_first_name?: string; title?: string; email?: string; date_of_birth?: string; sex?: string; address_1?: string; address_2?: string; city?: string; post_code?: string; state?: string; country?: string; notes?: string; created_at: string; updated_at: string; archived_at?: string | null; medical_alerts?: string; patient_phone_numbers?: Array<{ number: string; phone_type: string }>; referral_source?: unknown; links?: { self: string } };
+export type Appointment = { id: string; starts_at: string; ends_at: string; notes?: string; cancelled_at?: string | null; cancellation_reason?: number; cancellation_note?: string; did_not_arrive?: boolean; patient_arrived?: boolean; telehealth_url?: string; online_booking_policy_accepted?: boolean; created_at: string; updated_at: string; patient?: { links: { self: string } }; practitioner?: { links: { self: string } }; appointment_type?: { links: { self: string } }; business?: { links: { self: string } }; invoices?: { links: { self: string } }; patient_name?: string; conflicts?: { exists: boolean } };
 export type AvailableTime = { appointment_start: string };
-export type AvailabilityBlock = { id: number; starts_at: string; ends_at: string; practitioner?: { links: { self: string } }; business?: { links: { self: string } }; deleted_at?: string | null };
-export type UnavailableBlock = { id: number; starts_at: string; ends_at: string; notes?: string; practitioner?: { links: { self: string } }; business?: { links: { self: string } }; deleted_at?: string | null };
-export type PatientAttachment = { id: number; description?: string; content_type?: string; filename?: string; upload_url?: string; content_url?: string; created_at: string; updated_at: string; archived_at?: string | null; user?: { links: { self: string } }; patient?: { links: { self: string } }; links?: { self: string } };
-export type MedicalAlert = { id: number; name: string; created_at: string; archived_at?: string | null; patient?: { links: { self: string } } };
-export type Invoice = { id: number; number: number; status: number; status_description?: string; issue_date: string; closed_at?: string | null; total_amount: number; net_amount?: number; discounted_amount?: number; created_at: string; updated_at: string; patient?: { links: { self: string } }; appointment?: { links: { self: string } }; online_payment_url?: string };
+export type AvailabilityBlock = { id: string; starts_at: string; ends_at: string; practitioner?: { links: { self: string } }; business?: { links: { self: string } }; deleted_at?: string | null };
+export type UnavailableBlock = { id: string; starts_at: string; ends_at: string; notes?: string; practitioner?: { links: { self: string } }; business?: { links: { self: string } }; deleted_at?: string | null };
+export type PatientAttachment = { id: string; description?: string; content_type?: string; filename?: string; upload_url?: string; content_url?: string; created_at: string; updated_at: string; archived_at?: string | null; user?: { links: { self: string } }; patient?: { links: { self: string } }; links?: { self: string } };
+export type MedicalAlert = { id: string; name: string; created_at: string; archived_at?: string | null; patient?: { links: { self: string } } };
+export type Invoice = { id: string; number: number; status: number; status_description?: string; issue_date: string; closed_at?: string | null; total_amount: number; net_amount?: number; discounted_amount?: number; created_at: string; updated_at: string; patient?: { links: { self: string } }; appointment?: { links: { self: string } }; online_payment_url?: string };
 
-export const idFromLink = (link?: { links: { self: string } }) => (link ? Number(link.links.self.split("/").pop()) : undefined);
+export const idFromLink = (link?: { links: { self: string } }) => (link ? link.links.self.split("/").pop() : undefined);
 
 /* ------------------------------ reads ------------------------------ */
 
 export const listBusinesses = () => all<Business>("/businesses", "businesses");
 export const listPractitioners = () => all<Practitioner>("/practitioners", "practitioners");
 export const listAppointmentTypes = () => all<AppointmentType>("/appointment_types", "appointment_types");
-export const listAppointmentTypesForPractitioner = (practitionerId: number) => all<AppointmentType>(`/practitioners/${practitionerId}/appointment_types`, "appointment_types");
-export const getPatient = (id: number) => call<Patient>(`/patients/${id}`);
+export const listAppointmentTypesForPractitioner = (practitionerId: string) => all<AppointmentType>(`/practitioners/${practitionerId}/appointment_types`, "appointment_types");
+export const getPatient = (id: string) => call<Patient>(`/patients/${id}`);
 export const searchPatients = (q: string, limit = 25) => {
   const term = q.trim();
   const p = new URLSearchParams();
@@ -76,11 +76,11 @@ export const searchPatients = (q: string, limit = 25) => {
   return call<{ patients: Patient[] }>(`/patients?${p}`).then((r) => r.patients);
 };
 export const searchPatientsByLastName = (last: string, limit = 25) => call<{ patients: Patient[] }>(`/patients?q[]=last_name:~${encodeURIComponent(last)}&per_page=${limit}&sort=updated_at:desc`).then((r) => r.patients);
-export const patientAppointments = (patientId: number) => all<Appointment>(`/patients/${patientId}/appointments?sort=starts_at:desc`, "appointments", 200);
-export const patientAttachments = (patientId: number) => all<PatientAttachment>(`/patients/${patientId}/patient_attachments`, "patient_attachments", 200);
-export const patientMedicalAlerts = (patientId: number) => all<MedicalAlert>(`/patients/${patientId}/medical_alerts`, "medical_alerts", 50);
-export const patientInvoices = (patientId: number) => all<Invoice>(`/patients/${patientId}/invoices?sort=issue_date:desc`, "invoices", 100);
-export const listAppointments = (fromIso: string, toIso: string, practitionerId?: number) => {
+export const patientAppointments = (patientId: string) => all<Appointment>(`/patients/${patientId}/appointments?sort=starts_at:desc`, "appointments", 200);
+export const patientAttachments = (patientId: string) => all<PatientAttachment>(`/patients/${patientId}/patient_attachments`, "patient_attachments", 200);
+export const patientMedicalAlerts = (patientId: string) => all<MedicalAlert>(`/patients/${patientId}/medical_alerts`, "medical_alerts", 50);
+export const patientInvoices = (patientId: string) => all<Invoice>(`/patients/${patientId}/invoices?sort=issue_date:desc`, "invoices", 100);
+export const listAppointments = (fromIso: string, toIso: string, practitionerId?: string) => {
   const p = new URLSearchParams();
   p.append("q[]", `starts_at:>=${fromIso}`);
   p.append("q[]", `starts_at:<${toIso}`);
@@ -88,19 +88,19 @@ export const listAppointments = (fromIso: string, toIso: string, practitionerId?
   p.set("sort", "starts_at:asc");
   return all<Appointment>(`/individual_appointments?${p}`, "individual_appointments", 500);
 };
-export const getAppointment = (id: number) => call<Appointment>(`/individual_appointments/${id}`);
-export const availableTimes = (businessId: number, practitionerId: number, appointmentTypeId: number, from: string, to: string) => all<AvailableTime>(`/businesses/${businessId}/practitioners/${practitionerId}/appointment_types/${appointmentTypeId}/available_times?from=${from}&to=${to}`, "available_times", 500);
+export const getAppointment = (id: string) => call<Appointment>(`/individual_appointments/${id}`);
+export const availableTimes = (businessId: string, practitionerId: string, appointmentTypeId: string, from: string, to: string) => all<AvailableTime>(`/businesses/${businessId}/practitioners/${practitionerId}/appointment_types/${appointmentTypeId}/available_times?from=${from}&to=${to}`, "available_times", 500);
 export const availabilityBlocks = (fromIso: string, toIso: string) => all<AvailabilityBlock>(`/availability_blocks?q[]=starts_at:>=${fromIso}&q[]=starts_at:<${toIso}`, "availability_blocks", 500);
 export const unavailableBlocks = (fromIso: string, toIso: string) => all<UnavailableBlock>(`/unavailable_blocks?q[]=starts_at:>=${fromIso}&q[]=starts_at:<${toIso}`, "unavailable_blocks", 500);
-export const me = () => call<{ id: number; first_name: string; last_name: string; email: string }>("/user");
+export const me = () => call<{ id: string; first_name: string; last_name: string; email: string }>("/user");
 
 /* ------------------------------ writes ------------------------------ */
 
 export const createPatient = (p: { first_name: string; last_name: string; email?: string; date_of_birth?: string; patient_phone_numbers?: Array<{ number: string; phone_type: "Mobile" | "Home" | "Work" | "Other" }>; notes?: string }) => call<Patient>("/patients", { method: "POST", body: JSON.stringify(p) });
-export const createAppointment = (a: { appointment_type_id: number; business_id: number; practitioner_id: number; patient_id: number; starts_at: string; ends_at: string; notes?: string; online_booking_policy_accepted?: boolean }) => call<Appointment>("/individual_appointments", { method: "POST", body: JSON.stringify(a) });
-export const updateAppointment = (id: number, a: Partial<{ starts_at: string; ends_at: string; notes: string; practitioner_id: number; appointment_type_id: number; did_not_arrive: boolean; patient_arrived: boolean }>) => call<Appointment>(`/individual_appointments/${id}`, { method: "PATCH", body: JSON.stringify(a) });
-export const cancelAppointment = (id: number, reason = 50, note?: string) => call<Appointment>(`/individual_appointments/${id}/cancel`, { method: "PATCH", body: JSON.stringify({ cancellation_reason: reason, cancellation_note: note }) });
-export const appointmentConflicts = (id: number) => call<{ conflicts?: unknown[] }>(`/individual_appointments/${id}/conflicts`);
+export const createAppointment = (a: { appointment_type_id: string; business_id: string; practitioner_id: string; patient_id: string; starts_at: string; ends_at: string; notes?: string; online_booking_policy_accepted?: boolean }) => call<Appointment>("/individual_appointments", { method: "POST", body: JSON.stringify(a) });
+export const updateAppointment = (id: string, a: Partial<{ starts_at: string; ends_at: string; notes: string; practitioner_id: string; appointment_type_id: string; did_not_arrive: boolean; patient_arrived: boolean }>) => call<Appointment>(`/individual_appointments/${id}`, { method: "PATCH", body: JSON.stringify(a) });
+export const cancelAppointment = (id: string, reason = 50, note?: string) => call<Appointment>(`/individual_appointments/${id}/cancel`, { method: "PATCH", body: JSON.stringify({ cancellation_reason: reason, cancellation_note: note }) });
+export const appointmentConflicts = (id: string) => call<{ conflicts?: unknown[] }>(`/individual_appointments/${id}/conflicts`);
 
 /** Cliniko's cancellation reason codes. */
 export const CANCELLATION_REASONS: Record<number, string> = { 10: "Feeling better", 20: "Condition worse", 30: "Sick", 31: "COVID-19 related", 40: "Away", 50: "Other", 60: "Work" };

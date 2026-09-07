@@ -15,7 +15,7 @@ import { useLive, useNow } from "@/lib/hooks";
 import { aud, time } from "@/lib/format";
 import { cn, errorMessage } from "@/lib/utils";
 
-type TypeOpt = { id: number; name: string; description?: string; durationMinutes: number; telehealth: boolean; feeCents: number; mode: "full" | "deposit" | "none"; payNowCents: number };
+type TypeOpt = { id: string; name: string; description?: string; durationMinutes: number; telehealth: boolean; feeCents: number; mode: "full" | "deposit" | "none"; payNowCents: number };
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
 /**
@@ -28,8 +28,8 @@ export function PublicBooking() {
   const start = useAction(api.bookings.startPublicBooking);
   const params = useSearchParams();
   const now = useNow();
-  const [typeId, setTypeId] = useState<number | null>(null);
-  const [pracId, setPracId] = useState<number | null>(null);
+  const [typeId, setTypeId] = useState<string | null>(null);
+  const [pracId, setPracId] = useState<string | null>(null);
   const [weekStart, setWeekStart] = useState(() => { const d = new Date(now); d.setHours(0, 0, 0, 0); return d; });
   const [slot, setSlot] = useState<string | null>(null);
   const [form, setForm] = useState({ firstName: "", lastName: "", email: "", phone: "", dob: "", notes: "", agree: false });

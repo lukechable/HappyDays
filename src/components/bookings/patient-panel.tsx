@@ -15,9 +15,9 @@ import { errorMessage } from "@/lib/utils";
  * A patient, read live from Cliniko: contact, alerts, appointments, Cliniko attachments (opened there, never
  * copied), Cliniko invoices, and the Happy Days matters that reference this patient.
  */
-export function PatientPanel({ patientId }: { patientId: number }) {
+export function PatientPanel({ patientId }: { patientId: string }) {
   const now = useNow();
-  const live = useLive(api.bookings.patient, Number.isFinite(patientId) ? { patientId } : "skip");
+  const live = useLive(api.bookings.patient, patientId ? { patientId } : "skip");
   const matters = useQuery(api.matters.list, {});
   const save = useMutation(api.matters.save);
   const p = live.data;

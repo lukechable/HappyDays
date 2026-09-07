@@ -149,7 +149,7 @@ export default defineSchema({
     courtFileNo: v.optional(v.string()),
     court: v.optional(v.string()),
     parties: v.array(v.string()),
-    clinikoPatientIds: v.array(v.number()),
+    clinikoPatientIds: v.array(v.string()),
     status: v.union(v.literal("open"), v.literal("report_due"), v.literal("delivered"), v.literal("closed")),
     notes: v.optional(v.string()),
     reportDeliveredAt: v.optional(v.number()),
@@ -210,7 +210,7 @@ export default defineSchema({
 
   /** How each Cliniko appointment type is charged. Cliniko is the source for the type itself. */
   appointmentPricing: defineTable({
-    clinikoAppointmentTypeId: v.number(),
+    clinikoAppointmentTypeId: v.string(),
     name: v.string(),
     durationMinutes: v.number(),
     mode: v.union(v.literal("full"), v.literal("deposit"), v.literal("none")),
@@ -224,9 +224,9 @@ export default defineSchema({
 
   /** A public booking in flight: slot chosen, Stripe Checkout started, Cliniko appointment created on payment. */
   bookingSessions: defineTable({
-    businessId: v.number(),
-    practitionerId: v.number(),
-    appointmentTypeId: v.number(),
+    businessId: v.string(),
+    practitionerId: v.string(),
+    appointmentTypeId: v.string(),
     startsAt: v.string(),
     endsAt: v.string(),
     patient: v.object({ firstName: v.string(), lastName: v.string(), email: v.string(), phone: v.optional(v.string()), dob: v.optional(v.string()), notes: v.optional(v.string()) }),
@@ -235,8 +235,8 @@ export default defineSchema({
     stripeCheckoutSessionId: v.optional(v.string()),
     stripePaymentIntentId: v.optional(v.string()),
     status: v.union(v.literal("pending"), v.literal("paid"), v.literal("booked"), v.literal("failed"), v.literal("expired")),
-    clinikoPatientId: v.optional(v.number()),
-    clinikoAppointmentId: v.optional(v.number()),
+    clinikoPatientId: v.optional(v.string()),
+    clinikoAppointmentId: v.optional(v.string()),
     error: v.optional(v.string()),
     createdAt: v.number(),
     expiresAt: v.number(),

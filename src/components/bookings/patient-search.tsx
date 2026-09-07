@@ -6,7 +6,7 @@ import { api } from "../../../convex/_generated/api";
 import { useLive } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 
-type P = { id: number; name: string; email?: string; phone?: string; dob?: string };
+type P = { id: string; name: string; email?: string; phone?: string; dob?: string };
 
 /** Cliniko patient search by name, email or phone. Results are never cached. */
 export function PatientSearch({ onPick, inline }: { onPick: (p: P) => void; inline?: boolean }) {

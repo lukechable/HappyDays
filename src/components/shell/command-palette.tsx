@@ -10,7 +10,7 @@ import { Command, CommandDialog, CommandEmpty, CommandGroup, CommandInput, Comma
 import { Pill, statusTone } from "@/components/primitives";
 import { mailDate } from "@/lib/format";
 
-type Patient = { id: number; name: string; email?: string; phone?: string };
+type Patient = { id: string; name: string; email?: string; phone?: string };
 
 /** ⌘K: jump to a page, or find a conversation, task, matter or Cliniko patient. */
 export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
