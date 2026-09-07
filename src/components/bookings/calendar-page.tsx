@@ -55,9 +55,11 @@ export function CalendarPage() {
 
   const practitioners = practice.data?.practitioners ?? [];
   const types = practice.data?.appointmentTypes ?? [];
+  // Day columns: every practitioner Cliniko lists, plus any who has an appointment in view but isn't listed.
+  const dayPractitioners: Array<{ id: string; name: string }> = [...practitioners.map((p) => ({ id: p.id, name: `${p.first_name} ${p.last_name}`.trim() })), ...(live.data?.practitioners ?? []).filter((p) => !practitioners.some((q) => q.id === p.id) && (live.data?.appointments ?? []).some((a) => a.practitionerId === p.id)).map((p) => ({ id: p.id, name: p.name }))];
   const columns: Array<{ key: string; label: string; day: Date; practitionerId?: string }> = mode === "week"
     ? Array.from({ length: 7 }, (_, i) => { const d = new Date(rangeStart); d.setDate(d.getDate() + i); return { key: d.toDateString(), label: d.toLocaleDateString("en-AU", { weekday: "short", day: "numeric" }), day: d }; })
-    : (practitioners.length ? practitioners : [{ id: undefined as string | undefined, first_name: "All", last_name: "" }]).map((p) => ({ key: String(p.id ?? "all"), label: `${p.first_name} ${p.last_name}`.trim(), day: rangeStart, practitionerId: p.id }));
+    : (dayPractitioners.length ? dayPractitioners : [{ id: undefined as string | undefined, name: "All" }]).map((p) => ({ key: String(p.id ?? "all"), label: p.name, day: rangeStart, practitionerId: p.id }));
 
   const inColumn = (a: { startsAt: string; practitionerId?: string }, c: (typeof columns)[number]) => { const d = new Date(a.startsAt); return d.toDateString() === c.day.toDateString() && (mode === "week" || c.practitionerId === undefined || a.practitionerId === c.practitionerId); };
   const yFor = (iso: string) => { const d = new Date(iso); return ((d.getHours() - DAY_START) * 60 + d.getMinutes()) * (HOUR_PX / 60); };

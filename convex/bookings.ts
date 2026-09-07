@@ -28,7 +28,11 @@ export const calendar = action({
     await Promise.all(groups.filter((g) => !g.deleted_at).slice(0, 30).map(async (g) => { try { attendeeCounts.set(g.id, await cliniko.attendeeCount(g.id)); } catch { /* fine */ } }));
     const typeById = new Map(types.map((t) => [t.id, t]));
     const pracById = new Map(practitioners.map((p) => [p.id, p]));
+    // Appointments can reference practitioners the list omits (inactive, other business); resolve them by id.
+    const missing = Array.from(new Set([...appointments.map((a) => cliniko.idFromLink(a.practitioner)), ...groups.map((g) => cliniko.idFromLink(g.practitioner))].filter((x): x is string => !!x && !pracById.has(x))));
+    await Promise.all(missing.map(async (id) => { try { pracById.set(id, await cliniko.getPractitioner(id)); } catch { pracById.set(id, { id, first_name: "Practitioner", last_name: id, active: false }); } }));
     return {
+      practitioners: Array.from(pracById.values()).map((p) => ({ id: p.id, name: `${p.first_name} ${p.last_name}`.trim(), active: p.active !== false })),
       appointments: appointments.map((a) => {
         const pid = cliniko.idFromLink(a.patient);
         const t = typeById.get(cliniko.idFromLink(a.appointment_type) ?? "");
