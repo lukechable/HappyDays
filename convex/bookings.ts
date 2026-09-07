@@ -67,7 +67,7 @@ export const clinikoInvoices = action({
     await ctx.runQuery(internal.bookings.requireStaff, {});
     const since = new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
     const invoices = await cliniko.listInvoices(since);
-    return invoices.map((i) => ({ id: i.id, number: i.number, patientId: cliniko.idFromLink(i.patient), patientName: i.patient_name ?? "", issueDate: i.issue_date, closedAt: i.closed_at ?? null, status: i.status_description ?? String(i.status), total: i.total_amount, net: i.net_amount ?? i.total_amount, clinikoUrl: cliniko.clinikoWebUrl(`/invoices/${i.id}`), payUrl: i.online_payment_url }));
+    return invoices.map((i) => ({ id: i.id, number: i.number, patientId: cliniko.idFromLink(i.patient), patientName: i.patient_name ?? "", issueDate: i.issue_date, closedAt: i.closed_at ?? null, status: i.status_description ?? String(i.status), total: Number(i.total_amount) || 0, net: Number(i.net_amount ?? i.total_amount) || 0, clinikoUrl: cliniko.clinikoWebUrl(`/invoices/${i.id}`), payUrl: i.online_payment_url }));
   },
 });
 
@@ -98,14 +98,14 @@ export const patient = action({
       alerts: alerts.filter((a) => !a.archived_at).map((a) => a.name),
       appointments: appointments.map((a) => ({ id: a.id, startsAt: a.starts_at, endsAt: a.ends_at, cancelledAt: a.cancelled_at ?? null, didNotArrive: !!a.did_not_arrive, typeName: typeById.get(cliniko.idFromLink(a.appointment_type) ?? "")?.name ?? "Appointment", practitionerName: (() => { const x = pracById.get(cliniko.idFromLink(a.practitioner) ?? ""); return x ? `${x.first_name} ${x.last_name}` : ""; })(), clinikoUrl: cliniko.clinikoWebUrl(`/appointments/${a.id}`) })),
       attachments: attachments.filter((a) => !a.archived_at).map((a) => ({ id: a.id, filename: a.filename ?? a.description ?? `Attachment ${a.id}`, description: a.description, contentType: a.content_type, createdAt: a.created_at, url: a.content_url })),
-      invoices: invoices.map((i) => ({ id: i.id, number: i.number, status: i.status_description ?? String(i.status), issueDate: i.issue_date, closedAt: i.closed_at ?? null, total: i.total_amount, clinikoUrl: cliniko.clinikoWebUrl(`/invoices/${i.id}`) })),
+      invoices: invoices.map((i) => ({ id: i.id, number: i.number, status: i.status_description ?? String(i.status), issueDate: i.issue_date, closedAt: i.closed_at ?? null, total: Number(i.total_amount) || 0, clinikoUrl: cliniko.clinikoWebUrl(`/invoices/${i.id}`) })),
       matters,
     };
   },
 });
 
 function shapePatient(p: cliniko.Patient) {
-  return { id: p.id, firstName: p.first_name, lastName: p.last_name, preferredName: p.preferred_first_name, name: `${p.preferred_first_name || p.first_name} ${p.last_name}`, email: p.email, phone: p.patient_phone_numbers?.[0]?.number, phones: p.patient_phone_numbers ?? [], dob: p.date_of_birth, medicalAlerts: p.medical_alerts, updatedAt: p.updated_at, clinikoUrl: cliniko.clinikoWebUrl(`/patients/${p.id}`) };
+  return { id: p.id, firstName: p.first_name, lastName: p.last_name, preferredName: p.preferred_first_name, name: `${p.preferred_first_name || p.first_name} ${p.last_name}`, email: p.email, phone: p.patient_phone_numbers?.[0]?.number, phones: p.patient_phone_numbers ?? [], dob: p.date_of_birth, medicalAlerts: typeof p.medical_alerts === "string" ? p.medical_alerts : undefined, updatedAt: p.updated_at, clinikoUrl: cliniko.clinikoWebUrl(`/patients/${p.id}`) };
 }
 
 export const requireStaff = internalQuery({ args: {}, handler: async (ctx) => { const u = await requireUser(ctx); return { _id: u._id, email: u.email, name: u.name }; } });
