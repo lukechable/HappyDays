@@ -7,7 +7,13 @@ export type NavItem = { href: string; label: string; badge?: "assigned" | "tasks
 export type NavGroup = { label: string; items: NavItem[] };
 
 export const NAV: NavGroup[] = [
-  { label: "Today", items: [{ href: "/", label: "Dashboard", exact: true, blurb: "Today's appointments, overdue mail, tasks due and money at a glance." }] },
+  {
+    label: "Today",
+    items: [
+      { href: "/", label: "Dashboard", exact: true, blurb: "Today's appointments, overdue mail, tasks due and money at a glance." },
+      { href: "/bookings", label: "Appointments", exact: true, blurb: "The Cliniko appointments calendar, read live. Drag to reschedule, click to book." },
+    ],
+  },
   {
     label: "Mail",
     items: [
@@ -28,7 +34,6 @@ export const NAV: NavGroup[] = [
   {
     label: "Cliniko Link",
     items: [
-      { href: "/bookings", label: "Bookings", exact: true, blurb: "The Cliniko calendar, read live. Drag to reschedule, click to book." },
       { href: "/bookings/patients", label: "Patients", blurb: "Search Cliniko patients; open a record, its appointments and files." },
       { href: "/bookings/appointment-types", label: "Appointment Types", blurb: "Every Cliniko appointment type with its colour, length and online price." },
       { href: "/bookings/payments", label: "Payments", blurb: "Cliniko invoices and Stripe payments side by side." },

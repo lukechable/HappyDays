@@ -19,13 +19,23 @@ import { time } from "@/lib/format";
 import { PatientSearch } from "./patient-search";
 import { InvoiceDialog } from "./invoice-dialog";
 
+/** Cliniko's own colour for the appointment type is the block's fill, with Cliniko's dark ink on every fill it uses (red included); white ink only on genuinely dark fills. */
+const FALLBACK = "#8dc3e9";
+function inkOn(hex: string): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return "#1a1a19";
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(m[1].slice(i, i + 2), 16) / 255).map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.12 ? "#1a1a19" : "#ffffff";
+}
+
 type Appt = { id: string; startsAt: string; endsAt: string; notes?: string; cancelledAt: string | null; didNotArrive: boolean; arrived: boolean; telehealthUrl?: string; patientId?: string; patientName: string; typeId?: string; typeName: string; color?: string; practitionerId?: string; practitionerName: string; clinikoUrl: string; patientUrl?: string };
 type Block = { id: string; startsAt: string; endsAt: string; practitionerId?: string; notes?: string };
 type Group = { id: string; startsAt: string; endsAt: string; notes?: string; typeName: string; color?: string; practitionerId?: string; practitionerName: string; attendees?: number; maxAttendees?: number; clinikoUrl: string };
 
 const HOUR_PX = 64;
-const DAY_START = 7;
-const DAY_END = 20;
+// The visible day, as in Cliniko: 9 am to 6 pm.
+const DAY_START = 9;
+const DAY_END = 18;
 const startOfDay = (t: number) => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d; };
 const startOfWeek = (t: number) => { const d = startOfDay(t); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d; };
 const CANCEL_REASONS: Array<[number, string]> = [[50, "Other"], [10, "Feeling better"], [20, "Condition worse"], [30, "Sick"], [40, "Away"], [60, "Work"]];
@@ -132,7 +142,7 @@ export function CalendarPage() {
                     </a>
                   ))}
                   {appts.map((a) => (
-                    <button key={a.id} type="button" data-appt draggable={!a.cancelledAt} onDragStart={(e) => e.dataTransfer.setData("appt", a.id)} onClick={(e) => { e.stopPropagation(); setSelected(a); }} className={cn("hd-lift absolute inset-x-0.5 overflow-hidden rounded-md px-1.5 py-0.5 text-left text-[11px] leading-tight text-white shadow-xs ring-1 ring-black/10 hover:z-[6]", a.cancelledAt && "opacity-40 line-through", a.didNotArrive && "ring-2 ring-error")} style={{ top: yFor(a.startsAt), height: hFor(a.startsAt, a.endsAt), background: a.color ?? "#0081f2" }}>
+                    <button key={a.id} type="button" data-appt draggable={!a.cancelledAt} onDragStart={(e) => e.dataTransfer.setData("appt", a.id)} onClick={(e) => { e.stopPropagation(); setSelected(a); }} className={cn("hd-lift absolute inset-x-0.5 overflow-hidden rounded-md px-1.5 py-0.5 text-left text-[11px] leading-tight shadow-xs ring-1 ring-black/10 hover:z-[6]", a.cancelledAt && "opacity-40 line-through", a.didNotArrive && "ring-2 ring-error")} style={{ top: yFor(a.startsAt), height: hFor(a.startsAt, a.endsAt), background: a.color ?? FALLBACK, color: inkOn(a.color ?? FALLBACK) }}>
                       <div className="truncate font-semibold">{a.patientName}</div>
                       <div className="truncate opacity-90">{time(a.startsAt)} · {a.typeName}</div>
                       {mode === "week" && practitioners.length > 1 && <div className="truncate opacity-75">{a.practitionerName}</div>}
@@ -149,7 +159,7 @@ export function CalendarPage() {
         <div className="fixed inset-x-0 bottom-0 z-40 sm:inset-auto sm:right-6 sm:top-20 sm:w-[380px]">
           <div className="hd-rise-up rounded-t-2xl bg-card p-4 shadow-float ring-1 ring-black/10 dark:ring-white/10 sm:rounded-2xl">
             <div className="flex items-start gap-2">
-              <span className="mt-1 size-3 shrink-0 rounded-full" style={{ background: selected.color ?? "#0081f2" }} />
+              <span className="mt-1 size-3 shrink-0 rounded-full" style={{ background: selected.color ?? FALLBACK }} />
               <div className="min-w-0 flex-1"><div className="font-display text-lg leading-tight">{selected.patientName}</div><div className="text-sm text-fg-secondary">{selected.typeName} · {selected.practitionerName}</div><div className="num text-sm">{new Date(selected.startsAt).toLocaleDateString("en-AU", { weekday: "long", day: "numeric", month: "short" })}, {time(selected.startsAt)}–{time(selected.endsAt)}</div></div>
               <button type="button" onClick={() => setSelected(null)} className="rounded p-1 hover:bg-muted" aria-label="Close"><X className="size-4" /></button>
             </div>
