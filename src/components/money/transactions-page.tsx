@@ -28,8 +28,6 @@ export function TransactionsPage() {
   const bank = useLive(api.bank.transactions, bankStatus?.configured && bankStatus.linked ? {} : "skip", { ttlMs: 300_000 });
   const connectLink = useAction(api.bank.connectLink);
   const [linking, setLinking] = useState(false);
-  const [creditsOnly, setCreditsOnly] = useState(true);
-  const bankRows = (bank.data?.rows ?? []).filter((t) => (!creditsOnly || t.direction === "credit") && (!days || Date.parse(t.postDate) >= Date.now() - days * 86_400_000) && (!q.trim() || t.description.toLowerCase().includes(q.trim().toLowerCase())));
   // Same-tab navigation: a window.open after an await is blocked by popup blockers. Basiq's consent page sends the browser back to the policy's redirect URL (this page).
   const link = async () => { setLinking(true); try { const { url } = await connectLink({}); window.location.assign(url); } catch (e) { toast.error(errorMessage(e)); setLinking(false); } };
   // A bank credit matches an invoice when the payer typed the invoice number as the reference, or the amount equals an open invoice.
@@ -39,6 +37,9 @@ export function TransactionsPage() {
   const [kind, setKind] = useState<Kind>("all");
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "at", dir: -1 });
+  // Declared after days and q: it reads both, and a const is not usable before its line (that ordering crashed the page once).
+  const [creditsOnly, setCreditsOnly] = useState(true);
+  const bankRows = (bank.data?.rows ?? []).filter((t) => (!creditsOnly || t.direction === "credit") && (!days || Date.parse(t.postDate) >= Date.now() - days * 86_400_000) && (!q.trim() || t.description.toLowerCase().includes(q.trim().toLowerCase())));
 
   const rows = useMemo(() => {
     let r = data?.rows ?? [];
