@@ -11,7 +11,9 @@
 import type * as ai from "../ai.js";
 import type * as audit from "../audit.js";
 import type * as autoReply from "../autoReply.js";
+import type * as bank from "../bank.js";
 import type * as bookings from "../bookings.js";
+import type * as cases from "../cases.js";
 import type * as court from "../court.js";
 import type * as crons from "../crons.js";
 import type * as files from "../files.js";
@@ -51,7 +53,9 @@ declare const fullApi: ApiFromModules<{
   ai: typeof ai;
   audit: typeof audit;
   autoReply: typeof autoReply;
+  bank: typeof bank;
   bookings: typeof bookings;
+  cases: typeof cases;
   court: typeof court;
   crons: typeof crons;
   files: typeof files;

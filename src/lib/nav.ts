@@ -3,11 +3,15 @@
  * Query values are written the way URLSearchParams serialises them (":" as %3A) so `isActive` and the router's
  * prefetch cache see the same string as the address bar.
  */
+import type { LucideIcon } from "lucide-react";
+import { CalendarDays, Mail, ListTodo, Gavel, FolderLock, FileText, Banknote, Settings } from "lucide-react";
+
 export type NavItem = { href: string; label: string; badge?: "assigned" | "tasks" | "overdue" | "notifications" | "paidNotDelivered"; blurb: string; exact?: boolean };
-export type NavGroup = { label: string; items: NavItem[] };
+export type NavGroup = { label: string; icon: LucideIcon; items: NavItem[] };
 export const NAV: NavGroup[] = [
   {
     label: "Cliniko",
+    icon: CalendarDays,
     items: [
       { href: "/", label: "Dashboard", exact: true, blurb: "Today's appointments, overdue mail, tasks due and money at a glance." },
       { href: "/bookings", label: "Appointments", exact: true, blurb: "The Cliniko appointments calendar, read live. Drag to reschedule, click to book." },
@@ -18,6 +22,7 @@ export const NAV: NavGroup[] = [
   },
   {
     label: "Mail",
+    icon: Mail,
     items: [
       { href: "/mail", label: "Inbox", exact: true, blurb: "Your Gmail inbox, newest first." },
       { href: "/mail?view=overdue", label: "Overdue", badge: "overdue", blurb: "Threads both of you are on that nobody has answered." },
@@ -25,9 +30,10 @@ export const NAV: NavGroup[] = [
       { href: "/matters", label: "Subpoena Export", blurb: "One record per court matter: emails, tasks, files, invoices, exported for a subpoena." },
     ],
   },
-  { label: "Work", items: [{ href: "/tasks", label: "Tasks", badge: "tasks", blurb: "Your lists, due today and this week, assigned to you." }] },
+  { label: "Work", icon: ListTodo, items: [{ href: "/tasks", label: "Tasks", badge: "tasks", blurb: "Your lists, due today and this week, assigned to you." }] },
   {
     label: "Court Matters",
+    icon: Gavel,
     items: [
       { href: "/court/affidavits", label: "Affidavit Requests", blurb: "Affidavits solicitors have asked for: who wants them, when they are due, where each one is up to." },
       { href: "/court/appearances", label: "Court Appearances", blurb: "Hearings, mentions and trials you must attend, with the court, the matter and the date." },
@@ -35,6 +41,7 @@ export const NAV: NavGroup[] = [
   },
   {
     label: "Documents",
+    icon: FolderLock,
     items: [
       { href: "/files", label: "Send Documents", blurb: "Zip, encrypt and email documents with a read receipt; stored files and download codes." },
       { href: "/pdf", label: "PDF tools", blurb: "Sign, mark up, rearrange and merge PDFs; send for signature." },
@@ -42,6 +49,7 @@ export const NAV: NavGroup[] = [
   },
   {
     label: "Reports",
+    icon: FileText,
     items: [
       { href: "/reports/therapy", label: "Therapy Reports", blurb: "Therapy reports the practice has written: matter, delivery and sending." },
       { href: "/reports/family", label: "Family Reports", blurb: "Family reports for the court: matter, delivery and sending." },
@@ -49,12 +57,13 @@ export const NAV: NavGroup[] = [
   },
   {
     label: "Money",
+    icon: Banknote,
     items: [
       { href: "/money", label: "Invoices", exact: true, badge: "paidNotDelivered", blurb: "Every Stripe invoice and whether its report has gone out." },
       { href: "/money/transactions", label: "Transactions", blurb: "Every payment and invoice payment through Stripe, as one ledger." },
     ],
   },
-  { label: "Settings", items: [{ href: "/settings", label: "Settings", blurb: "Google, Cliniko, Stripe, signatures, tags, auto-replies." }] },
+  { label: "Settings", icon: Settings, items: [{ href: "/settings", label: "Settings", blurb: "Google, Cliniko, Stripe, signatures, tags, auto-replies." }] },
 ];
 export const NAV_ITEMS = NAV.flatMap((g) => g.items);
 const pathOf = (href: string) => href.split("?")[0];

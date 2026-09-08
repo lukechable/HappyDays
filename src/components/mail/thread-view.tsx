@@ -7,11 +7,12 @@ import { useMutation } from "convex/react";
 import { useQuery } from "convex-helpers/react/cache/hooks";
 import Link from "next/link";
 import { PrefetchLink } from "@/components/prefetch-link";
-import { Archive, ArchiveRestore, Reply, ReplyAll, Forward, Star, Trash2, Tag, UserCheck, Briefcase, ListTodo, MailOpen, FolderInput, Paperclip, Download, Eye, ChevronDown, ChevronUp, Sparkles, X, Bot, CalendarCheck2, CalendarClock } from "lucide-react";
+import { FileText, Archive, ArchiveRestore, Reply, ReplyAll, Forward, Star, Trash2, Tag, UserCheck, Briefcase, ListTodo, MailOpen, FolderInput, Paperclip, Download, Eye, ChevronDown, ChevronUp, Sparkles, X, Bot, CalendarCheck2, CalendarClock } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../../../convex/_generated/api";
 import type { MessageView, ThreadMeta } from "../../../convex/mail";
 import { MessageFrame } from "./message-frame";
+import { CreateCaseDialog } from "./create-case-dialog";
 import { TagPicker, AssignPicker, MatterPicker, LabelPicker } from "./pickers";
 import type { Label } from "./folder-list";
 import { Button } from "@/components/ui/button";
@@ -24,6 +25,8 @@ export type ThreadData = { gmailThreadId: string; subject: string; messages: Mes
 const attachmentUrl = (m: MessageView, a: MessageView["attachments"][number], inline = false) => `/api/mail/attachment?message=${encodeURIComponent(m.gmailMessageId)}&id=${encodeURIComponent(a.attachmentId)}&name=${encodeURIComponent(a.filename)}&mime=${encodeURIComponent(a.mime)}${inline ? "&inline=1" : ""}`;
 
 /** The reader: conversation header with actions, then each message with its sandboxed body and attachments. */
+const PLAN_RE = /mental\s*health\s*(care|treatment)?\s*plan|\bMHCP\b|\bMHTP\b|better\s*access/i;
+
 export function ThreadView({ thread, meta, labels, loading, error, myFirst, showImagesDefault, onAction, onReply, onClose }: {
   thread?: ThreadData; meta?: ThreadMeta; labels: Label[]; loading: boolean; error?: string; myFirst?: string; showImagesDefault: boolean;
   onAction: (op: "archive" | "unarchive" | "trash" | "untrash" | "star" | "unstar" | "unread" | "spam" | "labels", payload?: { add: string[]; remove: string[] }) => void;
@@ -36,6 +39,7 @@ export function ThreadView({ thread, meta, labels, loading, error, myFirst, show
   const saveTask = useMutation(api.tasks.save);
   const router = useRouter();
   const [expandedOverride, setExpandedOverride] = useState<{ threadId: string; set: Set<string> } | null>(null);
+  const [caseFor, setCaseFor] = useState<{ gmailMessageId: string; attachment: { attachmentId: string; filename: string; mime: string } } | null>(null);
   const [preview, setPreview] = useState<{ url: string; name: string; mime: string } | null>(null);
   const detail = useQuery(api.mail.threadDetail, meta?.threadId ? { threadId: meta.threadId } : "skip");
   const nonDraft = useMemo(() => (thread?.messages ?? []).filter((m) => !m.isDraft), [thread]);
@@ -99,6 +103,8 @@ export function ThreadView({ thread, meta, labels, loading, error, myFirst, show
           {thread.messages.map((m) => {
             const open = expanded.has(m.gmailMessageId) || m.isDraft;
             const atts = realAttachments(m);
+            // A mental health plan in the conversation, with a PDF or photo attached: offer to turn it into a Cliniko case.
+            const planAtt = PLAN_RE.test(`${thread.subject}\n${m.text ?? m.snippet ?? ""}`) ? atts.find((a) => a.attachmentId && /^(application\/pdf|image\/(jpeg|png|webp|gif))$/.test(a.mime)) : undefined;
             return (
               <li key={m.gmailMessageId} className={cn("hd-enter rounded-xl bg-card shadow-xs ring-1 ring-black/[0.06] dark:ring-white/10", m.isDraft && "ring-error/40")}>
                 <button type="button" onClick={() => setExpanded((s) => { const n = new Set(s); if (n.has(m.gmailMessageId)) n.delete(m.gmailMessageId); else n.add(m.gmailMessageId); return n; })} className="flex w-full items-start gap-3 px-4 py-3 text-left">
@@ -109,6 +115,7 @@ export function ThreadView({ thread, meta, labels, loading, error, myFirst, show
                   </span>
                   <span className="mt-1 text-fg-quaternary">{open ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}</span>
                 </button>
+                {planAtt && <div className="flex items-center gap-2 px-4 pb-2 text-xs text-fg-secondary"><FileText className="size-3.5 text-fg-tertiary" />Looks like a mental health plan.<Button size="xs" onClick={() => setCaseFor({ gmailMessageId: m.gmailMessageId, attachment: { attachmentId: planAtt.attachmentId!, filename: planAtt.filename, mime: planAtt.mime } })}>Create Case</Button></div>}
                 {open && (
                   <div className="border-t border-border/70 px-4 py-3">
                     <MessageFrame html={m.html} text={m.text} cidMap={cidMapFor(m)} showImagesDefault={showImagesDefault || m.fromOrg} />
@@ -147,6 +154,7 @@ export function ThreadView({ thread, meta, labels, loading, error, myFirst, show
           </div>
         </div>
       )}
+      {caseFor && <CreateCaseDialog gmailMessageId={caseFor.gmailMessageId} attachment={caseFor.attachment} onClose={() => setCaseFor(null)} />}
     </div>
   );
 }

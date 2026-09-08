@@ -74,6 +74,7 @@ export const setupStatus = query({
       stripe: has("STRIPE_SECRET_KEY"),
       stripeWebhook: has("STRIPE_WEBHOOK_SECRET"),
       anthropic: has("ANTHROPIC_API_KEY"),
+      basiq: has("BASIQ_API_KEY"),
       guest: has("GUEST_PASSWORD"),
       appUrl: process.env.APP_URL ?? null,
       clinikoShard: process.env.CLINIKO_SHARD ?? "au1",
