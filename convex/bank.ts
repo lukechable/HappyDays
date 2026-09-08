@@ -24,7 +24,11 @@ async function token(scope: "SERVER_ACCESS" | "CLIENT_ACCESS", userId?: string):
 
 async function api<T>(tok: string, path: string, init: RequestInit = {}): Promise<T> {
   const r = await fetch(`${BASE}${path}`, { ...init, headers: { Authorization: `Bearer ${tok}`, "basiq-version": "3.0", "Content-Type": "application/json", Accept: "application/json", ...(init.headers ?? {}) } });
-  if (!r.ok) throw new Error(`Basiq ${path}: ${r.status} ${(await r.text()).slice(0, 200)}`);
+  if (!r.ok) {
+    const text = await r.text();
+    if (/access-denied/.test(text)) throw new Error("Basiq refused the request: the API key's permission set does not allow it. In the Basiq dashboard, give the key access to users, consents, connections, institutions, accounts and transactions, then try again.");
+    throw new Error(`Basiq ${path}: ${r.status} ${text.slice(0, 200)}`);
+  }
   return (await r.json()) as T;
 }
 
