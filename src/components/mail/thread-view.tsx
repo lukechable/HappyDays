@@ -44,7 +44,10 @@ export function ThreadView({ thread, meta, labels, loading, error, myFirst, show
   const detail = useQuery(api.mail.threadDetail, meta?.threadId ? { threadId: meta.threadId } : "skip");
   const nonDraft = useMemo(() => (thread?.messages ?? []).filter((m) => !m.isDraft), [thread]);
   const last = nonDraft[nonDraft.length - 1];
-  const expanded = expandedOverride && expandedOverride.threadId === thread?.gmailThreadId ? expandedOverride.set : new Set(last ? [last.gmailMessageId] : []);
+  // The toolbar replies to the latest message from outside the practice. A colleague's forward or note on top of a
+  // thread ("Done", "what's happening?") is for us, not the correspondent, so replying to it would go to the colleague.
+  const replyTarget = [...nonDraft].reverse().find((m) => !m.fromOrg) ?? last;
+  const expanded = expandedOverride && expandedOverride.threadId === thread?.gmailThreadId ? expandedOverride.set : new Set([last, replyTarget].filter(Boolean).map((m) => m.gmailMessageId));
   const setExpanded = (fn: (s: Set<string>) => Set<string>) => { if (thread) setExpandedOverride({ threadId: thread.gmailThreadId, set: fn(expanded) }); };
 
   if (!thread && !loading && !error) return <div className="flex h-full items-center justify-center text-sm text-fg-tertiary">Select a conversation, or press <kbd className="mx-1 rounded border border-border px-1 font-mono text-[10px]">c</kbd> to compose.</div>;
@@ -76,7 +79,7 @@ export function ThreadView({ thread, meta, labels, loading, error, myFirst, show
         <MatterPicker threadId={meta?.threadId} current={meta?.matter?._id} trigger={<Act label="Matter" asSpan><Briefcase className="size-4" /></Act>} />
         <Act label="Turn into task" onClick={makeTask}><ListTodo className="size-4" /></Act>
         <div className="ml-auto flex items-center gap-1">
-          {last && <><Button size="sm" variant="outline" onClick={() => onReply("reply", last)}><Reply className="size-3.5" />Reply</Button><Button size="sm" variant="outline" onClick={() => onReply("replyAll", last)}><ReplyAll className="size-3.5" />All</Button><Button size="sm" variant="outline" onClick={() => onReply("forward", last)}><Forward className="size-3.5" />Forward</Button></>}
+          {replyTarget && <><Button size="sm" variant="outline" title={`Reply to ${replyTarget.from.name || replyTarget.from.email}`} onClick={() => onReply("reply", replyTarget)}><Reply className="size-3.5" />Reply</Button><Button size="sm" variant="outline" title={`Reply to everyone on ${replyTarget.from.name || replyTarget.from.email}’s message`} onClick={() => onReply("replyAll", replyTarget)}><ReplyAll className="size-3.5" />All</Button><Button size="sm" variant="outline" onClick={() => onReply("forward", replyTarget)}><Forward className="size-3.5" />Forward</Button></>}
         </div>
       </div>
 
