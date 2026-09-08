@@ -151,7 +151,8 @@ export function CalendarPage() {
 
   const inColumn = (a: { startsAt: string; practitionerId?: string }, c: (typeof columns)[number]) => { const d = new Date(a.startsAt); return d.toDateString() === c.day.toDateString() && (mode === "week" || c.practitionerId === undefined || a.practitionerId === c.practitionerId); };
   const yFor = (iso: string) => { const d = new Date(iso); return ((d.getHours() - DAY_START) * 60 + d.getMinutes()) * (HOUR_PX / 60); };
-  const hFor = (s: string, e: string) => Math.max(18, ((new Date(e).getTime() - new Date(s).getTime()) / 60_000) * (HOUR_PX / 60));
+  // One pixel short so the block stops above the grid line rather than covering it.
+  const hFor = (s: string, e: string) => Math.max(18, ((new Date(e).getTime() - new Date(s).getTime()) / 60_000) * (HOUR_PX / 60) - 1);
 
   const onDrop = async (e: React.DragEvent, col: (typeof columns)[number]) => {
     e.preventDefault();
@@ -198,7 +199,12 @@ export function CalendarPage() {
             {/* Today's header is filled yellow, as in Cliniko. */}
             {columns.map((c) => <div key={c.key} className={cn("sticky top-0 z-10 truncate border-b border-l border-border bg-background px-2 py-1.5 text-center text-[13px] font-semibold", c.day.toDateString() === new Date(now).toDateString() && "bg-[#fbf3cf] dark:bg-[#4a4320]")}>{c.label}</div>)}
             <div className="relative" style={{ height: (DAY_END - DAY_START) * HOUR_PX }}>
-              {Array.from({ length: DAY_END - DAY_START }, (_, i) => <div key={i} className="num absolute right-2 pt-0.5 text-[10.5px] text-fg-quaternary" style={{ top: i * HOUR_PX }}>{i + DAY_START > 12 ? `${i + DAY_START - 12}pm` : i + DAY_START === 12 ? "12pm" : `${i + DAY_START}am`}</div>)}
+              {Array.from({ length: DAY_END - DAY_START }, (_, i) => { const h = i + DAY_START; const h12 = h > 12 ? h - 12 : h; return (
+                <div key={i}>
+                  <div className="num absolute right-2 pt-0.5 text-[10.5px] text-fg-quaternary" style={{ top: i * HOUR_PX }}>{h12}{h >= 12 ? "pm" : "am"}</div>
+                  <div className="num absolute right-2 pt-0.5 text-[9.5px] text-fg-quaternary/70" style={{ top: i * HOUR_PX + HOUR_PX / 2 }}>{h12}:30</div>
+                </div>
+              ); })}
             </div>
             {columns.map((c) => {
               const appts = (live.data?.appointments ?? []).filter((a) => inColumn(a, c));
@@ -213,7 +219,7 @@ export function CalendarPage() {
                 <div key={c.key} className={cn("relative border-l border-border bg-muted", busy && "opacity-60")} style={{ height: (DAY_END - DAY_START) * HOUR_PX }} onDragOver={(e) => e.preventDefault()} onDrop={(e) => void onDrop(e, c)} onClick={(e) => onEmptyClick(e, c)}>
                   {/* As in Cliniko: the day is grey, and only the hours the practitioner works are white. */}
                   {avail.map((b) => <div key={`a${b.id}`} className="absolute inset-x-0 bg-background" style={{ top: yFor(b.startsAt), height: hFor(b.startsAt, b.endsAt) }} />)}
-                  <div className="pointer-events-none absolute inset-0" style={{ backgroundImage: `repeating-linear-gradient(to bottom, transparent 0, transparent ${HOUR_PX - 1}px, var(--border) ${HOUR_PX - 1}px, var(--border) ${HOUR_PX}px)` }} aria-hidden="true" />
+                  <div className="pointer-events-none absolute inset-0" style={{ backgroundImage: `repeating-linear-gradient(to bottom, transparent 0, transparent ${HOUR_PX - 1}px, var(--border) ${HOUR_PX - 1}px, var(--border) ${HOUR_PX}px), repeating-linear-gradient(to bottom, transparent 0, transparent ${HOUR_PX / 2 - 1}px, color-mix(in srgb, var(--border) 55%, transparent) ${HOUR_PX / 2 - 1}px, color-mix(in srgb, var(--border) 55%, transparent) ${HOUR_PX / 2}px)` }} aria-hidden="true" />
                   {unavail.map((b) => <div key={`u${b.id}`} className="absolute inset-x-0 bg-[repeating-linear-gradient(45deg,transparent,transparent_6px,rgba(0,0,0,.05)_6px,rgba(0,0,0,.05)_12px)] px-1 text-[10px] text-fg-tertiary" style={{ top: yFor(b.startsAt), height: hFor(b.startsAt, b.endsAt) }} title={b.notes}>{b.notes}</div>)}
                   {isToday && <div className="pointer-events-none absolute inset-x-0 z-[7] h-0.5 bg-[#e0218a] shadow-[0_0_0_1px_rgba(224,33,138,.25)]" style={{ top: yFor(new Date(now).toISOString()) }} aria-hidden="true" />}
                   {groups.map((g) => (
@@ -223,7 +229,7 @@ export function CalendarPage() {
                     </a>
                   ))}
                   {appts.map((a) => (
-                    <button key={a.id} type="button" data-appt draggable={!a.cancelledAt && resizing?.id !== a.id} onDragStart={(e) => e.dataTransfer.setData("appt", a.id)} onClick={(e) => { e.stopPropagation(); setSelected(a); }} className={cn("group/appt absolute overflow-hidden px-1.5 py-0.5 text-left text-[11px] leading-tight ring-1 ring-black/45 hover:z-[6]", a.cancelledAt && "opacity-40 line-through", a.didNotArrive && "ring-2 ring-error", resizing?.id === a.id && "z-[6] ring-2 ring-black/60")} style={{ ...laneStyle(a.id), top: yFor(a.startsAt), height: hFor(a.startsAt, resizing?.id === a.id ? resizing.endsAt : a.endsAt), background: clinikoFill(a.color ?? FALLBACK), color: inkOn(clinikoFill(a.color ?? FALLBACK)) }}>
+                    <button key={a.id} type="button" data-appt draggable={!a.cancelledAt && resizing?.id !== a.id} onDragStart={(e) => e.dataTransfer.setData("appt", a.id)} onClick={(e) => { e.stopPropagation(); setSelected(a); }} className={cn("group/appt absolute overflow-hidden px-1.5 py-0.5 text-left text-[11px] leading-tight ring-1 ring-inset ring-black/45 hover:z-[6]", a.cancelledAt && "opacity-40 line-through", a.didNotArrive && "ring-2 ring-inset ring-error", resizing?.id === a.id && "z-[6] ring-2 ring-inset ring-black/60")} style={{ ...laneStyle(a.id), top: yFor(a.startsAt), height: hFor(a.startsAt, resizing?.id === a.id ? resizing.endsAt : a.endsAt), background: clinikoFill(a.color ?? FALLBACK), color: inkOn(clinikoFill(a.color ?? FALLBACK)) }}>
                       <div className="flex items-start gap-1">
                         <span className="min-w-0 flex-1 truncate font-semibold">{a.patientName}</span>
                         {/* Cliniko's row of little icons: notes, arrived, booked online, invoice paid (green) or owing (red). */}
