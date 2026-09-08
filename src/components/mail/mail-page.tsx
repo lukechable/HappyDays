@@ -287,7 +287,7 @@ export function MailPage() {
       else if (key === "s" && cur) void act([cur.gmailThreadId], cur.starred ? "unstar" : "star");
       else if (key === "u" && (selectedId || cur)) void act(selectedId ? [selectedId] : [cur!.gmailThreadId], "unread");
       else if (key === "x" && cur) toggleCheck(cur.gmailThreadId, false);
-      else if ((key === "r" || key === "a" || key === "f") && thread) { const last = thread.messages.filter((m) => !m.isDraft).at(-1); if (last) startCompose(key === "r" ? "reply" : key === "a" ? "replyAll" : "forward", last); }
+      else if ((key === "r" || key === "a" || key === "f") && thread) { const nonDraft = thread.messages.filter((m) => !m.isDraft); const last = [...nonDraft].reverse().find((m) => !m.fromOrg) ?? nonDraft.at(-1); if (last) startCompose(key === "r" ? "reply" : key === "a" ? "replyAll" : "forward", last); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
