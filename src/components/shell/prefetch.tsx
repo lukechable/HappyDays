@@ -10,6 +10,7 @@ import type { ListItem } from "../../../convex/mail";
 import { useLive } from "@/lib/hooks";
 import { EMPTY_SLOT, fetchLive, readLive, subscribeLive, writeLive, type Slot } from "@/lib/live-cache";
 import { mailStore, threadText } from "@/lib/mail-store";
+import { gmailRead, COST } from "@/lib/gmail-budget";
 import type { Me } from "@/components/shell/app-shell";
 import { NAV_ITEMS } from "@/lib/nav";
 
@@ -62,7 +63,7 @@ export function Prefetch({ me }: { me: Me }) {
     const t = setTimeout(() => {
       if (readLive(INBOX_KEY).fetchedAt) return;
       void fetchLive<InboxList>(INBOX_KEY, async () => {
-        const r = await listThreads({ view: "inbox" });
+        const r = await gmailRead(COST.list, () => listThreads({ view: "inbox" }), { background: true });
         const data = { items: r.items, nextToken: r.nextPageToken, missing: r.missing ?? 0 };
         void mailStore.putList(INBOX_KEY, { ...data, fetchedAt: Date.now() });
         return data;
@@ -70,7 +71,7 @@ export function Prefetch({ me }: { me: Me }) {
         for (const it of readLive<InboxList>(INBOX_KEY).data?.items.slice(0, 4) ?? []) {
           if (!live) return;
           if (await mailStore.hasThread(it.gmailThreadId)) continue;
-          try { const th = await getThread({ gmailThreadId: it.gmailThreadId }); writeLive(`mail:thread:${it.gmailThreadId}`, { data: th, fetchedAt: Date.now() }); await mailStore.putThread(it.gmailThreadId, th, threadText(th)); } catch { /* skip */ }
+          try { const th = await gmailRead(COST.thread, () => getThread({ gmailThreadId: it.gmailThreadId }), { background: true }); writeLive(`mail:thread:${it.gmailThreadId}`, { data: th, fetchedAt: Date.now() }); await mailStore.putThread(it.gmailThreadId, th, threadText(th)); } catch { /* skip */ }
           await new Promise((res) => setTimeout(res, 400));
         }
       });

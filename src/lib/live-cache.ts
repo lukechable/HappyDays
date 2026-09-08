@@ -1,5 +1,7 @@
 "use client";
 
+import { gmailRead, COST } from "@/lib/gmail-budget";
+
 /**
  * Session cache for live reads (Gmail, Cliniko, Stripe via Convex actions). Lives in memory for the tab, never on
  * our servers. A key that has been seen renders instantly and refreshes in the background when older than its TTL.
@@ -24,7 +26,9 @@ export const dropLive = (prefix: string) => { for (const k of Array.from(store.k
 export function fetchLive<T>(key: string, fn: () => Promise<T>): Promise<void> {
   const cur = store.get(key) as Slot<T> | undefined;
   if (cur?.inflight) return cur.inflight;
-  const p = fn().then((data) => writeLive<T>(key, { data, fetchedAt: Date.now(), error: undefined, inflight: undefined })).catch((e: unknown) => writeLive<T>(key, { error: e instanceof Error ? e.message : String(e), inflight: undefined }));
+  // Gmail list reads (useLive on mail:listThreads, e.g. the dashboard's overdue list) share the per-second budget.
+  const run = key.startsWith("mail:listThreads|") ? () => gmailRead(COST.list, fn) : fn;
+  const p = run().then((data) => writeLive<T>(key, { data, fetchedAt: Date.now(), error: undefined, inflight: undefined })).catch((e: unknown) => writeLive<T>(key, { error: e instanceof Error ? e.message : String(e), inflight: undefined }));
   writeLive<T>(key, { inflight: p, error: undefined });
   return p;
 }
