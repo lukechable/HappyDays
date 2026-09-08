@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { useAction } from "convex/react";
 import { useQuery } from "convex-helpers/react/cache/hooks";
@@ -9,7 +9,7 @@ import { api } from "../../../convex/_generated/api";
 import type { ListItem } from "../../../convex/mail";
 import { useLive } from "@/lib/hooks";
 import { EMPTY_SLOT, fetchLive, readLive, subscribeLive, writeLive, type Slot } from "@/lib/live-cache";
-import { mailStore, threadText } from "@/lib/mail-store";
+import { mailStore } from "@/lib/mail-store";
 import { gmailRead, COST } from "@/lib/gmail-budget";
 import type { Me } from "@/components/shell/app-shell";
 import { NAV_ITEMS } from "@/lib/nav";
@@ -43,16 +43,11 @@ export function Prefetch({ me }: { me: Me }) {
   useQuery(api.tasks.lists); useQuery(api.tasks.list, { view: "all", listId: undefined, includeDone: false }); useQuery(api.tags.list); useQuery(api.users.all);
   useQuery(api.matters.list, { includeClosed: false }); useQuery(api.matters.list, {}); useQuery(api.money.table); useQuery(api.money.transactions); useQuery(api.court.list, { kind: "affidavit" }); useQuery(api.court.list, { kind: "appearance" });
   useQuery(api.files.list, {}); useQuery(api.files.codes); useQuery(api.files.sends); useQuery(api.files.reports, { kind: "therapy" }); useQuery(api.files.reports, { kind: "family" }); useQuery(api.settings.all); useQuery(api.bookings.pricing); useQuery(api.signatures.list);
-  // Cliniko reads for Patients and Payments; the slow invoice pull waits until the rest has settled.
-  const [later, setLater] = useState(false);
-  useEffect(() => { const t = setTimeout(() => setLater(true), 4000); return () => clearTimeout(t); }, []);
-  useLive(api.bookings.recentPatients, setup?.cliniko ? {} : "skip");
-  useLive(api.bookings.clinikoInvoices, setup?.cliniko && later ? { days: 90 } : "skip", { ttlMs: 120_000 });
+  // Patients and Payments read Cliniko when opened; warming them here cost an invoice pull on every sign-in.
   const inbox = useSyncExternalStore(subscribeLive, () => readLive<InboxList>(INBOX_KEY), () => EMPTY_SLOT as Slot<InboxList>);
   const ids = inbox.data?.items.map((i) => i.gmailThreadId) ?? [];
   useQuery(api.mail.meta, connected && ids.length ? { gmailThreadIds: ids } : "skip");
   const listThreads = useAction(api.mail.listThreads);
-  const getThread = useAction(api.mail.getThread);
 
   useEffect(() => { for (const href of WARM_ROUTES) router.prefetch(href, { kind: PrefetchKind.FULL }); }, [router]);
 
@@ -67,16 +62,9 @@ export function Prefetch({ me }: { me: Me }) {
         const data = { items: r.items, nextToken: r.nextPageToken, missing: r.missing ?? 0 };
         void mailStore.putList(INBOX_KEY, { ...data, fetchedAt: Date.now() });
         return data;
-      }).then(async () => {
-        for (const it of readLive<InboxList>(INBOX_KEY).data?.items.slice(0, 4) ?? []) {
-          if (!live) return;
-          if (await mailStore.hasThread(it.gmailThreadId)) continue;
-          try { const th = await gmailRead(COST.thread, () => getThread({ gmailThreadId: it.gmailThreadId }), { background: true }); writeLive(`mail:thread:${it.gmailThreadId}`, { data: th, fetchedAt: Date.now() }); await mailStore.putThread(it.gmailThreadId, th, threadText(th)); } catch { /* skip */ }
-          await new Promise((res) => setTimeout(res, 400));
-        }
       });
     }, 300);
     return () => { live = false; clearTimeout(t); };
-  }, [connected, listThreads, getThread]);
+  }, [connected, listThreads]);
   return null;
 }

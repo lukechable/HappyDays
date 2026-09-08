@@ -594,7 +594,14 @@ export const syncAll = internalAction({
   args: {},
   handler: async (ctx) => {
     const accounts = await ctx.runQuery(internal.googleData.connectedAccounts, {});
-    for (const a of accounts) { try { await ctx.runAction(internal.mail.syncHistory, { accountId: a._id }); } catch (e) { console.error("sync failed", a.email, e); } }
+    const now = Date.now();
+    for (const a of accounts) {
+      // A live push watch already syncs this mailbox on every change; only poll when the watch has lapsed or the
+      // account has gone six hours without a sync (a missed push).
+      const pushLive = (a.watchExpiresAt ?? 0) > now + 5 * 60_000;
+      if (pushLive && (a.lastSyncAt ?? 0) > now - 6 * 3_600_000) continue;
+      try { await ctx.runAction(internal.mail.syncHistory, { accountId: a._id }); } catch (e) { console.error("sync failed", a.email, e); }
+    }
   },
 });
 
