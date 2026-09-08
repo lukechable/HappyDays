@@ -76,3 +76,30 @@ export const draftReply = internalAction({
     return textOf(res).trim();
   },
 });
+
+/**
+ * Reads a Mental Health Treatment Plan (PDF or photo) and pulls out what a Cliniko case needs. The field list is a
+ * first cut; Luke will supply the exact details to extract. Every value may be null when the plan does not say.
+ */
+export const extractMentalHealthPlan = internalAction({
+  args: { base64: v.string(), mime: v.string(), filename: v.string() },
+  handler: async (_ctx, { base64, mime, filename }): Promise<Record<string, string | null>> => {
+    const isImage = mime.startsWith("image/");
+    const block = isImage
+      ? { type: "image" as const, source: { type: "base64" as const, media_type: mime as "image/jpeg" | "image/png" | "image/gif" | "image/webp", data: base64 } }
+      : { type: "document" as const, source: { type: "base64" as const, media_type: "application/pdf" as const, data: base64 } };
+    const res = await client().beta.messages.create({
+      model: MODEL,
+      max_tokens: 1024,
+      betas: ["server-side-fallback-2026-07-01"],
+      fallbacks: "default",
+      output_config: { effort: "low" },
+      system: "You read Australian GP Mental Health Treatment Plans and referral letters for a psychology practice. Extract only what is written. Reply with JSON only.",
+      messages: [{ role: "user", content: [block, { type: "text", text: `File: ${filename}. Return JSON with these keys (string or null): patientName, dateOfBirth (YYYY-MM-DD), patientPhone, patientEmail, patientAddress, medicareNumber, referrerName, referrerPracticeName, referrerProviderNumber, referralDate (YYYY-MM-DD), planType (e.g. "Mental Health Treatment Plan", "Review", "Referral"), sessionsReferred (number as string), diagnosis, presentingIssues (one sentence), notes (anything else a psychologist should know, brief).` }] }],
+    });
+    if (res.stop_reason === "refusal") return {};
+    const out = parseJson<Record<string, unknown>>(textOf(res), {});
+    const keys = ["patientName", "dateOfBirth", "patientPhone", "patientEmail", "patientAddress", "medicareNumber", "referrerName", "referrerPracticeName", "referrerProviderNumber", "referralDate", "planType", "sessionsReferred", "diagnosis", "presentingIssues", "notes"];
+    return Object.fromEntries(keys.map((k) => [k, typeof out[k] === "string" && (out[k] as string).trim() ? (out[k] as string).trim() : out[k] != null && typeof out[k] === "number" ? String(out[k]) : null]));
+  },
+});

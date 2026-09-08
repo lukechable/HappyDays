@@ -123,7 +123,7 @@ function FolderEditor({ label, onChanged, onDeleted }: { label: Label; onChanged
   };
   return (
     <Popover open={open} onOpenChange={(o) => { setOpen(o); if (o) { setName(label.name); setColor(label.color?.backgroundColor ?? null); } }}>
-      <PopoverTrigger render={<button type="button" className={cn("rounded p-1 opacity-70 hover:opacity-100 group-hover:inline-flex", open ? "inline-flex" : "hidden")} aria-label={`Edit ${label.name}`} title="Edit folder" />}><Pencil className="size-3" /></PopoverTrigger>
+      <PopoverTrigger render={<button type="button" className={cn("rounded p-1 opacity-70 hover:opacity-100 group-hover:inline-flex pointer-coarse:inline-flex", open ? "inline-flex" : "hidden")} aria-label={`Edit ${label.name}`} title="Edit folder" />}><Pencil className="size-3" /></PopoverTrigger>
       <PopoverContent align="start" className="w-72 p-3">
         <form onSubmit={(e) => { e.preventDefault(); void save(); }} className="space-y-3">
           <div>

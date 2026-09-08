@@ -56,6 +56,21 @@ const HOUR_PX = 64;
 // The visible day, as in Cliniko: 9 am to 6 pm.
 const DAY_START = 9;
 const DAY_END = 18;
+/** Touch-friendly reschedule: pick a new start on the details card (dragging the block needs a mouse). */
+function MoveControl({ startsAt, onMove }: { startsAt: string; onMove: (iso: string) => Promise<void> }) {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const toLocal = (iso: string) => { const d = new Date(iso); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+  const [value, setValue] = useState(toLocal(startsAt));
+  const [busy, setBusy] = useState(false);
+  const changed = value !== toLocal(startsAt);
+  return (
+    <span className="inline-flex items-center gap-1">
+      <input type="datetime-local" value={value} step={900} onChange={(e) => setValue(e.target.value)} className="num h-7 rounded-lg border border-input bg-card px-2 text-xs" aria-label="Move to" />
+      {changed && <Button size="sm" disabled={busy} onClick={async () => { setBusy(true); try { await onMove(new Date(value).toISOString()); } finally { setBusy(false); } }}>{busy ? "Moving…" : "Move"}</Button>}
+    </span>
+  );
+}
+
 const startOfDay = (t: number) => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d; };
 const startOfWeek = (t: number) => { const d = startOfDay(t); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d; };
 const CANCEL_REASONS: Array<[number, string]> = [[50, "Other"], [10, "Feeling better"], [20, "Condition worse"], [30, "Sick"], [40, "Away"], [60, "Work"]];
@@ -194,7 +209,7 @@ export function CalendarPage() {
                       </div>
                       <div className="truncate opacity-90">{time(a.startsAt)}{resizing?.id === a.id ? ` – ${time(resizing.endsAt)}` : ""} · {a.typeName}</div>
                       {mode === "week" && practitioners.length > 1 && <div className="truncate opacity-75">{a.practitionerName}</div>}
-                      {!a.cancelledAt && <span onPointerDown={(e) => startResize(e, a)} onClick={(e) => e.stopPropagation()} className="absolute inset-x-0 bottom-0 flex h-3 cursor-ns-resize items-center justify-center opacity-60 hover:opacity-100" title="Drag to change the end time" aria-hidden="true"><span className="text-[9px] leading-none group-hover/appt:hidden">=</span><ChevronsUpDown className="hidden size-3 group-hover/appt:block" /></span>}
+                      {!a.cancelledAt && <span onPointerDown={(e) => startResize(e, a)} onClick={(e) => e.stopPropagation()} className="absolute inset-x-0 bottom-0 flex h-3 cursor-ns-resize items-center justify-center opacity-60 [touch-action:none] hover:opacity-100 pointer-coarse:h-4 pointer-coarse:opacity-100" title="Drag to change the end time" aria-hidden="true"><span className="text-[9px] leading-none group-hover/appt:hidden">=</span><ChevronsUpDown className="hidden size-3 group-hover/appt:block" /></span>}
                     </button>
                   ))}
                 </div>
@@ -219,6 +234,7 @@ export function CalendarPage() {
               <Button size="sm" variant="outline" render={<a href={selected.clinikoUrl} target="_blank" rel="noreferrer" />}><ExternalLink className="size-3.5" />Cliniko</Button>
               {selected.patientId && <Button size="sm" variant="outline" onClick={() => setInvoicing(selected)}><Receipt className="size-3.5" />Invoice in Cliniko</Button>}
               {!selected.cancelledAt && <>
+                <MoveControl startsAt={selected.startsAt} onMove={async (startsAt) => { const dur = new Date(selected.endsAt).getTime() - new Date(selected.startsAt).getTime(); try { await reschedule({ appointmentId: selected.id, startsAt, endsAt: new Date(new Date(startsAt).getTime() + dur).toISOString() }); toast.success("Rescheduled in Cliniko"); live.reload(); setSelected(null); } catch (e) { toast.error(errorMessage(e)); } }} />
                 <Button size="sm" variant="outline" onClick={async () => { try { await flags({ appointmentId: selected.id, arrived: !selected.arrived }); live.reload(); setSelected({ ...selected, arrived: !selected.arrived }); } catch (e) { toast.error(errorMessage(e)); } }}>{selected.arrived ? "Undo arrived" : "Arrived"}</Button>
                 <Button size="sm" variant="outline" onClick={async () => { try { await flags({ appointmentId: selected.id, didNotArrive: !selected.didNotArrive }); live.reload(); setSelected({ ...selected, didNotArrive: !selected.didNotArrive }); } catch (e) { toast.error(errorMessage(e)); } }}>{selected.didNotArrive ? "Undo DNA" : "Did not arrive"}</Button>
                 <Button size="sm" variant="destructive" onClick={async () => { const r = prompt(`Cancel ${selected.patientName}'s appointment?\nReason number: ${CANCEL_REASONS.map(([n, l]) => `${n}=${l}`).join(", ")}`, "50"); if (r === null) return; const reason = Number(r) || 50; const note = prompt("Cancellation note (optional)") ?? undefined; try { await cancel({ appointmentId: selected.id, reason, note }); toast.success("Cancelled in Cliniko"); setSelected(null); live.reload(); } catch (e) { toast.error(errorMessage(e)); } }}>Cancel</Button>

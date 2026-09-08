@@ -1,19 +1,18 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { Authenticated, AuthLoading, Unauthenticated, useConvexAuth, useMutation } from "convex/react";
 import { useQuery } from "convex-helpers/react/cache/hooks";
-import { Bell, LogOut, Menu, Search } from "lucide-react";
+import { Bell, Menu, Search } from "lucide-react";
 import { api } from "../../../convex/_generated/api";
-import { NAV, isActive, navItemFor } from "@/lib/nav";
+import { navItemFor } from "@/lib/nav";
 import { cn } from "@/lib/utils";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { CommandPalette } from "@/components/shell/command-palette";
 import { NotificationsPopover } from "@/components/shell/notifications";
-import { Dot } from "@/components/primitives";
 import { SignOutButton } from "@/components/auth/auth-mode";
+import { Rail, useRailCollapsed } from "@/components/shell/rail";
 import { AuthDiagnostics } from "@/components/auth/auth-diagnostics";
 import { Prefetch } from "@/components/shell/prefetch";
 import { PageEnter } from "@/components/shell/page-enter";
@@ -70,6 +69,7 @@ function Frame({ me, children }: { me: Me; children: ReactNode }) {
   const searchStr = search.size ? `?${search.toString()}` : "";
   const item = navItemFor(pathname, searchStr);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [collapsed, setCollapsed] = useRailCollapsed();
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setPaletteOpen((o) => !o); } };
     window.addEventListener("keydown", onKey);
@@ -78,8 +78,8 @@ function Frame({ me, children }: { me: Me; children: ReactNode }) {
   // Edge-to-edge screens (their own panes and scroll areas); everything else gets the page gutters.
   const wide = pathname === "/mail" || pathname === "/bookings" || pathname === "/pdf";
   return (
-    <div className="lg:grid lg:min-h-svh lg:grid-cols-[236px_minmax(0,1fr)]">
-      <Rail me={me} pathname={pathname} search={searchStr} className="hidden lg:flex" />
+    <div className={cn("lg:grid lg:min-h-svh lg:transition-[grid-template-columns] lg:duration-200", collapsed ? "lg:grid-cols-[64px_minmax(0,1fr)]" : "lg:grid-cols-[236px_minmax(0,1fr)]")}>
+      <Rail me={me} pathname={pathname} search={searchStr} className="hidden lg:flex" collapsed={collapsed} onToggleCollapsed={() => setCollapsed(!collapsed)} />
       <div className="flex min-w-0 flex-col">
         <header className="sticky top-0 z-30 flex h-12 items-center gap-3 border-b border-border bg-background/85 px-4 backdrop-blur sm:px-5">
           <Sheet>
@@ -100,49 +100,5 @@ function Frame({ me, children }: { me: Me; children: ReactNode }) {
       <Prefetch me={me} />
       <PwaProvider />
     </div>
-  );
-}
-
-function Rail({ me, pathname, search, className }: { me: Me; pathname: string; search: string; className?: string }) {
-  const badges = me.badges as Record<string, number>;
-  return (
-    <aside className={cn("sticky top-0 h-svh flex-col bg-[#1a1a19] text-white", className)} aria-label="Navigation">
-      <div className="px-5 pb-3 pt-4">
-        <Link href="/" className="inline-flex items-baseline gap-2 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-white/60">
-          <span className="font-display text-[19px] leading-none tracking-[-0.01em]">Happy Days</span>
-        </Link>
-        <p className="mt-2 text-[11px] uppercase tracking-[0.14em] text-white/40">Barbara Fraser &amp; Associates</p>
-      </div>
-      <nav className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 pb-4 [scrollbar-width:thin]">
-        {NAV.map((g) => (
-          <div key={g.label}>
-            <div className="px-2 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-white/40">{g.label}</div>
-            <div className="mt-1 space-y-px">
-              {g.items.map((i) => {
-                const active = isActive(i, pathname, search);
-                const n = i.badge ? badges[i.badge] ?? 0 : 0;
-                const alert = i.badge === "overdue" || i.badge === "paidNotDelivered";
-                return (
-                  <Link key={i.href} href={i.href} prefetch aria-current={active ? "page" : undefined} className={cn("hd-press flex items-center justify-between gap-2 rounded-lg px-2 py-[5px] text-[13px] leading-tight outline-none focus-visible:ring-2 focus-visible:ring-white/60", active ? "bg-white/[0.1] text-white" : "text-white/70 hover:bg-white/[0.06] hover:text-white")}>
-                    <span className="truncate">{i.label}</span>
-                    {n > 0 && <span className={cn("hd-pop num rounded-full px-1.5 text-[10.5px] font-semibold leading-4", alert ? "bg-error/90 text-white" : "bg-gold text-[#1a1a19]")}>{n > 99 ? "99+" : n}</span>}
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
-        ))}
-      </nav>
-      <div className="border-t border-white/10 px-4 py-3">
-        <div className="flex items-center gap-2">
-          <Dot tone={me.google?.status === "connected" ? "good" : me.google ? "warn" : "neutral"} />
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-xs text-white/85">{me.email}</div>
-            <div className="truncate text-[10.5px] uppercase tracking-wider text-white/40">{me.google?.status === "connected" ? "Gmail connected" : me.google ? "Gmail needs attention" : "Gmail not connected"}</div>
-          </div>
-          <SignOutButton className="inline-flex size-7 items-center justify-center rounded-md text-white/50 hover:bg-white/10 hover:text-white"><LogOut className="size-3.5" /></SignOutButton>
-        </div>
-      </div>
-    </aside>
   );
 }

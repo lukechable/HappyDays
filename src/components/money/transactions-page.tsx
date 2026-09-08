@@ -3,6 +3,11 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useQuery } from "convex-helpers/react/cache/hooks";
+import { useAction } from "convex/react";
+import { useLive } from "@/lib/hooks";
+import { toast } from "sonner";
+import { errorMessage } from "@/lib/utils";
+import { Landmark, Link2 } from "lucide-react";
 import { ExternalLink, X } from "lucide-react";
 import { api } from "../../../convex/_generated/api";
 import { PageHeader, Panel, Pill, statusTone, Kpi, Empty, Loading, DataTable } from "@/components/primitives";
@@ -12,13 +17,21 @@ import { ExportMenu } from "@/components/export/export-menu";
 import { aud, day, time } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-type Kind = "all" | "payment" | "invoice" | "booking";
+type Kind = "all" | "payment" | "invoice" | "booking" | "bank";
 type SortKey = "at" | "amountCents" | "status" | "who";
 
 /** Every Stripe payment and invoice payment as one dated ledger, with period and type filters, totals and export. */
 export function TransactionsPage() {
   const data = useQuery(api.money.transactions);
   const setup = useQuery(api.settings.setupStatus);
+  const bankStatus = useQuery(api.bank.status);
+  const bank = useLive(api.bank.transactions, bankStatus?.configured && bankStatus.linked ? {} : "skip", { ttlMs: 300_000 });
+  const connectLink = useAction(api.bank.connectLink);
+  const [linking, setLinking] = useState(false);
+  const link = async () => { setLinking(true); try { const { url } = await connectLink({}); window.open(url, "_blank", "noopener"); toast("Basiq opened in a new tab", { description: "Choose Bendigo Bank, sign in and consent. Then come back and refresh." }); } catch (e) { toast.error(errorMessage(e)); } finally { setLinking(false); } };
+  // A bank credit matches an invoice when the payer typed the invoice number as the reference, or the amount equals an open invoice.
+  const invoices = data?.rows.filter((r) => r.kind === "invoice") ?? [];
+  const matchFor = (t: { description: string; amountCents: number }) => invoices.find((i) => i.description && new RegExp(`\\b${(i.stripeId.split("_")[1] ?? "").slice(0, 8)}`, "i").test(t.description)) ?? invoices.find((i) => i.status === "open" && i.amountCents === t.amountCents);
   const [days, setDays] = useState<number | null>(90);
   const [kind, setKind] = useState<Kind>("all");
   const [q, setQ] = useState("");
@@ -28,7 +41,7 @@ export function TransactionsPage() {
     let r = data?.rows ?? [];
     if (days) { const since = Date.now() - days * 86_400_000; r = r.filter((x) => x.at >= since); }
     if (kind === "booking") r = r.filter((x) => x.booking);
-    else if (kind !== "all") r = r.filter((x) => x.kind === kind);
+    else if (kind !== "all" && kind !== "bank") r = r.filter((x) => x.kind === kind);
     if (q.trim()) { const n = q.trim().toLowerCase(); r = r.filter((x) => [x.description, x.who, x.matter?.name, x.stripeId, x.status].some((v) => v?.toLowerCase().includes(n))); }
     const val = (x: (typeof r)[number]) => sort.key === "who" ? (x.who ?? "").toLowerCase() : x[sort.key] ?? "";
     return [...r].sort((a, b) => (val(a) > val(b) ? 1 : val(a) < val(b) ? -1 : 0) * sort.dir);
@@ -50,11 +63,28 @@ export function TransactionsPage() {
       </div>
       <Panel>
         <div className="mb-3 flex flex-wrap items-center gap-2">
-          {([["all", "All"], ["payment", "Payments"], ["invoice", "Invoices"], ["booking", "Bookings"]] as const).map(([k, l]) => <button key={k} type="button" onClick={() => setKind(k)} className={cn("rounded-full px-2.5 py-1 text-xs", kind === k ? "bg-foreground text-background" : "bg-muted text-fg-secondary hover:text-foreground")}>{l}</button>)}
+          {([["all", "All"], ["payment", "Payments"], ["invoice", "Invoices"], ["booking", "Bookings"], ["bank", "Bank"]] as const).map(([k, l]) => <button key={k} type="button" onClick={() => setKind(k)} className={cn("rounded-full px-2.5 py-1 text-xs", kind === k ? "bg-foreground text-background" : "bg-muted text-fg-secondary hover:text-foreground")}>{l}</button>)}
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search description, payer, matter, id" className="ml-auto h-8 w-64" />
           {filtered && <Button size="xs" variant="ghost" onClick={() => { setKind("all"); setQ(""); setDays(90); }}><X className="size-3" />Clear</Button>}
         </div>
-        {data === undefined ? <Loading rows={6} /> : rows.length === 0 ? <Empty title={data.rows.length ? "No transactions match" : "No transactions yet"} body={data.rows.length ? "Try another period or filter." : "Payments appear here as Stripe reports them. Click Sync Stripe on the Invoices page to import history."} /> : (
+        {kind === "bank" ? (
+          !bankStatus ? <Loading rows={4} /> : !bankStatus.configured ? <Empty title="Bank feed not set up" body="Direct deposits show here once Basiq is connected. Set BASIQ_API_KEY on the Convex deployment (a Basiq account, basiq.io), then link the practice's Bendigo Bank account." /> : !bankStatus.linked ? <Empty title="Link the practice's bank account" body="Basiq opens Bendigo Bank's consent page; you sign in there and choose the account. We only ever read transactions, never move money." action={<Button onClick={link} disabled={linking}><Link2 className="size-3.5" />{linking ? "Opening…" : "Link bank account"}</Button>} /> : bank.error ? <Empty title="Couldn’t read the bank feed" body={bank.error} action={<Button variant="outline" onClick={bank.reload}>Try again</Button>} /> : !bank.data ? <Loading rows={6} /> : bank.data.rows.length === 0 ? <Empty title="No bank transactions yet" body="Basiq may still be fetching history for a newly linked account." action={<Button variant="outline" onClick={bank.reload}>Refresh</Button>} /> : (
+            <>
+              <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-fg-tertiary"><Landmark className="size-3.5" />{bank.data.accounts.map((a) => a.name).join(", ")}<Button size="xs" variant="ghost" className="ml-auto" onClick={bank.reload}>{bank.refreshing ? "Refreshing…" : "Refresh"}</Button><Button size="xs" variant="ghost" onClick={link}>Relink</Button></div>
+              <DataTable head={<><th>Date</th><th>Reference / description</th><th>Account</th><th className="text-right">Amount</th><th>Matches</th></>} minWidth={720}>
+                {bank.data.rows.filter((t) => !q.trim() || t.description.toLowerCase().includes(q.trim().toLowerCase())).map((t) => { const m = t.direction === "credit" ? matchFor(t) : undefined; return (
+                  <tr key={t.id} className={cn("hover:bg-muted/50", t.direction === "credit" && "bg-success-soft/20")}>
+                    <td className="text-xs text-fg-tertiary">{day(t.postDate)}</td>
+                    <td className="max-w-[360px] truncate font-medium" title={t.description}>{t.description || "—"}</td>
+                    <td className="text-xs text-fg-tertiary">{t.accountName ?? "—"}</td>
+                    <td className={cn("num text-right", t.direction === "credit" ? "text-success" : "")}>{t.direction === "credit" ? "+" : "−"}{aud(t.amountCents)}</td>
+                    <td className="text-xs">{m ? <Link href="/money" className="hover:underline">{m.description} · {m.status}</Link> : t.direction === "credit" ? <span className="text-fg-quaternary">no invoice matched</span> : ""}</td>
+                  </tr>
+                ); })}
+              </DataTable>
+            </>
+          )
+        ) : data === undefined ? <Loading rows={6} /> : rows.length === 0 ? <Empty title={data.rows.length ? "No transactions match" : "No transactions yet"} body={data.rows.length ? "Try another period or filter." : "Payments appear here as Stripe reports them. Click Sync Stripe on the Invoices page to import history."} /> : (
           <DataTable head={<>{th("When", "at")}<th>Description</th>{th("Who", "who")}<th>Matter</th><th>Type</th>{th("Amount", "amountCents", true)}{th("Status", "status")}<th></th></>} minWidth={820}>
             {rows.map((r) => (
               <tr key={`${r.kind}-${r._id}`} className="hover:bg-muted/50">
