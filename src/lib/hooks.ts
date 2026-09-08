@@ -11,6 +11,28 @@ export function useMediaQuery(query: string): boolean {
   return useSyncExternalStore((cb) => { const m = window.matchMedia(query); m.addEventListener("change", cb); return () => m.removeEventListener("change", cb); }, () => window.matchMedia(query).matches, () => false);
 }
 
+/* A tiny store over localStorage: parsed values are cached so snapshots are referentially stable, and writes notify subscribers. */
+const storedCache = new Map<string, unknown>();
+const STORED_EVENT = "hd-stored";
+function readStored<T>(key: string, fallback: T): T {
+  if (storedCache.has(key)) return storedCache.get(key) as T;
+  let v: T = fallback;
+  try { const raw = localStorage.getItem(key); if (raw) v = JSON.parse(raw) as T; } catch { /* private mode */ }
+  storedCache.set(key, v);
+  return v;
+}
+function writeStored(key: string, value: unknown) {
+  storedCache.set(key, value);
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* private mode */ }
+  window.dispatchEvent(new Event(STORED_EVENT));
+}
+const subscribeStored = (cb: () => void) => { window.addEventListener(STORED_EVENT, cb); return () => window.removeEventListener(STORED_EVENT, cb); };
+/** A value remembered on this device (localStorage), read with a stable snapshot so it is safe to render from. */
+export function useStored<T>(key: string, fallback: T): [T, (v: T) => void] {
+  const value = useSyncExternalStore(subscribeStored, () => readStored(key, fallback), () => fallback);
+  return [value, (v) => writeStored(key, v)];
+}
+
 export function useNow(intervalMs = 60_000): number {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), intervalMs); return () => clearInterval(t); }, [intervalMs]);

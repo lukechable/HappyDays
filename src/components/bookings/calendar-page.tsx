@@ -71,6 +71,27 @@ function MoveControl({ startsAt, onMove }: { startsAt: string; onMove: (iso: str
   );
 }
 
+/**
+ * Side-by-side layout for appointments that share a time, as Cliniko draws them: each overlapping run is split into
+ * lanes, and every block in the run takes one lane's width. Returns lane index and lane count per appointment id.
+ */
+function lanesFor(appts: Array<{ id: string; startsAt: string; endsAt: string }>): Map<string, { lane: number; lanes: number }> {
+  const out = new Map<string, { lane: number; lanes: number }>();
+  const sorted = [...appts].sort((a, b) => a.startsAt.localeCompare(b.startsAt) || b.endsAt.localeCompare(a.endsAt));
+  let run: Array<{ id: string; lane: number }> = []; let laneEnds: number[] = []; let runEnd = 0;
+  const flush = () => { for (const r of run) out.set(r.id, { lane: r.lane, lanes: laneEnds.length }); run = []; laneEnds = []; };
+  for (const a of sorted) {
+    const s = new Date(a.startsAt).getTime(), e = new Date(a.endsAt).getTime();
+    if (run.length && s >= runEnd) flush();
+    let lane = laneEnds.findIndex((end) => end <= s);
+    if (lane === -1) { lane = laneEnds.length; laneEnds.push(e); } else laneEnds[lane] = e;
+    run.push({ id: a.id, lane }); runEnd = Math.max(runEnd, e);
+  }
+  flush();
+  return out;
+}
+const ordinal = (n: number) => `${n}${n % 10 === 1 && n !== 11 ? "st" : n % 10 === 2 && n !== 12 ? "nd" : n % 10 === 3 && n !== 13 ? "rd" : "th"}`;
+
 const startOfDay = (t: number) => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d; };
 const startOfWeek = (t: number) => { const d = startOfDay(t); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d; };
 const CANCEL_REASONS: Array<[number, string]> = [[50, "Other"], [10, "Feeling better"], [20, "Condition worse"], [30, "Sick"], [40, "Away"], [60, "Work"]];
@@ -122,9 +143,12 @@ export function CalendarPage() {
   const types = practice.data?.appointmentTypes ?? [];
   // Day columns: every practitioner Cliniko lists, plus any who has an appointment in view but isn't listed.
   const dayPractitioners: Array<{ id: string; name: string }> = [...practitioners.map((p) => ({ id: p.id, name: `${p.first_name} ${p.last_name}`.trim() })), ...(live.data?.practitioners ?? []).filter((p) => !practitioners.some((q) => q.id === p.id) && (live.data?.appointments ?? []).some((a) => a.practitionerId === p.id)).map((p) => ({ id: p.id, name: p.name }))];
-  const columns: Array<{ key: string; label: string; day: Date; practitionerId?: string }> = mode === "week"
-    ? Array.from({ length: 7 }, (_, i) => { const d = new Date(rangeStart); d.setDate(d.getDate() + i); return { key: d.toDateString(), label: d.toLocaleDateString("en-AU", { weekday: "long", day: "numeric" }), day: d }; })
-    : (dayPractitioners.length ? dayPractitioners : [{ id: undefined as string | undefined, name: "All" }]).map((p) => ({ key: String(p.id ?? "all"), label: p.name, day: rangeStart, practitionerId: p.id }));
+  // Header rows as Cliniko draws them: the date, then the practitioner under it. The week shows Monday to Friday only.
+  const dateLabel = (d: Date) => `${d.toLocaleDateString("en-AU", { weekday: "long" })}, ${ordinal(d.getDate())} ${d.toLocaleDateString("en-AU", { month: "short" })}`;
+  const weekPractitioner = dayPractitioners.length === 1 ? dayPractitioners[0].name : dayPractitioners.find((p) => p.id === (settings?.["cliniko.practitionerId"] as string | undefined))?.name ?? dayPractitioners.map((p) => p.name.split(" ")[0]).join(", ");
+  const columns: Array<{ key: string; label: string; sub: string; day: Date; practitionerId?: string }> = mode === "week"
+    ? Array.from({ length: 5 }, (_, i) => { const d = new Date(rangeStart); d.setDate(d.getDate() + i); return { key: d.toDateString(), label: dateLabel(d), sub: weekPractitioner, day: d }; })
+    : (dayPractitioners.length ? dayPractitioners : [{ id: undefined as string | undefined, name: "All" }]).map((p) => ({ key: String(p.id ?? "all"), label: dateLabel(rangeStart), sub: p.name, day: rangeStart, practitionerId: p.id }));
 
   const inColumn = (a: { startsAt: string; practitionerId?: string }, c: (typeof columns)[number]) => { const d = new Date(a.startsAt); return d.toDateString() === c.day.toDateString() && (mode === "week" || c.practitionerId === undefined || a.practitionerId === c.practitionerId); };
   const yFor = (iso: string) => { const d = new Date(iso); return ((d.getHours() - DAY_START) * 60 + d.getMinutes()) * (HOUR_PX / 60); };
@@ -170,9 +194,15 @@ export function CalendarPage() {
 
       {live.error ? <div className="p-6"><ErrorBox title="Couldn’t read the Cliniko calendar" message={live.error} retry={live.reload} /></div> : (
         <div className="min-h-0 flex-1 overflow-auto">
-          <div className={cn("grid", mode === "week" ? "min-w-[760px]" : "min-w-[300px]")} style={{ gridTemplateColumns: `56px repeat(${columns.length}, minmax(0, 1fr))` }}>
+          <div className={cn("grid", mode === "week" ? "min-w-[640px]" : "min-w-[300px]")} style={{ gridTemplateColumns: `56px repeat(${columns.length}, minmax(0, 1fr))` }}>
             <div className="sticky top-0 z-10 bg-background" />
-            {columns.map((c) => <div key={c.key} className={cn("sticky top-0 z-10 border-b border-l border-border bg-background px-2 py-1.5 text-center text-xs font-medium", c.day.toDateString() === new Date(now).toDateString() && "bg-[#faf1c8] shadow-[inset_0_0_0_1px_#d9c17a] dark:bg-[#4a4320] dark:shadow-[inset_0_0_0_1px_#8a7a3a]")}>{c.label}</div>)}
+            {/* Today's header, as in Cliniko: both rows filled yellow, each with its own thick gold border. */}
+            {columns.map((c) => { const today = c.day.toDateString() === new Date(now).toDateString(); const hi = today && "bg-[#fbf3cf] shadow-[inset_0_0_0_2px_#c9a93a] dark:bg-[#4a4320] dark:shadow-[inset_0_0_0_2px_#a08a3a]"; return (
+              <div key={c.key} className="sticky top-0 z-10 border-b border-l border-border bg-background text-center text-xs">
+                <div className={cn("truncate px-2 py-1.5 text-[13px] font-semibold", hi)}>{c.label}</div>
+                <div className={cn("truncate border-t border-border px-2 py-1 text-fg-secondary", hi)}>{c.sub}</div>
+              </div>
+            ); })}
             <div className="relative" style={{ height: (DAY_END - DAY_START) * HOUR_PX }}>
               {Array.from({ length: DAY_END - DAY_START }, (_, i) => <div key={i} className="num absolute right-2 pt-0.5 text-[10.5px] text-fg-quaternary" style={{ top: i * HOUR_PX }}>{i + DAY_START > 12 ? `${i + DAY_START - 12}pm` : i + DAY_START === 12 ? "12pm" : `${i + DAY_START}am`}</div>)}
             </div>
@@ -182,6 +212,9 @@ export function CalendarPage() {
               const unavail = (live.data?.unavailable ?? []).filter((b: Block) => inColumn(b, c));
               const groups = ((live.data?.groups ?? []) as Group[]).filter((g) => inColumn(g, c));
               const isToday = c.day.toDateString() === new Date(now).toDateString();
+              const lanes = lanesFor(appts);
+              // Blocks sit flush against the column's left border and leave Cliniko's white gutter on the right; overlapping ones share the width.
+              const laneStyle = (id: string) => { const l = lanes.get(id) ?? { lane: 0, lanes: 1 }; return { left: `calc(${l.lane} * (100% - 10px) / ${l.lanes})`, width: `calc((100% - 10px) / ${l.lanes})` }; };
               return (
                 <div key={c.key} className={cn("relative border-l border-border bg-muted", busy && "opacity-60")} style={{ height: (DAY_END - DAY_START) * HOUR_PX }} onDragOver={(e) => e.preventDefault()} onDrop={(e) => void onDrop(e, c)} onClick={(e) => onEmptyClick(e, c)}>
                   {/* As in Cliniko: the day is grey, and only the hours the practitioner works are white. */}
@@ -190,13 +223,13 @@ export function CalendarPage() {
                   {unavail.map((b) => <div key={`u${b.id}`} className="absolute inset-x-0 bg-[repeating-linear-gradient(45deg,transparent,transparent_6px,rgba(0,0,0,.05)_6px,rgba(0,0,0,.05)_12px)] px-1 text-[10px] text-fg-tertiary" style={{ top: yFor(b.startsAt), height: hFor(b.startsAt, b.endsAt) }} title={b.notes}>{b.notes}</div>)}
                   {isToday && <div className="pointer-events-none absolute inset-x-0 z-[7] h-0.5 bg-[#e0218a] shadow-[0_0_0_1px_rgba(224,33,138,.25)]" style={{ top: yFor(new Date(now).toISOString()) }} aria-hidden="true" />}
                   {groups.map((g) => (
-                    <a key={`g${g.id}`} data-appt href={g.clinikoUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="absolute inset-x-0.5 overflow-hidden rounded-md border-2 border-dashed px-1.5 py-0.5 text-left text-[11px] leading-tight" style={{ top: yFor(g.startsAt), height: hFor(g.startsAt, g.endsAt), borderColor: g.color ?? "#0081f2", background: `${g.color ?? "#0081f2"}22`, color: "var(--foreground)" }} title={g.notes}>
+                    <a key={`g${g.id}`} data-appt href={g.clinikoUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="absolute left-0 right-2.5 overflow-hidden border-2 border-dashed px-1.5 py-0.5 text-left text-[11px] leading-tight" style={{ top: yFor(g.startsAt), height: hFor(g.startsAt, g.endsAt), borderColor: g.color ?? "#0081f2", background: `${g.color ?? "#0081f2"}22`, color: "var(--foreground)" }} title={g.notes}>
                       <div className="flex items-center gap-1 font-semibold"><Users className="size-3" />{g.typeName}</div>
                       <div className="opacity-80">{time(g.startsAt)} · {g.attendees ?? "?"}{g.maxAttendees ? `/${g.maxAttendees}` : ""} attending</div>
                     </a>
                   ))}
                   {appts.map((a) => (
-                    <button key={a.id} type="button" data-appt draggable={!a.cancelledAt && resizing?.id !== a.id} onDragStart={(e) => e.dataTransfer.setData("appt", a.id)} onClick={(e) => { e.stopPropagation(); setSelected(a); }} className={cn("group/appt absolute left-0.5 right-2.5 overflow-hidden rounded-[3px] px-1.5 py-0.5 text-left text-[11px] leading-tight ring-1 ring-black/45 hover:z-[6]", a.cancelledAt && "opacity-40 line-through", a.didNotArrive && "ring-2 ring-error", resizing?.id === a.id && "z-[6] ring-2 ring-black/60")} style={{ top: yFor(a.startsAt), height: hFor(a.startsAt, resizing?.id === a.id ? resizing.endsAt : a.endsAt), background: clinikoFill(a.color ?? FALLBACK), color: inkOn(clinikoFill(a.color ?? FALLBACK)) }}>
+                    <button key={a.id} type="button" data-appt draggable={!a.cancelledAt && resizing?.id !== a.id} onDragStart={(e) => e.dataTransfer.setData("appt", a.id)} onClick={(e) => { e.stopPropagation(); setSelected(a); }} className={cn("group/appt absolute overflow-hidden px-1.5 py-0.5 text-left text-[11px] leading-tight ring-1 ring-black/45 hover:z-[6]", a.cancelledAt && "opacity-40 line-through", a.didNotArrive && "ring-2 ring-error", resizing?.id === a.id && "z-[6] ring-2 ring-black/60")} style={{ ...laneStyle(a.id), top: yFor(a.startsAt), height: hFor(a.startsAt, resizing?.id === a.id ? resizing.endsAt : a.endsAt), background: clinikoFill(a.color ?? FALLBACK), color: inkOn(clinikoFill(a.color ?? FALLBACK)) }}>
                       <div className="flex items-start gap-1">
                         <span className="min-w-0 flex-1 truncate font-semibold">{a.patientName}</span>
                         {/* Cliniko's row of little icons: notes, arrived, booked online, invoice paid (green) or owing (red). */}

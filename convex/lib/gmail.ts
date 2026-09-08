@@ -100,39 +100,57 @@ export function getMessage(token: string, id: string, format: "metadata" | "full
 
 export const getAttachment = (token: string, messageId: string, attachmentId: string) => call<{ size: number; data: string }>(token, `/messages/${messageId}/attachments/${encodeURIComponent(attachmentId)}`);
 
-/** One HTTP round-trip for up to 100 thread metadata reads. Gmail's batch endpoint speaks multipart/mixed. */
+/**
+ * Thread reads in Gmail's multipart batch endpoint. Gmail allows 250 quota units per user per second and a thread
+ * read costs 10, so a batch is 20 reads, and when a part comes back 429 only that part is retried (with a pause),
+ * so a busy second (inbox prefetch, dashboard, background indexing) degrades to a short wait, not an error.
+ * Whatever Gmail did return is kept; the call only fails when nothing at all came back.
+ */
 export async function batchGetThreads(token: string, ids: string[], format: "metadata" | "full" = "metadata"): Promise<GmailThread[]> {
   if (!ids.length) return [];
-  const boundary = `hd_${Math.random().toString(36).slice(2)}`;
   const p = new URLSearchParams({ format });
   if (format === "metadata") for (const h of METADATA_HEADERS) p.append("metadataHeaders", h);
-  const body = ids.map((id, i) => `--${boundary}\r\nContent-Type: application/http\r\nContent-ID: <t${i}>\r\n\r\nGET /gmail/v1/users/me/threads/${id}?${p}\r\n\r\n`).join("") + `--${boundary}--`;
-  let res: Response | undefined; let text = "";
-  for (let attempt = 0; attempt < 4; attempt++) {
-    res = await fetch("https://gmail.googleapis.com/batch/gmail/v1", { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": `multipart/mixed; boundary=${boundary}` }, body });
-    text = await res.text();
-    if (res.ok && !/"code":\s*429|rateLimitExceeded|userRateLimitExceeded/.test(text)) break;
-    if (attempt === 3) throw new GmailError("Gmail is rate-limiting requests for a moment. Wait a few seconds and try again.", 429);
-    await sleep(800 * 2 ** attempt);
+  const got = new Map<string, GmailThread>();
+  let pending = Array.from(new Set(ids));
+  for (let attempt = 0; attempt < 5 && pending.length; attempt++) {
+    if (attempt > 0) await sleep(600 * 2 ** (attempt - 1));
+    const limited: string[] = [];
+    for (let i = 0; i < pending.length; i += 20) {
+      if (i > 0) await sleep(300);
+      const r = await batchOnce(token, pending.slice(i, i + 20), p);
+      for (const t of r.threads) got.set(t.id, t);
+      limited.push(...r.rateLimited);
+    }
+    pending = limited;
   }
-  if (!res) throw new GmailError("Gmail batch failed", 502);
+  if (pending.length && got.size === 0) throw new GmailError("Gmail is rate-limiting requests for a moment. Wait a few seconds and try again.", 429);
+  return ids.map((id) => got.get(id)).filter((t): t is GmailThread => !!t);
+}
+
+async function batchOnce(token: string, ids: string[], p: URLSearchParams): Promise<{ threads: GmailThread[]; rateLimited: string[] }> {
+  const boundary = `hd_${Math.random().toString(36).slice(2)}`;
+  const body = ids.map((id, i) => `--${boundary}\r\nContent-Type: application/http\r\nContent-ID: <t${i}>\r\n\r\nGET /gmail/v1/users/me/threads/${id}?${p}\r\n\r\n`).join("") + `--${boundary}--`;
+  const res = await fetch("https://gmail.googleapis.com/batch/gmail/v1", { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": `multipart/mixed; boundary=${boundary}` }, body });
+  const text = await res.text();
+  if (res.status === 429) return { threads: [], rateLimited: ids };
   if (!res.ok) throw new GmailError(`Gmail batch failed: ${res.status} ${text.slice(0, 200)}`, res.status);
   const ct = res.headers.get("content-type") ?? "";
   const rb = /boundary=([^;]+)/.exec(ct)?.[1]?.replace(/^"|"$/g, "");
   if (!rb) throw new GmailError("Gmail batch response had no boundary", 502);
-  const out: GmailThread[] = [];
+  const threads: GmailThread[] = []; const rateLimited: string[] = [];
   for (const chunk of text.split(`--${rb}`)) {
     const start = chunk.indexOf("{");
     const end = chunk.lastIndexOf("}");
     if (start === -1 || end === -1) continue;
+    // Each part answers to the Content-ID it was asked with (<response-t3> for <t3>), which is how a 429 part maps back to its thread.
+    const idx = Number(/Content-ID:\s*<response-t(\d+)>/i.exec(chunk)?.[1] ?? -1);
     try {
-      const json = JSON.parse(chunk.slice(start, end + 1)) as GmailThread & { error?: unknown };
-      if (json.id && !json.error) out.push(json);
+      const json = JSON.parse(chunk.slice(start, end + 1)) as GmailThread & { error?: { code?: number; errors?: Array<{ reason?: string }> } };
+      if (json.id && !json.error) threads.push(json);
+      else if (json.error && (json.error.code === 429 || json.error.errors?.some((e) => /rateLimitExceeded/i.test(e.reason ?? ""))) && ids[idx]) rateLimited.push(ids[idx]);
     } catch { /* skip malformed part */ }
   }
-  // Preserve the order the caller asked for.
-  const byId = new Map(out.map((t) => [t.id, t]));
-  return ids.map((id) => byId.get(id)).filter((t): t is GmailThread => !!t);
+  return { threads, rateLimited };
 }
 
 export async function listHistory(token: string, startHistoryId: string, pageToken?: string) {
