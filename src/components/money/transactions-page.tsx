@@ -28,6 +28,8 @@ export function TransactionsPage() {
   const bank = useLive(api.bank.transactions, bankStatus?.configured && bankStatus.linked ? {} : "skip", { ttlMs: 300_000 });
   const connectLink = useAction(api.bank.connectLink);
   const [linking, setLinking] = useState(false);
+  const [creditsOnly, setCreditsOnly] = useState(true);
+  const bankRows = (bank.data?.rows ?? []).filter((t) => (!creditsOnly || t.direction === "credit") && (!days || Date.parse(t.postDate) >= Date.now() - days * 86_400_000) && (!q.trim() || t.description.toLowerCase().includes(q.trim().toLowerCase())));
   // Same-tab navigation: a window.open after an await is blocked by popup blockers. Basiq's consent page sends the browser back to the policy's redirect URL (this page).
   const link = async () => { setLinking(true); try { const { url } = await connectLink({}); window.location.assign(url); } catch (e) { toast.error(errorMessage(e)); setLinking(false); } };
   // A bank credit matches an invoice when the payer typed the invoice number as the reference, or the amount equals an open invoice.
@@ -71,9 +73,9 @@ export function TransactionsPage() {
         {kind === "bank" ? (
           !bankStatus ? <Loading rows={4} /> : !bankStatus.configured ? <Empty title="Bank feed not set up" body="Direct deposits show here once Basiq is connected. Set BASIQ_API_KEY on the Convex deployment (a Basiq account, basiq.io), then link the practice's Bendigo Bank account." /> : !bankStatus.linked ? <Empty title="Link the practice's bank account" body="Basiq opens Bendigo Bank's consent page; you sign in there and choose the account. We only ever read transactions, never move money." action={<Button onClick={link} disabled={linking}><Link2 className="size-3.5" />{linking ? "Opening…" : "Link bank account"}</Button>} /> : bank.error ? <Empty title="Couldn’t read the bank feed" body={bank.error} action={<Button variant="outline" onClick={bank.reload}>Try again</Button>} /> : !bank.data ? <Loading rows={6} /> : bank.data.rows.length === 0 ? <Empty title="No bank transactions yet" body="Basiq may still be fetching history for a newly linked account." action={<Button variant="outline" onClick={bank.reload}>Refresh</Button>} /> : (
             <>
-              <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-fg-tertiary"><Landmark className="size-3.5" />{bank.data.accounts.map((a) => a.name).join(", ")}<Button size="xs" variant="ghost" className="ml-auto" onClick={bank.reload}>{bank.refreshing ? "Refreshing…" : "Refresh"}</Button><Button size="xs" variant="ghost" onClick={link}>Relink</Button></div>
+              <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-fg-tertiary"><Landmark className="size-3.5" />{bank.data.accounts.map((a) => a.name).join(", ")}<label className="ml-2 flex items-center gap-1.5"><input type="checkbox" className="size-3.5 accent-foreground" checked={creditsOnly} onChange={(e) => setCreditsOnly(e.target.checked)} />money in only</label><span className="num">{bankRows.length} of {bank.data.rows.length}</span><Button size="xs" variant="ghost" className="ml-auto" onClick={bank.reload}>{bank.refreshing ? "Refreshing…" : "Refresh"}</Button><Button size="xs" variant="ghost" onClick={link}>Relink</Button></div>
               <DataTable head={<><th>Date</th><th>Reference / description</th><th>Account</th><th className="text-right">Amount</th><th>Matches</th></>} minWidth={720}>
-                {bank.data.rows.filter((t) => !q.trim() || t.description.toLowerCase().includes(q.trim().toLowerCase())).map((t) => { const m = t.direction === "credit" ? matchFor(t) : undefined; return (
+                {bankRows.map((t) => { const m = t.direction === "credit" ? matchFor(t) : undefined; return (
                   <tr key={t.id} className={cn("hover:bg-muted/50", t.direction === "credit" && "bg-success-soft/20")}>
                     <td className="text-xs text-fg-tertiary">{day(t.postDate)}</td>
                     <td className="max-w-[360px] truncate font-medium" title={t.description}>{t.description || "—"}</td>
