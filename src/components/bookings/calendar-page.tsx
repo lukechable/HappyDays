@@ -143,12 +143,11 @@ export function CalendarPage() {
   const types = practice.data?.appointmentTypes ?? [];
   // Day columns: every practitioner Cliniko lists, plus any who has an appointment in view but isn't listed.
   const dayPractitioners: Array<{ id: string; name: string }> = [...practitioners.map((p) => ({ id: p.id, name: `${p.first_name} ${p.last_name}`.trim() })), ...(live.data?.practitioners ?? []).filter((p) => !practitioners.some((q) => q.id === p.id) && (live.data?.appointments ?? []).some((a) => a.practitionerId === p.id)).map((p) => ({ id: p.id, name: p.name }))];
-  // Header rows as Cliniko draws them: the date, then the practitioner under it. The week shows Monday to Friday only.
+  // Headers as Cliniko writes them ("Tuesday, 8th Sep"); day view keeps the practitioner name. The week is Monday to Friday.
   const dateLabel = (d: Date) => `${d.toLocaleDateString("en-AU", { weekday: "long" })}, ${ordinal(d.getDate())} ${d.toLocaleDateString("en-AU", { month: "short" }).slice(0, 3)}`;
-  const weekPractitioner = dayPractitioners.length === 1 ? dayPractitioners[0].name : dayPractitioners.find((p) => p.id === (settings?.["cliniko.practitionerId"] as string | undefined))?.name ?? dayPractitioners.map((p) => p.name.split(" ")[0]).join(", ");
-  const columns: Array<{ key: string; label: string; sub: string; day: Date; practitionerId?: string }> = mode === "week"
-    ? Array.from({ length: 5 }, (_, i) => { const d = new Date(rangeStart); d.setDate(d.getDate() + i); return { key: d.toDateString(), label: dateLabel(d), sub: weekPractitioner, day: d }; })
-    : (dayPractitioners.length ? dayPractitioners : [{ id: undefined as string | undefined, name: "All" }]).map((p) => ({ key: String(p.id ?? "all"), label: dateLabel(rangeStart), sub: p.name, day: rangeStart, practitionerId: p.id }));
+  const columns: Array<{ key: string; label: string; day: Date; practitionerId?: string }> = mode === "week"
+    ? Array.from({ length: 5 }, (_, i) => { const d = new Date(rangeStart); d.setDate(d.getDate() + i); return { key: d.toDateString(), label: dateLabel(d), day: d }; })
+    : (dayPractitioners.length ? dayPractitioners : [{ id: undefined as string | undefined, name: "All" }]).map((p) => ({ key: String(p.id ?? "all"), label: p.name, day: rangeStart, practitionerId: p.id }));
 
   const inColumn = (a: { startsAt: string; practitionerId?: string }, c: (typeof columns)[number]) => { const d = new Date(a.startsAt); return d.toDateString() === c.day.toDateString() && (mode === "week" || c.practitionerId === undefined || a.practitionerId === c.practitionerId); };
   const yFor = (iso: string) => { const d = new Date(iso); return ((d.getHours() - DAY_START) * 60 + d.getMinutes()) * (HOUR_PX / 60); };
@@ -196,13 +195,8 @@ export function CalendarPage() {
         <div className="min-h-0 flex-1 overflow-auto">
           <div className={cn("grid", mode === "week" ? "min-w-[640px]" : "min-w-[300px]")} style={{ gridTemplateColumns: `56px repeat(${columns.length}, minmax(0, 1fr))` }}>
             <div className="sticky top-0 z-10 bg-background" />
-            {/* Today's header, as in Cliniko: both rows filled yellow, each with its own thick gold border. */}
-            {columns.map((c) => { const today = c.day.toDateString() === new Date(now).toDateString(); const hi = today && "bg-[#fbf3cf] shadow-[inset_0_0_0_2px_#c9a93a] dark:bg-[#4a4320] dark:shadow-[inset_0_0_0_2px_#a08a3a]"; return (
-              <div key={c.key} className="sticky top-0 z-10 border-b border-l border-border bg-background text-center text-xs">
-                <div className={cn("truncate px-2 py-1.5 text-[13px] font-semibold", hi)}>{c.label}</div>
-                <div className={cn("truncate border-t border-border px-2 py-1 text-fg-secondary", hi)}>{c.sub}</div>
-              </div>
-            ); })}
+            {/* Today's header is filled yellow, as in Cliniko. */}
+            {columns.map((c) => <div key={c.key} className={cn("sticky top-0 z-10 truncate border-b border-l border-border bg-background px-2 py-1.5 text-center text-[13px] font-semibold", c.day.toDateString() === new Date(now).toDateString() && "bg-[#fbf3cf] dark:bg-[#4a4320]")}>{c.label}</div>)}
             <div className="relative" style={{ height: (DAY_END - DAY_START) * HOUR_PX }}>
               {Array.from({ length: DAY_END - DAY_START }, (_, i) => <div key={i} className="num absolute right-2 pt-0.5 text-[10.5px] text-fg-quaternary" style={{ top: i * HOUR_PX }}>{i + DAY_START > 12 ? `${i + DAY_START - 12}pm` : i + DAY_START === 12 ? "12pm" : `${i + DAY_START}am`}</div>)}
             </div>
