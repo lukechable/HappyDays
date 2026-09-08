@@ -67,7 +67,7 @@ export function Dot({ tone, pulse, className }: { tone: Tone; pulse?: boolean; c
 
 const PILL: Record<Tone, string> = { neutral: "bg-muted text-fg-secondary", good: "bg-success-soft text-success", warn: "bg-warning-soft text-warning", bad: "bg-error-soft text-error", info: "bg-blue-soft text-blue" };
 export function Pill({ tone = "neutral", children, className, title }: { tone?: Tone; children: ReactNode; className?: string; title?: string }) {
-  return <span title={title} className={cn("hd-pop inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium leading-4", PILL[tone], className)}>{children}</span>;
+  return <span title={title} className={cn("hd-pop inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium leading-4 ring-1 ring-inset ring-current", PILL[tone], className)}>{children}</span>;
 }
 
 /** Map every product status string to a tone in one place so every page agrees. */
