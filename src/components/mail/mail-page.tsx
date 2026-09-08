@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Empty } from "@/components/primitives";
 import { useLive, useMediaQuery, useStored } from "@/lib/hooks";
 import { readLive, subscribeLive, writeLive } from "@/lib/live-cache";
+import { gmailRead, COST } from "@/lib/gmail-budget";
 import { mailStore, threadText } from "@/lib/mail-store";
 import { replaceSearch } from "@/lib/shallow";
 import { cn, errorMessage } from "@/lib/utils";
@@ -95,7 +96,7 @@ export function MailPage() {
   const loadMore = async () => {
     if (!connected || !nextToken || appending) return;
     setAppending(true);
-    try { const r = await listThreads({ view, labelId, q, pageToken: nextToken }); setList((cur) => ({ ...cur, items: [...cur.items, ...r.items], nextToken: r.nextPageToken })); }
+    try { const r = await gmailRead(COST.list, () => listThreads({ view, labelId, q, pageToken: nextToken })); setList((cur) => ({ ...cur, items: [...cur.items, ...r.items], nextToken: r.nextPageToken })); }
     catch (e) { toast.error(errorMessage(e)); }
     finally { setAppending(false); }
   };
@@ -124,7 +125,7 @@ export function MailPage() {
     if (tick === 0 && cached.inflight) { let live = true; void cached.inflight.then(() => { if (live && !readLive(listCacheKey).fetchedAt) setTick((t) => t + 1); }); return () => { live = false; }; }
     let live = true;
     const args = JSON.parse(listKey) as { view: ViewKey; labelId?: string; q?: string };
-    listThreads({ view: args.view, labelId: args.labelId, q: args.q }).then((r) => {
+    gmailRead(COST.list, () => listThreads({ view: args.view, labelId: args.labelId, q: args.q })).then((r) => {
       if (!live) return;
       const data = { items: r.items, nextToken: r.nextPageToken, missing: r.missing ?? 0 };
       writeLive(listCacheKey, { data, fetchedAt: Date.now() });
@@ -132,7 +133,7 @@ export function MailPage() {
       setList({ key: listKey, items: r.items, nextToken: r.nextPageToken, missing: r.missing ?? 0, tick }); setChecked(new Set()); setFocused(0);
       // Warm the first few conversations so opening them is instant.
       const warm = r.items.slice(0, 6);
-      (async () => { for (const it of warm) { if (!live) return; if (await mailStore.hasThread(it.gmailThreadId)) continue; try { const t = await getThread({ gmailThreadId: it.gmailThreadId }); writeLive(`mail:thread:${it.gmailThreadId}`, { data: t, fetchedAt: Date.now() }); await mailStore.putThread(it.gmailThreadId, t, threadText(t)); } catch { /* skip */ } await new Promise((res) => setTimeout(res, 400)); } })();
+      (async () => { for (const it of warm) { if (!live) return; if (await mailStore.hasThread(it.gmailThreadId)) continue; try { const t = await gmailRead(COST.thread, () => getThread({ gmailThreadId: it.gmailThreadId }), { background: true }); writeLive(`mail:thread:${it.gmailThreadId}`, { data: t, fetchedAt: Date.now() }); await mailStore.putThread(it.gmailThreadId, t, threadText(t)); } catch { /* skip */ } await new Promise((res) => setTimeout(res, 400)); } })();
     }).catch((e: unknown) => { if (live) setList({ key: listKey, items: cached.data?.items ?? [], error: errorMessage(e), missing: 0, tick }); });
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -157,7 +158,7 @@ export function MailPage() {
     const cachedThread = readLive<ThreadData>(`mail:thread:${selectedId}`);
     const useCached = cachedThread.data && cachedThread.fetchedAt && Date.now() - cachedThread.fetchedAt < 120_000;
     const fromDevice = async () => { const d = await mailStore.getThread<ThreadData>(selectedId); if (d && live) setThreadState({ id: selectedId, thread: d.data }); return d; };
-    (useCached ? Promise.resolve(cachedThread.data as ThreadData) : fromDevice().then(async (d) => { const t = await getThread({ gmailThreadId: selectedId }); if (!d || JSON.stringify(d.data.messages.map((m) => m.gmailMessageId)) !== JSON.stringify(t.messages.map((m) => m.gmailMessageId)) || d.data.labelIds.join() !== t.labelIds.join()) void mailStore.putThread(selectedId, t, threadText(t)); return t; })).then((t) => {
+    (useCached ? Promise.resolve(cachedThread.data as ThreadData) : fromDevice().then(async (d) => { const t = await gmailRead(COST.thread, () => getThread({ gmailThreadId: selectedId })); if (!d || JSON.stringify(d.data.messages.map((m) => m.gmailMessageId)) !== JSON.stringify(t.messages.map((m) => m.gmailMessageId)) || d.data.labelIds.join() !== t.labelIds.join()) void mailStore.putThread(selectedId, t, threadText(t)); return t; })).then((t) => {
       if (!live) return;
       if (!useCached) writeLive(`mail:thread:${selectedId}`, { data: t, fetchedAt: Date.now() });
       setThreadState({ id: selectedId, thread: t });
@@ -403,7 +404,7 @@ export function MailPage() {
         </ContextMenu>
       )}
       {filterFor && <FilterDialog item={filterFor.item} ids={filterFor.ids} myEmail={me?.email} folders={(labels ?? []).filter((l) => l.type === "user" && !l.hidden).sort((a, b) => a.name.localeCompare(b.name))} onSearch={(fq) => { setSearchText(fq); setParams({ view: "search", q: fq, thread: undefined, label: undefined }); }} onMove={moveTo} onClose={() => setFilterFor(null)} />}
-      {compose && signatures !== undefined && <Compose key={`${compose.mode}-${compose.inReplyTo ?? compose.draftId ?? "new"}`} draft={compose} signatureHtml={defaultSignature} signatureAbove={me?.prefs.signatureAbove ?? true} onClose={() => setCompose(null)} onSent={(r) => { const matterId = compose.matterId; setCompose(null); reload(); if (selectedId) getThread({ gmailThreadId: selectedId }).then(setThread).catch(() => undefined); if (matterId && r.attachments > 0) toast("Was that the report?", { description: "Mark the matter’s report as delivered by email.", action: { label: "Yes, delivered", onClick: () => reportSent({ matterId: matterId as Id<"matters"> }).then(() => toast.success("Marked delivered")).catch((e: unknown) => toast.error(errorMessage(e))) } }); }} />}
+      {compose && signatures !== undefined && <Compose key={`${compose.mode}-${compose.inReplyTo ?? compose.draftId ?? "new"}`} draft={compose} signatureHtml={defaultSignature} signatureAbove={me?.prefs.signatureAbove ?? true} onClose={() => setCompose(null)} onSent={(r) => { const matterId = compose.matterId; setCompose(null); reload(); if (selectedId) gmailRead(COST.thread, () => getThread({ gmailThreadId: selectedId })).then(setThread).catch(() => undefined); if (matterId && r.attachments > 0) toast("Was that the report?", { description: "Mark the matter’s report as delivered by email.", action: { label: "Yes, delivered", onClick: () => reportSent({ matterId: matterId as Id<"matters"> }).then(() => toast.success("Marked delivered")).catch((e: unknown) => toast.error(errorMessage(e))) } }); }} />}
       {view === "search" && q && <span className="sr-only">Showing Gmail results for {q}</span>}
       <TagIcon className="hidden" />
     </div>

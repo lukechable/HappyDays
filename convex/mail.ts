@@ -126,7 +126,7 @@ export const listThreads = action({
     let estimate = 0;
     let missing = 0;
     const gq = (base: string) => [base, q].filter(Boolean).join(" ");
-    const page = async (opts: { labelIds?: string[]; q?: string }) => { const r = await gmail.listThreadIds(token, { ...opts, pageToken, maxResults: 25 }); ids = r.ids; nextPageToken = r.nextPageToken; estimate = r.estimate; };
+    const page = async (opts: { labelIds?: string[]; q?: string }) => { const r = await gmail.listThreadIds(token, { ...opts, pageToken, maxResults: 20 }); ids = r.ids; nextPageToken = r.nextPageToken; estimate = r.estimate; };
     switch (view) {
       case "inbox": await page({ labelIds: ["INBOX"], q: q || undefined }); break;
       case "unread": await page({ labelIds: ["INBOX", "UNREAD"], q: q || undefined }); break;
@@ -543,7 +543,7 @@ export const indexRecent = internalAction({
   args: { accountId: v.id("googleAccounts"), days: v.number(), pageToken: v.optional(v.string()), page: v.optional(v.number()) },
   handler: async (ctx, { accountId, days, pageToken, page = 0 }) => {
     const token = await accessTokenFor(ctx, accountId);
-    const r = await gmail.listThreadIds(token, { q: `newer_than:${days}d -in:spam -in:trash`, pageToken, maxResults: 25 });
+    const r = await gmail.listThreadIds(token, { q: `newer_than:${days}d -in:spam -in:trash`, pageToken, maxResults: 20 });
     const threads = await gmail.batchGetThreads(token, r.ids, "metadata");
     await ctx.runMutation(internal.mail.indexHeaders, { accountId, threads: threads.map(toIndex) });
     await ctx.runMutation(internal.googleData.patchAccount, { accountId, patch: { lastSyncAt: Date.now() } });
