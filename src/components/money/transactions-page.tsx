@@ -28,7 +28,8 @@ export function TransactionsPage() {
   const bank = useLive(api.bank.transactions, bankStatus?.configured && bankStatus.linked ? {} : "skip", { ttlMs: 300_000 });
   const connectLink = useAction(api.bank.connectLink);
   const [linking, setLinking] = useState(false);
-  const link = async () => { setLinking(true); try { const { url } = await connectLink({}); window.open(url, "_blank", "noopener"); toast("Basiq opened in a new tab", { description: "Choose Bendigo Bank, sign in and consent. Then come back and refresh." }); } catch (e) { toast.error(errorMessage(e)); } finally { setLinking(false); } };
+  // Same-tab navigation: a window.open after an await is blocked by popup blockers. Basiq's consent page sends the browser back to the policy's redirect URL (this page).
+  const link = async () => { setLinking(true); try { const { url } = await connectLink({}); window.location.assign(url); } catch (e) { toast.error(errorMessage(e)); setLinking(false); } };
   // A bank credit matches an invoice when the payer typed the invoice number as the reference, or the amount equals an open invoice.
   const invoices = data?.rows.filter((r) => r.kind === "invoice") ?? [];
   const matchFor = (t: { description: string; amountCents: number }) => invoices.find((i) => i.description && new RegExp(`\\b${(i.stripeId.split("_")[1] ?? "").slice(0, 8)}`, "i").test(t.description)) ?? invoices.find((i) => i.status === "open" && i.amountCents === t.amountCents);
