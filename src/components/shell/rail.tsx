@@ -1,10 +1,10 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
 import Link from "next/link";
 import { ChevronDown, LogOut, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { NAV, isActive, type NavGroup } from "@/lib/nav";
 import { cn } from "@/lib/utils";
+import { useStored } from "@/lib/hooks";
 import { Dot } from "@/components/primitives";
 import { SignOutButton } from "@/components/auth/auth-mode";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -12,26 +12,6 @@ import type { Me } from "@/components/shell/app-shell";
 
 const CLOSED_KEY = "hd-rail-closed";
 const COLLAPSED_KEY = "hd-rail-collapsed";
-/* A tiny store over localStorage: parsed values are cached so snapshots are referentially stable, and writes notify subscribers. */
-const cache = new Map<string, unknown>();
-const EVENT = "hd-rail-store";
-function readStored<T>(key: string, fallback: T): T {
-  if (cache.has(key)) return cache.get(key) as T;
-  let v: T = fallback;
-  try { const raw = localStorage.getItem(key); if (raw) v = JSON.parse(raw) as T; } catch { /* private mode */ }
-  cache.set(key, v);
-  return v;
-}
-function writeStored(key: string, value: unknown) {
-  cache.set(key, value);
-  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* private mode */ }
-  window.dispatchEvent(new Event(EVENT));
-}
-const subscribe = (cb: () => void) => { window.addEventListener(EVENT, cb); return () => window.removeEventListener(EVENT, cb); };
-function useStored<T>(key: string, fallback: T): [T, (v: T) => void] {
-  const value = useSyncExternalStore(subscribe, () => readStored(key, fallback), () => fallback);
-  return [value, (v) => writeStored(key, v)];
-}
 const NONE: string[] = [];
 
 /** Whether the desktop rail is shrunk to its icons. Remembered on this device. */

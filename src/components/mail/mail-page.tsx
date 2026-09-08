@@ -20,7 +20,7 @@ import type { ComposeDraft } from "./compose";
 import { quoteHtml, textToHtml, sanitiseForEditor } from "@/lib/sanitise";
 import { Button } from "@/components/ui/button";
 import { Empty } from "@/components/primitives";
-import { useLive } from "@/lib/hooks";
+import { useLive, useMediaQuery, useStored } from "@/lib/hooks";
 import { readLive, subscribeLive, writeLive } from "@/lib/live-cache";
 import { mailStore, threadText } from "@/lib/mail-store";
 import { replaceSearch } from "@/lib/shallow";
@@ -53,6 +53,14 @@ export function MailPage() {
   const reportSent = useMutation(api.files.reportSentByEmail);
   const updatePrefs = useMutation(api.users.updatePrefs);
   const [paneOverride, setPaneOverride] = useState<"below" | "right" | null>(null);
+  // Reading pane sizes, remembered on this device: the list's width (pane on the right) and height (pane below).
+  const [listW, setListW] = useStored<number>("hd-mail-list-w", 380);
+  const [listH, setListH] = useStored<number | null>("hd-mail-list-h", null);
+  const wide = useMediaQuery("(min-width: 768px)");
+  const listRef = useRef<HTMLElement>(null);
+  const splitRef = useRef<HTMLDivElement>(null);
+  // Set when the user closes the reading pane on purpose, so the newest conversation isn't put straight back.
+  const dismissed = useRef<string | null>(null);
 
   const connected = me?.google?.status === "connected";
   const listKey = JSON.stringify({ view, labelId, q, connected });
@@ -170,7 +178,13 @@ export function MailPage() {
   };
 
   const open = (id: string) => { setParams({ thread: id }); const i = items.findIndex((x) => x.gmailThreadId === id); if (i >= 0) setFocused(i); };
-  const closeThread = () => { setParams({ thread: undefined }); };
+  const closeThread = () => { dismissed.current = listKey; setParams({ thread: undefined }); };
+  // Outlook's habit: with a reading pane on screen and nothing chosen, the newest conversation is shown until the user picks another.
+  const newestId = items[0]?.gmailThreadId;
+  useEffect(() => {
+    if (!wide || selectedId || !newestId || dismissed.current === listKey) return;
+    setParams({ thread: newestId });
+  }, [wide, selectedId, newestId, listKey, setParams]);
 
   const act = async (ids: string[], op: "archive" | "unarchive" | "trash" | "untrash" | "star" | "unstar" | "unread" | "spam" | "labels", payload?: { add: string[]; remove: string[] }) => {
     if (!ids.length) return;
@@ -299,6 +313,20 @@ export function MailPage() {
   // Reading pane under the list (Outlook's default) unless this user has moved it to the right. Saved per user.
   const pane = paneOverride ?? me?.prefs.readingPane ?? "below";
   const togglePane = () => { const next = pane === "below" ? "right" : "below"; setPaneOverride(next); updatePrefs({ prefs: { readingPane: next } }).catch((e: unknown) => toast.error(errorMessage(e))); };
+  // Dragging the divider between the list and the reading pane. Pointer events, so it works with a finger too.
+  const startSplit = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const list = listRef.current?.getBoundingClientRect(); const box = splitRef.current?.parentElement?.getBoundingClientRect();
+    if (!list || !box) return;
+    const move = (ev: PointerEvent) => {
+      if (pane === "right") setListW(Math.round(Math.min(Math.max(ev.clientX - list.left, 260), Math.max(260, box.right - 360 - list.left))));
+      else setListH(Math.round(Math.min(Math.max(ev.clientY - list.top, 96), Math.max(96, box.bottom - 160 - list.top))));
+    };
+    const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); document.body.style.cursor = ""; };
+    document.body.style.cursor = pane === "right" ? "col-resize" : "row-resize";
+    window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
+  };
+  const splitStyle = { "--hd-list-w": `${listW}px`, "--hd-list-h": listH ? `${listH}px` : "minmax(0,7fr)", "--hd-pane-h": listH ? "minmax(0,1fr)" : "minmax(0,13fr)" } as React.CSSProperties;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col md:h-[calc(100svh_-_48px)] md:flex-none">
@@ -329,11 +357,11 @@ export function MailPage() {
       </div>
 
       {/* The folder column joins at lg; the list and reading pane split from md, since without the rail there is room. */}
-      <div className={cn("grid min-h-0 flex-1 grid-cols-1", pane === "right" ? "md:grid-cols-[minmax(300px,380px)_minmax(0,1fr)] lg:grid-cols-[200px_minmax(320px,400px)_minmax(0,1fr)]" : "md:grid-cols-[minmax(0,1fr)] lg:grid-cols-[200px_minmax(0,1fr)]")}>
+      <div className={cn("grid min-h-0 flex-1 grid-cols-1", pane === "right" ? "md:grid-cols-[var(--hd-list-w)_6px_minmax(0,1fr)] lg:grid-cols-[200px_var(--hd-list-w)_6px_minmax(0,1fr)]" : "md:grid-cols-[minmax(0,1fr)] lg:grid-cols-[200px_minmax(0,1fr)]")} style={splitStyle}>
         <aside className="hidden min-h-0 border-r border-border bg-surface-2/60 lg:block"><FolderList view={view} labelId={labelId} labels={labels} badges={{ overdue: me?.badges.overdue ?? 0, assigned: me?.badges.assigned ?? 0 }} onSelect={(v, l) => { setParams({ view: v === "inbox" ? undefined : v, label: l, q: undefined, thread: undefined }); }} onLabelsChanged={refreshLabels} onDropThreads={onDropThreads} /></aside>
         {/* min-w-0 and an explicit minmax(0,1fr) column: without them the implicit grid column sizes to the longest row and the whole thing runs off the right of the screen. */}
-        <div className={cn("contents", pane === "below" && "md:grid md:min-h-0 md:min-w-0 md:grid-cols-[minmax(0,1fr)] md:grid-rows-[minmax(0,7fr)_minmax(0,13fr)]")}>
-        <section key={`list-${pane}`} className={cn("flex min-h-0 min-w-0 flex-col", pane === "right" ? "border-r border-border" : "md:min-h-0 md:border-b md:border-border", selectedId && "hidden md:flex")}>
+        <div className={cn("contents", pane === "below" && "md:grid md:min-h-0 md:min-w-0 md:grid-cols-[minmax(0,1fr)] md:grid-rows-[var(--hd-list-h)_6px_var(--hd-pane-h)]")}>
+        <section ref={listRef} key={`list-${pane}`} className={cn("flex min-h-0 min-w-0 flex-col", selectedId && "hidden md:flex")}>
           <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-1.5">
             <span className="truncate text-[13px] font-medium">{title}</span>
             {missing > 0 && <span className="text-[11px] text-fg-tertiary" title="These threads exist only in the other mailbox">{missing} not in your mailbox</span>}
@@ -348,6 +376,8 @@ export function MailPage() {
             <ThreadList items={items} meta={meta} selectedId={selectedId} focusedIndex={focused} checked={checked} onOpen={open} onToggleCheck={toggleCheck} onStar={(i) => act([i.gmailThreadId], i.starred ? "unstar" : "star")} loading={listLoading || appending} error={listError} hasMore={!!nextToken} onMore={() => void loadMore()} emptyText={EMPTY_TEXT[view] ?? "Nothing here."} myFirst={me?.first} labels={labels} onContextMenu={onContextMenu} onDragStart={onDragStart} />
           </div>
         </section>
+        {/* The divider is the reading pane's thick edge: drag it to resize, double-click to reset. */}
+        <div ref={splitRef} role="separator" aria-orientation={pane === "right" ? "vertical" : "horizontal"} aria-label="Resize the reading pane" onPointerDown={startSplit} onDoubleClick={() => (pane === "right" ? setListW(380) : setListH(null))} className={cn("hidden bg-border transition-colors hover:bg-fg-quaternary md:block [touch-action:none]", pane === "right" ? "cursor-col-resize" : "cursor-row-resize")} />
         {/* Below (Outlook's layout): the list is a table across the top 35%, the reading pane fills the rest. Right: a column. */}
         <section key={`pane-${pane}`} className={cn("min-h-0 min-w-0 bg-surface/60", pane === "below" ? "hd-slide-up" : "hd-slide-left", !selectedId && "hidden md:block")}>
           <ThreadView thread={selectedId ? thread : undefined} meta={selectedId ? meta[selectedId] : undefined} labels={labels ?? []} loading={threadLoading} error={threadError} myFirst={me?.first} showImagesDefault={me?.prefs.showImages ?? false} onAction={(op, payload) => selectedId && act([selectedId], op, payload)} onReply={startCompose} onClose={closeThread} />
