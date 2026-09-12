@@ -43,9 +43,9 @@ export function MattersList() {
               <tr key={m._id} className="hover:bg-muted/50">
                 <td><PrefetchLink href={`/matters/${m._id}`} className="font-medium hover:underline">{m.name}</PrefetchLink>{m.courtFileNo && <div className="text-xs text-fg-tertiary">{m.courtFileNo}</div>}</td>
                 <td><Pill tone={statusTone(m.status)}>{m.status.replace("_", " ")}</Pill></td>
-                <td className="num">{m.counts.threads}</td>
-                <td className="num">{m.counts.tasks}</td>
-                <td className="num">{m.counts.files}</td>
+                <td className="num"><PrefetchLink href={`/mail?view=matter&label=${m._id}`} className="hover:underline">{m.counts.threads}</PrefetchLink></td>
+                <td className="num"><PrefetchLink href={`/tasks?matter=${m._id}`} className="hover:underline">{m.counts.tasks}</PrefetchLink></td>
+                <td className="num"><PrefetchLink href={`/files?matter=${m._id}`} className="hover:underline">{m.counts.files}</PrefetchLink></td>
                 <td>{m.counts.invoices ? <Pill tone={m.paid ? "good" : "warn"}>{m.paid ? "paid" : `${aud(m.unpaidCents, { whole: true })} owing`}</Pill> : <span className="text-fg-quaternary">—</span>}</td>
                 <td>{m.reportDeliveredAt ? <Pill tone="good">delivered</Pill> : m.status === "report_due" ? <Pill tone="warn">due</Pill> : <span className="text-fg-quaternary">—</span>}</td>
                 <td className="text-xs text-fg-tertiary">{ago(m.updatedAt)}</td>

@@ -11,7 +11,7 @@ import { toast } from "sonner";
 import { api } from "../../../convex/_generated/api";
 import type { ListItem, MessageView } from "../../../convex/mail";
 import type { Id } from "../../../convex/_generated/dataModel";
-import { FolderList, SMART_TABS, DRAG_MIME, type DropTarget, type Label, type ViewKey } from "./folder-list";
+import { VIEWS, FolderList, SMART_TABS, DRAG_MIME, type DropTarget, type Label, type ViewKey } from "./folder-list";
 import { ContextMenu, MenuItem, MenuSeparator, MenuHeading } from "./context-menu";
 import { ThreadList } from "./thread-list";
 import { ThreadView, type ThreadData } from "./thread-view";
@@ -366,7 +366,7 @@ export function MailPage() {
           {localHits.length > 0 && searchText.trim() !== q && (
             <div className="absolute left-0 top-full z-30 mt-1 w-full rounded-xl bg-popover p-1 shadow-md ring-1 ring-border">
               <div className="px-2 py-1 text-[10.5px] font-semibold uppercase tracking-wider text-fg-tertiary">On this device · Enter to search all of Gmail</div>
-              {localHits.slice(0, 8).map((h) => { const line = h.text.split("\n")[0]; return <button key={h.id} type="button" onMouseDown={(e) => { e.preventDefault(); setParams({ thread: h.id }); setSearchText(""); }} className="block w-full truncate rounded-md px-2 py-1 text-left text-[13px] hover:bg-muted">{line}</button>; })}
+              {localHits.slice(0, 8).map((h) => { const line = h.text.split("\n")[0]; return <button key={h.id} type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => { setParams({ thread: h.id }); setSearchText(""); }} className="block w-full truncate rounded-md px-2 py-1 text-left text-[13px] hover:bg-muted">{line}</button>; })}
             </div>
           )}
         </form>
@@ -380,6 +380,7 @@ export function MailPage() {
           </div>
         )}
         <Button size="sm" variant="ghost" onClick={() => { reload(); refreshLabels(); }} aria-label="Refresh" title="Refresh"><RefreshCw className={cn("size-3.5", listLoading && "animate-spin")} /></Button>
+<div className="border-b border-border p-2 lg:hidden"><select aria-label="Mail folder" className="h-8 w-full rounded border border-input bg-card text-sm" value={view === "label" ? `label:${labelId}` : view} onChange={e => { const value = e.target.value; setParams({ view: value.startsWith("label:") ? "label" : value, label: value.startsWith("label:") ? value.slice(6) : undefined, q: undefined, thread: undefined }); }}>{VIEWS.map(v => <option key={v.key} value={v.key}>{v.label}</option>)}{!VIEWS.some(v => v.key === view) && view !== "label" && <option value={view}>{title}</option>}{labels?.filter(l => l.type === "user" && !l.hidden).map(l => <option key={l.id} value={`label:${l.id}`}>{l.name}</option>)}</select></div>
         <Button size="sm" variant="ghost" className="hd-press hidden md:inline-flex" onClick={togglePane} aria-label={pane === "below" ? "Move the reading pane to the right" : "Move the reading pane below the list"} title={pane === "below" ? "Reading pane: below the list. Click for right." : "Reading pane: on the right. Click for below."}><ReadingPaneIcon pane={pane} /></Button>
       </div>
 
@@ -388,6 +389,7 @@ export function MailPage() {
         <aside className="hidden min-h-0 border-r border-border bg-surface-2/60 lg:block"><FolderList view={view} labelId={labelId} labels={labels} badges={{ overdue: me?.badges.overdue ?? 0, assigned: me?.badges.assigned ?? 0 }} onSelect={(v, l) => { setParams({ view: v === "inbox" ? undefined : v, label: l, q: undefined, thread: undefined }); }} onLabelsChanged={refreshLabels} onDropThreads={onDropThreads} /></aside>
         {/* min-w-0 and an explicit minmax(0,1fr) column: without them the implicit grid column sizes to the longest row and the whole thing runs off the right of the screen. */}
         <div className={cn("contents", pane === "below" && "md:grid md:min-h-0 md:min-w-0 md:grid-cols-[minmax(0,1fr)] md:grid-rows-[var(--hd-list-h)_6px_var(--hd-pane-h)]")}>
+
         <section ref={listRef} key={`list-${pane}`} className={cn("flex min-h-0 min-w-0 flex-col", selectedId && "hidden md:flex")}>
           <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-1.5">
             <span className="truncate text-[13px] font-medium">{title}</span>

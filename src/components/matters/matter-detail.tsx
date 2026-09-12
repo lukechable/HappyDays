@@ -69,8 +69,8 @@ export function MatterDetail({ id }: { id: Id<"matters"> }) {
         <Panel title="Delivery" dense>
           {m.codes.length === 0 && m.signatureRequests.length === 0 ? <p className="text-sm text-fg-tertiary">No download codes or signature requests yet. Create them from Files.</p> : (
             <ul className="space-y-1 text-sm">
-              {m.codes.map((c) => <li key={c._id} className="flex items-center gap-2"><span className="num font-medium">{c.code}</span><span className="flex-1 truncate text-fg-tertiary">{c.recipientName ?? c.recipientEmail ?? "—"}</span><Pill tone={c.revokedAt ? "bad" : c.downloadCount ? "good" : "warn"}>{c.revokedAt ? "revoked" : c.downloadCount ? `downloaded ×${c.downloadCount}` : "waiting"}</Pill></li>)}
-              {m.signatureRequests.map((s) => <li key={s._id} className="flex items-center gap-2"><span className="flex-1 truncate">{s.signerName}</span><Pill tone={statusTone(s.status)}>{s.status}</Pill></li>)}
+              {m.codes.map((c) => <li key={c._id} className="flex items-center gap-2"><Link href={`/files?tab=codes&matter=${id}`} className="num font-medium hover:underline">{c.code}</Link><span className="flex-1 truncate text-fg-tertiary">{c.recipientName ?? c.recipientEmail ?? "—"}</span><Pill tone={c.revokedAt ? "bad" : c.downloadCount ? "good" : "warn"}>{c.revokedAt ? "revoked" : c.downloadCount ? `downloaded ×${c.downloadCount}` : "waiting"}</Pill></li>)}
+              {m.signatureRequests.map((s) => <li key={s._id} className="flex items-center gap-2"><Link href={`/pdf?tab=requests&matter=${id}`} className="flex-1 truncate hover:underline">{s.signerName}</Link><Pill tone={statusTone(s.status)}>{s.status}</Pill></li>)}
             </ul>
           )}
         </Panel>
@@ -82,11 +82,11 @@ export function MatterDetail({ id }: { id: Id<"matters"> }) {
             <ul className="divide-y divide-border/70">{m.threads.map((t) => <li key={t.threadId} className="py-1.5 text-sm">{t.gmailThreadId ? <Link href={`/mail?thread=${t.gmailThreadId}`} className="hover:underline">{t.subject}</Link> : <span title="Not in your mailbox">{t.subject}</span>}<div className="flex gap-2 text-xs text-fg-tertiary"><span>{mailDate(t.lastMessageAt)}</span>{t.repliedBy.length > 0 && <span className="text-success">{t.repliedBy.join(", ")} replied</span>}</div></li>)}</ul>
           )}
         </Panel>
-        <Panel title={`Tasks (${m.tasks.filter((t) => t.status !== "done").length} open)`} dense actions={<Button size="xs" variant="ghost" render={<Link href={`/tasks?view=all`} />}>Tasks</Button>}>
+        <Panel title={`Tasks (${m.tasks.filter((t) => t.status !== "done").length} open)`} dense actions={<Button size="xs" variant="ghost" render={<Link href={`/tasks?view=all&matter=${id}`} />}>Tasks</Button>}>
           {m.tasks.length === 0 ? <p className="text-sm text-fg-tertiary">No tasks yet.</p> : <ul className="divide-y divide-border/70">{m.tasks.map((t) => <li key={t._id} className="flex items-center gap-2 py-1.5 text-sm"><Link href={`/tasks?task=${t._id}`} className={t.status === "done" ? "flex-1 text-fg-tertiary line-through" : "flex-1 hover:underline"}>{t.title}</Link>{t.dueAt && <span className="text-xs text-fg-tertiary">{dueLabel(t.dueAt)}</span>}</li>)}</ul>}
         </Panel>
         <Panel title={`Files (${m.files.length})`} dense actions={<Button size="xs" variant="ghost" render={<Link href={`/files?matter=${id}`} />}>Files</Button>} className="lg:col-span-2">
-          {m.files.length === 0 ? <p className="text-sm text-fg-tertiary">No files. Upload a report from Files and link it here.</p> : <ul className="divide-y divide-border/70">{m.files.map((f) => <li key={f._id} className="flex items-center gap-2 py-1.5 text-sm"><Link href={`/files?file=${f._id}`} className="flex-1 truncate hover:underline">{f.name}</Link>{f.isReport && <Pill tone="info">report</Pill>}<span className="text-xs text-fg-tertiary">v{f.version} · {bytes(f.size)} · {day(f.createdAt)}</span></li>)}</ul>}
+          {m.files.length === 0 ? <p className="text-sm text-fg-tertiary">No files. Upload a report from Files and link it here.</p> : <ul className="divide-y divide-border/70">{m.files.map((f) => <li key={f._id} className="flex items-center gap-2 py-1.5 text-sm"><Link href={`/files/${f._id}`} className="flex-1 truncate hover:underline">{f.name}</Link>{f.isReport && <Pill tone="info">report</Pill>}<span className="text-xs text-fg-tertiary">v{f.version} · {bytes(f.size)} · {day(f.createdAt)}</span></li>)}</ul>}
         </Panel>
       </div>
 

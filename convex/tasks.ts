@@ -1,3 +1,4 @@
+import { taskOverdue, taskDueBy } from "./lib/taskViews";
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
@@ -19,16 +20,14 @@ export const lists = query({
     const lists = await ctx.db.query("taskLists").withIndex("by_order").collect();
     const open = (await ctx.db.query("tasks").withIndex("by_due", (q) => q.eq("status", "open")).collect()).concat(await ctx.db.query("tasks").withIndex("by_due", (q) => q.eq("status", "doing")).collect());
     const now = Date.now();
-    const endOfToday = new Date(); endOfToday.setHours(23, 59, 59, 999);
-    const week = endOfToday.getTime() + 7 * 86_400_000;
     const top = open.filter((t) => !t.parentId);
     return {
       lists: lists.map((l) => ({ ...l, count: top.filter((t) => t.listId === l._id).length })),
       smart: {
         inbox: top.filter((t) => !t.listId).length,
-        today: top.filter((t) => t.dueAt !== undefined && t.dueAt <= endOfToday.getTime()).length,
-        week: top.filter((t) => t.dueAt !== undefined && t.dueAt <= week).length,
-        overdue: top.filter((t) => t.dueAt !== undefined && t.dueAt < now).length,
+        today: top.filter((t) => taskDueBy(t, now)).length,
+        week: top.filter((t) => taskDueBy(t, now, 7)).length,
+        overdue: top.filter((t) => taskOverdue(t, now)).length,
         mine: top.filter((t) => t.assigneeId === user._id).length,
         assignedByMe: top.filter((t) => t.creatorId === user._id && t.assigneeId && t.assigneeId !== user._id).length,
         all: top.length,
@@ -62,25 +61,23 @@ export const removeList = mutation({
 export type TaskView = Doc<"tasks"> & { assignee?: string; creator: string; subtasks: Array<Pick<Doc<"tasks">, "_id" | "title" | "status" | "order">>; commentCount: number; listName?: string; listColor?: Doc<"taskLists">["color"]; matterName?: string; threadSubject?: string; gmailThreadId?: string };
 
 export const list = query({
-  args: { view: v.string(), listId: v.optional(v.id("taskLists")), includeDone: v.optional(v.boolean()), q: v.optional(v.string()) },
-  handler: async (ctx, { view, listId, includeDone, q }): Promise<TaskView[]> => {
+  args: { view: v.string(), listId: v.optional(v.id("taskLists")), includeDone: v.optional(v.boolean()), q: v.optional(v.string()), matterId: v.optional(v.id("matters")) },
+  handler: async (ctx, { view, listId, includeDone, q, matterId }): Promise<TaskView[]> => {
     const user = await requireUser(ctx);
     let rows: Doc<"tasks">[];
     if (q && q.trim().length >= 2) rows = await ctx.db.query("tasks").withSearchIndex("search_title", (s) => s.search("title", q)).take(100);
     else {
       const open = (await ctx.db.query("tasks").withIndex("by_due", (x) => x.eq("status", "open")).collect()).concat(await ctx.db.query("tasks").withIndex("by_due", (x) => x.eq("status", "doing")).collect());
-      const done = includeDone ? (await ctx.db.query("tasks").withIndex("by_due", (x) => x.eq("status", "done")).order("desc").take(100)) : [];
+      const done = includeDone || view === "done" ? (await ctx.db.query("tasks").withIndex("by_due", (x) => x.eq("status", "done")).order("desc").take(100)) : [];
       rows = open.concat(done);
     }
     const now = Date.now();
-    const endOfToday = new Date(); endOfToday.setHours(23, 59, 59, 999);
-    const week = endOfToday.getTime() + 7 * 86_400_000;
-    rows = rows.filter((t) => !t.parentId);
+    rows = rows.filter((t) => !t.parentId && (!matterId || t.matterId === matterId) && (includeDone || view === "done" || t.status !== "done"));
     switch (view) {
       case "inbox": rows = rows.filter((t) => !t.listId); break;
-      case "today": rows = rows.filter((t) => t.dueAt !== undefined && t.dueAt <= endOfToday.getTime()); break;
-      case "week": rows = rows.filter((t) => t.dueAt !== undefined && t.dueAt <= week); break;
-      case "overdue": rows = rows.filter((t) => t.dueAt !== undefined && t.dueAt < now && t.status !== "done"); break;
+      case "today": rows = rows.filter((t) => taskDueBy(t, now)); break;
+      case "week": rows = rows.filter((t) => taskDueBy(t, now, 7)); break;
+      case "overdue": rows = rows.filter((t) => taskOverdue(t, now)); break;
       case "mine": rows = rows.filter((t) => t.assigneeId === user._id); break;
       case "assignedByMe": rows = rows.filter((t) => t.creatorId === user._id && t.assigneeId && t.assigneeId !== user._id); break;
       case "done": rows = rows.filter((t) => t.status === "done"); break;
@@ -178,6 +175,21 @@ export const setStatus = mutation({
 });
 
 export const reorder = mutation({ args: { ids: v.array(v.id("tasks")) }, handler: async (ctx, { ids }) => { await requireUser(ctx); await Promise.all(ids.map((id, i) => ctx.db.patch(id, { order: i }))); } });
+
+/** Dragging on the calendar changes only the due date; it must not clear task details. */
+export const reschedule = mutation({ args: { id: v.id("tasks"), dueAt: v.number() }, handler: async (ctx, { id, dueAt }) => {
+  await requireUser(ctx);
+  if (!Number.isFinite(dueAt)) throw new Error("Choose a valid due date.");
+  if (!await ctx.db.get(id)) throw new Error("Task not found.");
+  await ctx.db.patch(id, { dueAt, updatedAt: Date.now() });
+} });
+
+export const linkMatter = mutation({ args: { id: v.id("tasks"), matterId: v.union(v.id("matters"), v.null()) }, handler: async (ctx, { id, matterId }) => {
+  await requireUser(ctx);
+  if (!await ctx.db.get(id)) throw new Error("Task not found.");
+  if (matterId && !await ctx.db.get(matterId)) throw new Error("Matter not found.");
+  await ctx.db.patch(id, { matterId: matterId ?? undefined, updatedAt: Date.now() });
+} });
 
 export const remove = mutation({
   args: { id: v.id("tasks") },

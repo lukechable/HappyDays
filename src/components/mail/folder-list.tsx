@@ -18,7 +18,7 @@ export type ViewKey = "inbox" | "unread" | "smart:primary" | "smart:newsletter" 
 export const DRAG_MIME = "application/x-happydays-threads";
 export type DropTarget = { view?: ViewKey; labelId?: string };
 
-const VIEWS: Array<{ key: ViewKey; label: string; icon: React.ComponentType<{ className?: string }>; badge?: "overdue" | "assigned" | "inboxUnread" | "drafts" | "spam"; droppable?: boolean }> = [
+export const VIEWS: Array<{ key: ViewKey; label: string; icon: React.ComponentType<{ className?: string }>; badge?: "overdue" | "assigned" | "inboxUnread" | "drafts" | "spam"; droppable?: boolean }> = [
   { key: "inbox", label: "Inbox", icon: Inbox, badge: "inboxUnread", droppable: true },
   { key: "unread", label: "Unread", icon: MailOpen },
   { key: "smart:primary", label: "Smart", icon: Sparkles },

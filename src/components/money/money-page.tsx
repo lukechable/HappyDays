@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { replaceSearch } from "@/lib/shallow";
 import { useSearchParams } from "next/navigation";
 import { useAction, useMutation } from "convex/react";
 import { useQuery } from "convex-helpers/react/cache/hooks";
@@ -32,8 +33,10 @@ export function MoneyPage() {
   const link = useMutation(api.money.linkInvoiceToMatter);
   const markDelivered = useMutation(api.matters.markDelivered);
   const backfill = useAction(api.stripe.backfill);
-  const [flag, setFlag] = useState<Flag>("all");
-  const [q, setQ] = useState("");
+  const flag = (["paid_not_delivered", "delivered_unpaid", "complete", "open"] as const).find(f => f === params.get("flag")) ?? "all";
+  const setFlag = (flag: Flag) => replaceSearch("/money", { flag: flag === "all" ? undefined : flag });
+  const q = params.get("q") ?? "";
+  const setQ = (q: string) => replaceSearch("/money", { q: q || undefined });
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "createdAt", dir: -1 });
   const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -43,7 +46,7 @@ export function MoneyPage() {
     let r = data?.rows ?? [];
     if (matterFilter) r = r.filter((x) => x.matter?._id === matterFilter);
     if (flag !== "all") r = r.filter((x) => x.flag === flag);
-    if (q.trim()) { const n = q.toLowerCase(); r = r.filter((x) => [x.customerName, x.customerEmail, x.number, x.description, x.matter?.name].some((v) => v?.toLowerCase().includes(n))); }
+    if (q.trim()) { const n = q.toLowerCase(); r = r.filter((x) => [x.stripeId, x.customerName, x.customerEmail, x.number, x.description, x.matter?.name].some((v) => v?.toLowerCase().includes(n))); }
     const val = (x: (typeof r)[number]) => sort.key === "deliveredAt" ? x.deliveredAt ?? 0 : sort.key === "customerName" ? x.customerName ?? "" : x[sort.key] ?? "";
     return [...r].sort((a, b) => (val(a) > val(b) ? 1 : val(a) < val(b) ? -1 : 0) * sort.dir);
   }, [data, flag, q, sort, matterFilter]);
@@ -60,16 +63,16 @@ export function MoneyPage() {
       <PageHeader title="Invoices" blurb="Every Stripe invoice next to whether the written report has gone out. Raise report invoices here; bookings pay through Stripe Checkout on their own." actions={<><Button variant="outline" disabled={!setup?.stripe || busy} onClick={async () => { setBusy(true); try { const r = await backfill({}); toast.success(`Refreshed ${r.count} records from Stripe`); } catch (e) { toast.error(errorMessage(e)); } finally { setBusy(false); } }}><RefreshCw className={cn("size-3.5", busy && "animate-spin")} />Sync Stripe</Button><ExportMenu table={exportTable} disabled={!rows.length} /><Button onClick={() => setCreating(true)} disabled={!setup?.stripe}><Plus className="size-3.5" />New invoice</Button></>} />
       {setup && !setup.stripe && <p className="rounded-2xl bg-warning-soft px-4 py-3 text-sm">Stripe isn’t connected. Set STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET on the Convex deployment, then Sync.</p>}
       <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
-        <Kpi label="Paid, report not delivered" value={data?.counts.paidNotDelivered ?? "…"} tone={(data?.counts.paidNotDelivered ?? 0) > 0 ? "warn" : undefined} sub="the client is waiting" />
-        <Kpi label="Delivered, unpaid" value={data?.counts.deliveredUnpaid ?? "…"} tone={(data?.counts.deliveredUnpaid ?? 0) > 0 ? "bad" : undefined} sub="chase these" />
-        <Kpi label="Outstanding" value={data ? aud(data.counts.outstandingCents, { whole: true }) : "…"} sub="open invoices" />
-        <Kpi label="Invoices" value={data?.rows.length ?? "…"} sub="last 300 from Stripe" />
+        <Kpi label="Paid, report not delivered" value={data?.counts.paidNotDelivered ?? "…"} tone={(data?.counts.paidNotDelivered ?? 0) > 0 ? "warn" : undefined} sub="the client is waiting" href="/money?flag=paid_not_delivered" />
+        <Kpi label="Delivered, unpaid" value={data?.counts.deliveredUnpaid ?? "…"} tone={(data?.counts.deliveredUnpaid ?? 0) > 0 ? "bad" : undefined} sub="chase these" href="/money?flag=delivered_unpaid" />
+        <Kpi label="Outstanding" value={data ? aud(data.counts.outstandingCents, { whole: true }) : "…"} sub="open invoices" href="/money?flag=open" />
+        <Kpi label="Invoices" value={data?.rows.length ?? "…"} sub="mirrored from Stripe" href="/money" />
       </div>
       <Panel>
         <div className="mb-3 flex flex-wrap items-center gap-2">
           {([["all", "All"], ["paid_not_delivered", "Paid, not delivered"], ["delivered_unpaid", "Delivered, unpaid"], ["open", "Open"], ["complete", "Complete"]] as const).map(([k, l]) => <button key={k} type="button" onClick={() => setFlag(k)} className={cn("rounded-full px-2.5 py-1 text-xs", flag === k ? "bg-foreground text-background" : "bg-muted text-fg-secondary hover:text-foreground")}>{l}</button>)}
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search client, matter, invoice" className="ml-auto h-8 w-64" />
-          {matterFilter && <Link href="/money" className="text-xs underline">clear matter filter</Link>}
+          {matterFilter && <Link href={`/money${flag === "all" ? "" : `?flag=${flag}`}`} className="text-xs underline">clear matter filter</Link>}
         </div>
         {data === undefined ? <Loading rows={5} /> : rows.length === 0 ? <Empty title={data.rows.length ? "No invoices match" : "No invoices yet"} body={data.rows.length ? "Try another filter." : "Click Sync Stripe to import the last 90 days, or raise a new invoice."} /> : (
           <DataTable head={<>{th("Invoice", "createdAt")}{th("Client", "customerName")}<th>Matter</th>{th("Amount", "amountCents")}{th("Status", "status")}<th>Report</th>{th("Delivered", "deliveredAt")}<th></th></>} minWidth={880}>
@@ -80,7 +83,7 @@ export function MoneyPage() {
                 <td><select value={r.matter?._id ?? ""} onChange={(e) => link({ invoiceId: r._id, matterId: (e.target.value || undefined) as Id<"matters"> | undefined })} className="h-7 max-w-[200px] rounded-md border border-transparent bg-transparent text-xs hover:border-input"><option value="">— link a matter —</option>{(matters ?? []).map((m) => <option key={m._id} value={m._id}>{m.name}</option>)}</select></td>
                 <td className="num">{aud(r.amountCents)}</td>
                 <td><Pill tone={statusTone(r.status)}>{r.status}</Pill>{r.paidAt && <div className="text-[11px] text-fg-tertiary">paid {day(r.paidAt)}</div>}</td>
-                <td>{r.matter ? r.delivered ? <Pill tone="good">delivered</Pill> : <button type="button" onClick={() => markDelivered({ id: r.matter!._id, via: "manual" })} className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-fg-secondary hover:bg-foreground hover:text-background">mark delivered</button> : <span className="text-xs text-fg-quaternary">no matter</span>}</td>
+                <td>{r.matter ? r.matter.status === "closed" ? <Pill>closed</Pill> : r.delivered ? <Pill tone="good">delivered</Pill> : <button type="button" onClick={() => markDelivered({ id: r.matter!._id, via: "manual" })} className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-fg-secondary hover:bg-foreground hover:text-background">mark delivered</button> : <span className="text-xs text-fg-quaternary">no matter</span>}</td>
                 <td className="text-xs text-fg-tertiary">{r.deliveredAt ? <>{day(r.deliveredAt)}<div>{r.deliveredVia}{r.daysInvoiceToDelivery !== undefined ? ` · ${r.daysInvoiceToDelivery}d` : ""}</div></> : "—"}</td>
                 <td><div className="flex justify-end gap-1">{r.hostedUrl && <a href={r.hostedUrl} target="_blank" rel="noreferrer" className="inline-flex size-7 items-center justify-center rounded-md text-fg-secondary hover:bg-muted" title="Open in Stripe" aria-label="Open in Stripe"><ExternalLink className="size-3.5" /></a>}{r.pdfUrl && <a href={r.pdfUrl} className="inline-flex size-7 items-center justify-center rounded-md text-fg-secondary hover:bg-muted" title="Invoice PDF" aria-label="Invoice PDF"><FileText className="size-3.5" /></a>}{r.matter && <Link href={`/matters/${r.matter._id}`} className="text-xs text-fg-tertiary hover:text-foreground">matter</Link>}</div></td>
               </tr>

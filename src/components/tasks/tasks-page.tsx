@@ -1,5 +1,7 @@
 "use client";
 
+import { taskOverdue, taskDueBy } from "../../../convex/lib/taskViews";
+
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { replaceSearch } from "@/lib/shallow";
@@ -35,9 +37,9 @@ const PRI_COLOR: Record<string, string> = { high: "text-error", medium: "text-wa
 /** Tasks: TickTick-style lists on the left, quick add and grouped rows in the middle, detail on the right. */
 export function TasksPage() {
   const params = useSearchParams();
-  const view = (params.get("view") as View | null) ?? "all";
+  const view = ([...SMART.map(s => s.key), "done", "list"].find(v => v === params.get("view")) ?? "all") as View;
   const listId = params.get("list") as Id<"taskLists"> | null;
-  const mode = (params.get("mode") as Mode | null) ?? "list";
+  const mode = (["list", "board", "calendar"].find(m => m === params.get("mode")) ?? "list") as Mode;
   const selected = params.get("task") as Id<"tasks"> | null;
   const setParams = (next: Record<string, string | undefined>) => replaceSearch("/tasks", next);
 
@@ -45,15 +47,17 @@ export function TasksPage() {
   const users = useQuery(api.users.all);
   const lists = useQuery(api.tasks.lists);
   const tagsAll = useQuery(api.tags.list);
-  const tasks = useQuery(api.tasks.list, { view: view === "list" ? "list" : view, listId: listId ?? undefined, includeDone: view === "done" || mode === "board" });
+  const [showDone, setShowDone] = useState(false);
+  const matterId = params.get("matter") as Id<"matters"> | null;
+  const tasks = useQuery(api.tasks.list, { view, listId: listId ?? undefined, includeDone: showDone || view === "done" || mode === "board", matterId: matterId ?? undefined });
   const save = useMutation(api.tasks.save);
   const setStatus = useMutation(api.tasks.setStatus);
+  const reschedule = useMutation(api.tasks.reschedule);
   const saveList = useMutation(api.tasks.saveList);
   const removeList = useMutation(api.tasks.removeList);
   const now = useNow();
   const [quick, setQuick] = useState("");
   const [newList, setNewList] = useState<string | null>(null);
-  const [showDone, setShowDone] = useState(false);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { const t = e.target as HTMLElement; if (t.closest("input, textarea, [contenteditable=true]")) return; if (e.key === "n") { e.preventDefault(); document.getElementById("quick-add")?.focus(); } };
@@ -67,19 +71,17 @@ export function TasksPage() {
     const list = preview.listName ? lists?.lists.find((l) => l.name.toLowerCase() === preview.listName!.toLowerCase()) : listId ? lists?.lists.find((l) => l._id === listId) : undefined;
     const assignee = preview.assigneeFirst ? users?.find((u) => u.first.toLowerCase() === preview.assigneeFirst!.toLowerCase()) : view === "mine" ? me : undefined;
     const tagIds = preview.tags.map((t) => tagsAll?.find((x) => x.name.toLowerCase() === t.toLowerCase())?._id).filter((x): x is Id<"tags"> => !!x);
-    try { await save({ title: preview.title, dueAt: preview.dueAt ?? (view === "today" ? endOfToday(now) : undefined), allDay: preview.allDay, priority: preview.priority, listId: list?._id, assigneeId: assignee?._id, tagIds }); setQuick(""); }
+    try { await save({ matterId: matterId ?? undefined, title: preview.title, dueAt: preview.dueAt ?? (view === "today" ? endOfToday(now) : undefined), allDay: preview.allDay, priority: preview.priority, listId: list?._id, assigneeId: assignee?._id, tagIds }); setQuick(""); }
     catch (e) { toast.error(errorMessage(e)); }
   };
 
   const grouped = useMemo(() => {
     const rows = (tasks ?? []).filter((t) => showDone || view === "done" || t.status !== "done");
-    const end = endOfToday(now);
-    const week = end + 7 * 86_400_000;
     const g: Array<{ key: string; label: string; rows: TaskView[] }> = [
-      { key: "overdue", label: "Overdue", rows: rows.filter((t) => t.status !== "done" && t.dueAt !== undefined && t.dueAt < now && !(t.allDay && t.dueAt >= end - 86_400_000)) },
-      { key: "today", label: "Today", rows: rows.filter((t) => t.status !== "done" && t.dueAt !== undefined && t.dueAt <= end && !(t.dueAt < now && !(t.allDay && t.dueAt >= end - 86_400_000))) },
-      { key: "week", label: "Next 7 days", rows: rows.filter((t) => t.status !== "done" && t.dueAt !== undefined && t.dueAt > end && t.dueAt <= week) },
-      { key: "later", label: "Later", rows: rows.filter((t) => t.status !== "done" && t.dueAt !== undefined && t.dueAt > week) },
+      { key: "overdue", label: "Overdue", rows: rows.filter((t) => taskOverdue(t, now)) },
+      { key: "today", label: "Today", rows: rows.filter((t) => t.status !== "done" && taskDueBy(t, now) && !taskOverdue(t, now)) },
+      { key: "week", label: "Next 7 days", rows: rows.filter((t) => t.status !== "done" && !taskDueBy(t, now) && taskDueBy(t, now, 7)) },
+      { key: "later", label: "Later", rows: rows.filter((t) => t.status !== "done" && t.dueAt !== undefined && !taskDueBy(t, now, 7)) },
       { key: "nodate", label: "No date", rows: rows.filter((t) => t.status !== "done" && t.dueAt === undefined) },
       { key: "done", label: "Completed", rows: rows.filter((t) => t.status === "done") },
     ];
@@ -109,6 +111,10 @@ export function TasksPage() {
         <section className="flex min-h-0 flex-col">
           <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-4 py-2">
             <h1 className="font-display text-xl">{title}</h1>
+            <select aria-label="Task view" className="h-8 max-w-48 rounded border border-input bg-card text-sm lg:hidden" value={view === "list" ? `list:${listId}` : view} onChange={e => { const value = e.target.value; setParams({ view: value.startsWith("list:") ? "list" : value, list: value.startsWith("list:") ? value.slice(5) : undefined, task: undefined }); }}>
+              {SMART.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}<option value="done">Completed</option>{lists?.lists.map(l => <option key={l._id} value={`list:${l._id}`}>{l.name}</option>)}
+            </select>
+            {matterId && <Button size="sm" variant="outline" onClick={() => setParams({ matter: undefined })}>Clear matter filter</Button>}
             <div className="ml-auto flex items-center gap-1 rounded-full bg-muted p-0.5">
               {([["list", Rows3, "List"], ["board", LayoutGrid, "Board"], ["calendar", Calendar, "Calendar"]] as const).map(([m, Icon, label]) => <button key={m} type="button" onClick={() => setParams({ mode: m === "list" ? undefined : m })} className={cn("inline-flex h-7 items-center gap-1 rounded-full px-2.5 text-xs", mode === m ? "bg-card shadow-xs" : "text-fg-tertiary hover:text-foreground")} aria-label={label}><Icon className="size-3.5" /><span className="hidden sm:inline">{label}</span></button>)}
             </div>
@@ -133,7 +139,7 @@ export function TasksPage() {
           <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-8 pt-2 [scrollbar-width:thin]">
             {tasks === undefined ? <div className="space-y-2 pt-2">{[0, 1, 2, 3].map((i) => <div key={i} className="h-10 animate-pulse rounded-lg bg-muted" />)}</div>
               : mode === "board" ? <Board tasks={tasks} selected={selected} onOpen={(id) => setParams({ task: id })} onStatus={(id, s) => setStatus({ id, status: s })} />
-              : mode === "calendar" ? <MonthCalendar tasks={tasks} now={now} onOpen={(id) => setParams({ task: id })} onDrop={(id, dueAt) => save({ id, title: tasks.find((t) => t._id === id)?.title ?? "", dueAt })} />
+              : mode === "calendar" ? <MonthCalendar tasks={tasks} now={now} onOpen={(id) => setParams({ task: id })} onDrop={(id, dueAt) => reschedule({ id, dueAt }).catch(e => toast.error(errorMessage(e)))} />
               : grouped.length === 0 ? <Empty title={view === "done" ? "Nothing completed yet" : "All clear"} body={view === "inbox" ? "Tasks without a list land here." : "Add a task above, or turn an email into one from Mail."} className="mt-6" />
               : grouped.map((g) => (
                 <div key={g.key} className="mb-4">
@@ -156,7 +162,7 @@ export function TasksPage() {
 const endOfToday = (now: number) => { const d = new Date(now); d.setHours(23, 59, 59, 999); return d.getTime(); };
 
 function Row({ t, active, now, onOpen, onToggle }: { t: TaskView; active: boolean; now: number; onOpen: () => void; onToggle: () => void }) {
-  const overdue = t.dueAt !== undefined && t.dueAt < now && t.status !== "done" && !(t.allDay && new Date(t.dueAt).toDateString() === new Date(now).toDateString());
+  const overdue = taskOverdue(t, now);
   const doneSubs = t.subtasks.filter((s) => s.status === "done").length;
   return (
     <li className={cn("hd-row flex items-start gap-2.5 border-b border-border/70 px-3 py-2 last:border-0", active ? "bg-blue-soft shadow-[inset_2px_0_0_var(--blue)]" : "hover:bg-muted/60")}>

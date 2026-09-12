@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { replaceSearch } from "@/lib/shallow";
 import { PrefetchLink } from "@/components/prefetch-link";
 import { useQuery } from "convex-helpers/react/cache/hooks";
 import { X } from "lucide-react";
@@ -22,7 +24,9 @@ type Row = { patientNames?: string[]; appointmentAt: string | null; statusCode: 
 /** Cliniko invoices (read live) beside Stripe payments (mirrored by webhook), with filters, sorting and export. */
 export function PaymentsPage() {
   const [days, setDays] = useState(90);
-  const [status, setStatus] = useState<Status>("all");
+  const params = useSearchParams();
+  const status = (["open", "paid", "closed"].find(s => s === params.get("status")) ?? "all") as Status;
+  const setStatus = (status: Status) => replaceSearch("/bookings/payments", { status: status === "all" ? undefined : status });
   const [customer, setCustomer] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [min, setMin] = useState("");
@@ -38,6 +42,7 @@ export function PaymentsPage() {
   const setup = useQuery(api.settings.setupStatus);
   const invoices = useLive(api.bookings.clinikoInvoices, setup?.cliniko ? { days } : "skip", { ttlMs: 120_000 });
   const money = useQuery(api.money.table);
+  const ledger = useQuery(api.money.transactions);
   const sessions = useQuery(api.bookings.recentSessions);
   const needsReview = sessions?.filter(s => s.fulfillmentStartedAt && s.status !== "booked") ?? [];
   const all: Row[] = useMemo(() => invoices.data ?? [], [invoices.data]);
@@ -73,16 +78,17 @@ export function PaymentsPage() {
     <div className="space-y-5">
       <PageHeader title="Payments" blurb="Prioritise open invoices and investigate nearby bank transfers against appointment dates." actions={<><div className="flex gap-0.5 rounded-full bg-muted p-0.5 text-xs">{[30, 90, 365].map((d) => <button key={d} type="button" onClick={() => setDays(d)} className={cn("h-7 rounded-full px-2.5", days === d ? "bg-card shadow-xs" : "text-fg-tertiary hover:text-foreground")}>{d} days</button>)}</div><ExportMenu table={exportTable} disabled={!rows.length} /></>} />
       <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
-        <Kpi label={filtered ? "Invoices (filtered)" : "Cliniko invoices"} value={invoices.data ? rows.length : "…"} sub={invoices.data ? `${aud(Math.round(sum * 100), { whole: true })} in total` : `last ${days} days`} />
-        <Kpi label="Open in Cliniko" value={invoices.data ? rows.filter((i) => i.statusCode === 10).length : "…"} tone={owing ? "warn" : undefined} sub={invoices.data ? `${aud(Math.round(owing * 100), { whole: true })} open (estimate)` : ""} />
-        <Kpi label="Stripe payments" value={money ? money.payments.length : "…"} sub="online bookings and cards" href="/money" />
-        <Kpi label="Stripe outstanding" value={money ? aud(money.counts.outstandingCents, { whole: true }) : "…"} sub="report invoices" href="/money" />
+        <Kpi label={filtered ? "Invoices (filtered)" : "Cliniko invoices"} value={invoices.data ? rows.length : "…"} sub={invoices.data ? `${aud(Math.round(sum * 100), { whole: true })} in total` : `last ${days} days`} href="#cliniko-invoices" />
+        <Kpi label="Open in Cliniko" value={invoices.data ? rows.filter((i) => i.statusCode === 10).length : "…"} tone={owing ? "warn" : undefined} sub={invoices.data ? `${aud(Math.round(owing * 100), { whole: true })} open (estimate)` : ""} href="/bookings/payments?status=open" />
+        <Kpi label="Stripe payments" value={ledger ? ledger.rows.filter(r => r.kind === "payment" && r.at >= Date.now() - 90 * 86_400_000).length : "…"} sub="last 90 days · bookings and cards" href="/money/transactions?kind=payment" />
+        <Kpi label="Stripe outstanding" value={money ? aud(money.counts.outstandingCents, { whole: true }) : "…"} sub="report invoices" href="/money?flag=open" />
       </div>
       {needsReview.length > 0 && <Panel title="Paid bookings awaiting confirmation" blurb="Check Cliniko and Stripe before creating or retrying a booking; a previous request may have completed despite a network error.">
         <DataTable head={<><th>Patient</th><th>Appointment</th><th>Payment</th><th>Next step</th></>}>
           {needsReview.map(s => <tr key={s._id}><td>{s.patient.firstName} {s.patient.lastName}<div className="text-xs text-fg-tertiary">{s.patient.email}</div></td><td>{day(s.startsAt)}</td><td>{aud(s.amountCents)}<div className="text-xs text-fg-tertiary">{s.stripeCheckoutSessionId}</div></td><td className="max-w-sm whitespace-normal text-xs">{s.status === "paid" ? "Confirmation in progress. Investigate if this persists." : "Automatic confirmation stopped. Review the patient and appointment in Cliniko."}</td></tr>)}
         </DataTable>
       </Panel>}
+      <div id="cliniko-invoices" />
       <Panel title="Cliniko invoices" blurb="Open amounts are invoice totals, not verified balances: Cliniko’s API does not expose partial-payment allocations. Confirm the balance in Cliniko before collecting." actions={<Button size="xs" variant="ghost" onClick={invoices.reload}>{invoices.refreshing ? "Refreshing…" : "Refresh"}</Button>}>
         <div className="mb-2.5 flex flex-wrap items-center gap-1.5">
           <div className="flex gap-0.5 rounded-full bg-muted p-0.5 text-xs">{([["all", "All"], ["open", "Open"], ["paid", "Paid"], ["closed", "Closed"]] as const).map(([k, l]) => <button key={k} type="button" onClick={() => setStatus(k)} className={cn("h-7 rounded-full px-2.5", status === k ? "bg-card shadow-xs" : "text-fg-tertiary hover:text-foreground")}>{l}</button>)}</div>

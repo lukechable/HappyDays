@@ -21,6 +21,8 @@ export function TaskDetail({ id, onClose }: { id: Id<"tasks">; onClose: () => vo
   const task = useQuery(api.tasks.get, { id });
   const lists = useQuery(api.tasks.lists);
   const users = useQuery(api.users.all);
+  const matters = useQuery(api.matters.list, { includeClosed: true });
+  const linkMatter = useMutation(api.tasks.linkMatter);
   const tags = useQuery(api.tags.list);
   const me = useQuery(api.users.me);
   const save = useMutation(api.tasks.save);
@@ -68,6 +70,8 @@ export function TaskDetail({ id, onClose }: { id: Id<"tasks">; onClose: () => vo
           <select value={task.listId ?? ""} onChange={(e) => patch({ listId: (e.target.value || undefined) as Id<"taskLists"> | undefined })} className="h-7 w-fit rounded-md border border-input bg-card px-2 text-xs"><option value="">Inbox</option>{(lists?.lists ?? []).map((l) => <option key={l._id} value={l._id}>{l.name}</option>)}</select>
           <span className="text-xs text-fg-tertiary">Assignee</span>
           <div className="flex gap-1">{(users ?? []).map((u) => <button key={u._id} type="button" onClick={() => patch({ assigneeId: task.assigneeId === u._id ? undefined : u._id })} className={cn("rounded-full px-2 py-0.5 text-[11px]", task.assigneeId === u._id ? "bg-foreground text-background" : "bg-muted text-fg-secondary hover:text-foreground")}>{u.first}</button>)}</div>
+          <label htmlFor="task-matter" className="text-xs text-fg-tertiary">Matter</label>
+          <select id="task-matter" value={task.matterId ?? ""} onChange={e => linkMatter({ id, matterId: (e.target.value || null) as Id<"matters"> | null }).catch(e => toast.error(errorMessage(e)))} className="h-8 min-w-0 rounded-md border border-input bg-card px-2 text-xs"><option value="">No matter</option>{matters?.map(m => <option key={m._id} value={m._id}>{m.name}</option>)}</select>
           <span className="text-xs text-fg-tertiary">Tags</span>
           <div className="flex flex-wrap gap-1">{(tags ?? []).map((t) => { const on = task.tagIds.includes(t._id); return <button key={t._id} type="button" onClick={() => patch({ tagIds: on ? task.tagIds.filter((x) => x !== t._id) : [...task.tagIds, t._id] })} className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px]", on ? TONE_CLASS[t.color] : "bg-muted text-fg-tertiary hover:text-foreground")}><span className={cn("size-1.5 rounded-full", TONE_DOT[t.color])} />{t.name}</button>; })}{tags && tags.length === 0 && <span className="text-[11px] text-fg-quaternary">No tags yet.</span>}</div>
         </div>

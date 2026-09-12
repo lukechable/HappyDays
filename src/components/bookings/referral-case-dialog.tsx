@@ -33,7 +33,7 @@ export function ReferralCaseDialog({ patientId, onClose, onCreated }: { patientI
           <div><Label htmlFor="ref-sessions">Sessions on this referral</Label><Input id="ref-sessions" required type="number" min={1} max={200} step={1} value={sessions} onChange={(e) => setSessions(e.target.value)} /></div>
         </div>
         <div><Label htmlFor="ref-notes">Referral notes / document reference</Label><textarea id="ref-notes" className="w-full rounded-lg border border-input bg-card p-3" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} /></div>
-        <div className="flex gap-2"><Button className="min-h-10" disabled={busy}>{busy ? "Creating…" : "Create case"}</Button><Button type="button" className="min-h-10" variant="outline" disabled={busy} onClick={onClose}>Cancel</Button></div>
+        <div className="flex gap-2"><Button type="submit" className="min-h-10" disabled={busy}>{busy ? "Creating…" : "Create case"}</Button><Button type="button" className="min-h-10" variant="outline" disabled={busy} onClick={onClose}>Cancel</Button></div>
       </form>
     </DialogContent>
   </Dialog>;

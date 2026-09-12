@@ -58,7 +58,7 @@ const AddressChips = ({ label, value, onChange, autoFocus }: { label: string; va
         <input autoFocus={autoFocus} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if ((e.key === "Enter" || e.key === "," || e.key === "Tab") && text.trim()) { e.preventDefault(); add(text); } if (e.key === "Backspace" && !text && value.length) onChange(value.slice(0, -1)); }} onBlur={() => text.trim() && add(text)} className="w-full bg-transparent px-1 py-0.5 outline-none" placeholder={value.length ? "" : "name@example.com"} />
         {suggestions.length > 0 && text && (
           <ul className="absolute left-0 top-full z-20 mt-1 w-72 rounded-lg bg-popover p-1 shadow-md ring-1 ring-border">
-            {suggestions.map((s) => <li key={s.email}><button type="button" onMouseDown={(e) => { e.preventDefault(); onChange([...value, { name: s.name, email: s.email }]); setText(""); }} className="block w-full truncate rounded-md px-2 py-1 text-left text-sm hover:bg-muted">{s.email}</button></li>)}
+            {suggestions.map((s) => <li key={s.email}><button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => { onChange([...value, { name: s.name, email: s.email }]); setText(""); }} className="block w-full truncate rounded-md px-2 py-1 text-left text-sm hover:bg-muted">{s.email}</button></li>)}
           </ul>
         )}
       </div>

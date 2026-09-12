@@ -12,10 +12,10 @@ export const list = query({
     await requireUser(ctx);
     const rows = (await ctx.db.query("matters").collect()).filter((m) => includeClosed || m.status !== "closed").sort((a, b) => b.updatedAt - a.updatedAt);
     const out = [];
-    const extras = await Promise.all(rows.map(async (m) => { const [links, invoices, tasks] = await Promise.all([ctx.db.query("matterLinks").withIndex("by_matter", (q) => q.eq("matterId", m._id)).collect(), ctx.db.query("stripeInvoices").withIndex("by_matter", (q) => q.eq("matterId", m._id)).collect(), ctx.db.query("tasks").withIndex("by_matter", (q) => q.eq("matterId", m._id)).collect()]); return { links, invoices, tasks }; }));
+    const extras = await Promise.all(rows.map(async (m) => { const [threads, files, invoices, tasks] = await Promise.all([ctx.db.query("threads").withIndex("by_matter", q => q.eq("matterId", m._id)).collect(), ctx.db.query("files").withIndex("by_matter", q => q.eq("matterId", m._id)).collect(), ctx.db.query("stripeInvoices").withIndex("by_matter", (q) => q.eq("matterId", m._id)).collect(), ctx.db.query("tasks").withIndex("by_matter", (q) => q.eq("matterId", m._id)).collect()]); return { threads, files: files.filter(f => !files.some(g => g.previousVersionId === f._id)), invoices, tasks }; }));
     for (const [i, m] of rows.entries()) {
-      const { links, invoices, tasks } = extras[i];
-      out.push({ ...m, counts: { threads: links.filter((l) => l.kind === "thread").length, files: links.filter((l) => l.kind === "file").length, tasks: tasks.filter((t) => t.status !== "done").length, invoices: invoices.length }, paid: invoices.some((i) => i.status === "paid"), unpaidCents: invoices.filter((i) => i.status === "open" || i.status === "uncollectible").reduce((s, i) => s + Math.max(0, i.amountDueCents - i.amountPaidCents), 0) });
+      const { threads, files, invoices, tasks } = extras[i];
+      out.push({ ...m, counts: { threads: threads.length, files: files.length, tasks: tasks.filter((t) => !t.parentId && t.status !== "done").length, invoices: invoices.length }, paid: invoices.some((i) => i.status === "paid"), unpaidCents: invoices.filter((i) => i.status === "open" || i.status === "uncollectible").reduce((s, i) => s + Math.max(0, i.amountDueCents - i.amountPaidCents), 0) });
     }
     return out;
   },
@@ -48,7 +48,7 @@ export const get = query({
       ...m,
       deliveredBy: m.reportDeliveredBy ? users.get(m.reportDeliveredBy) : undefined,
       threads: threads.map((t) => ({ threadId: t._id, subject: t.subject, lastMessageAt: t.lastMessageAt, participants: t.participants, repliedBy: (t.repliedByEmails ?? []).map((e) => { const local = e.split("@")[0]; return local.charAt(0).toUpperCase() + local.slice(1); }), gmailThreadId: account ? t.mailboxes.find((x) => x.accountId === account._id)?.gmailThreadId : undefined })),
-      tasks, files: files.map((f) => ({ _id: f._id, name: f.name, size: f.size, mime: f.mime, isReport: f.isReport, createdAt: f.createdAt, version: f.version })), invoices, codes, signatureRequests: sigs,
+      tasks: tasks.filter(t => !t.parentId), files: files.filter(f => !files.some(g => g.previousVersionId === f._id)).map((f) => ({ _id: f._id, name: f.name, size: f.size, mime: f.mime, isReport: f.isReport, createdAt: f.createdAt, version: f.version })), invoices, codes, signatureRequests: sigs,
     };
   },
 });
@@ -67,7 +67,8 @@ export const save = mutation({
 
 export const setStatus = mutation({
   args: { id: v.id("matters"), status },
-  handler: async (ctx, { id, status: s }) => { const user = await requireUser(ctx); await ctx.db.patch(id, { status: s, updatedAt: Date.now() }); await audit(ctx, { userId: user._id, action: "matter.status", subjectKind: "matter", subjectId: id, detail: s }); },
+  handler: async (ctx, { id, status: s }) => { const user = await requireUser(ctx); const matter = await ctx.db.get(id); if (!matter) throw new Error("Matter not found.");
+    await ctx.db.patch(id, { status: s, updatedAt: Date.now(), ...(s === "delivered" && !matter.reportDeliveredAt ? { reportDeliveredAt: Date.now(), reportDeliveredVia: "manual" as const, reportDeliveredBy: user._id } : s === "report_due" ? { reportDeliveredAt: undefined, reportDeliveredVia: undefined, reportDeliveredBy: undefined } : {}) }); await audit(ctx, { userId: user._id, action: "matter.status", subjectKind: "matter", subjectId: id, detail: s }); },
 });
 
 /** Mark the written report delivered. Download codes and Report-tagged sends call this automatically. */
@@ -94,6 +95,10 @@ export const remove = mutation({
     await Promise.all(links.map((l) => ctx.db.delete(l._id)));
     for (const t of await ctx.db.query("threads").withIndex("by_matter", (q) => q.eq("matterId", id)).collect()) await ctx.db.patch(t._id, { matterId: undefined });
     for (const t of await ctx.db.query("tasks").withIndex("by_matter", (q) => q.eq("matterId", id)).collect()) await ctx.db.patch(t._id, { matterId: undefined });
+    for (const table of ["downloadCodes", "signatureRequests", "stripeInvoices", "courtItems"] as const) {
+      for (const row of await ctx.db.query(table).withIndex("by_matter", q => q.eq("matterId", id)).collect()) await ctx.db.patch(row._id, { matterId: undefined });
+    }
+    for (const row of await ctx.db.query("documentSends").collect()) if (row.matterId === id) await ctx.db.patch(row._id, { matterId: undefined });
     for (const f of await ctx.db.query("files").withIndex("by_matter", (q) => q.eq("matterId", id)).collect()) await ctx.db.patch(f._id, { matterId: undefined });
     await ctx.db.delete(id);
     await audit(ctx, { userId: user._id, action: "matter.delete", subjectKind: "matter", subjectId: id });
