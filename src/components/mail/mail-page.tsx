@@ -86,7 +86,7 @@ export function MailPage() {
   const [focused, setFocused] = useState(0);
   const [compose, setCompose] = useState<ComposeDraft | null>(null);
   const [searchText, setSearchText] = useState(q ?? "");
-  const lastChecked = useRef<string | null>(null);
+  const selectionAnchor = useRef<{ key: string; id: string } | null>(null);
   const cachedList = useSyncExternalStore(subscribeLive, () => readLive<MailboxData>(listCacheKey), () => readLive<MailboxData>(""));
   const items = cachedList.data?.items ?? [];
   const nextToken = cachedList.data?.nextToken;
@@ -180,16 +180,20 @@ export function MailPage() {
 
   const toggleCheck = (id: string, shift: boolean) => {
     if (changeLock.current) return;
+    const anchor = selectionAnchor.current?.key === listKey ? selectionAnchor.current.id : id;
+    const a = items.findIndex(i => i.gmailThreadId === anchor);
+    const b = items.findIndex(i => i.gmailThreadId === id);
     setChecked((s) => {
       const n = new Set(s);
-      if (shift && lastChecked.current) { const a = items.findIndex((i) => i.gmailThreadId === lastChecked.current); const b = items.findIndex((i) => i.gmailThreadId === id); if (a >= 0 && b >= 0) for (let i = Math.min(a, b); i <= Math.max(a, b); i++) n.add(items[i].gmailThreadId); }
+      if (shift && a >= 0 && b >= 0) { for (let i = Math.min(a, b); i <= Math.max(a, b); i++) n.add(items[i].gmailThreadId); }
       else if (n.has(id)) n.delete(id); else n.add(id);
-      lastChecked.current = id;
       return n;
     });
+    // Repeated Shift-clicks extend from the original click, including across Load more.
+    if (!shift || selectionAnchor.current?.key !== listKey || a < 0) selectionAnchor.current = { key: listKey, id };
   };
 
-  const open = (id: string) => { setParams({ thread: id }); const i = items.findIndex((x) => x.gmailThreadId === id); if (i >= 0) setFocused(i); };
+  const open = (id: string) => { selectionAnchor.current = { key: listKey, id }; setParams({ thread: id }); const i = items.findIndex((x) => x.gmailThreadId === id); if (i >= 0) setFocused(i); };
   const closeThread = () => { dismissed.current = listKey; setParams({ thread: undefined }); };
   // Outlook's habit: with a reading pane on screen and nothing chosen, the newest conversation is shown until the user picks another.
   const newestId = items[0]?.gmailThreadId;
