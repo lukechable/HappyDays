@@ -3,12 +3,29 @@ export type MailChange = "archive" | "unarchive" | "trash" | "untrash" | "star" 
 /** Apply only server-confirmed changes. Failed IDs remain visible and selected. */
 export function applyMailChange(items: ListItem[], completed: string[], op: MailChange, view: string, labelId?: string, payload?: { add: string[]; remove: string[] }) {
   const ids = new Set(completed);
-  const remove = op === "archive" || op === "trash" || op === "spam" || (op === "unarchive" && view === "archive") || (op === "untrash" && view === "trash") || (op === "labels" && ((view === "label" && !!labelId && payload?.remove.includes(labelId)) || (payload?.remove.includes("INBOX") && (view === "inbox" || view === "unread" || view.startsWith("smart:")))));
-  return items.filter(i => !remove || !ids.has(i.gmailThreadId)).map(i => {
-    if (!ids.has(i.gmailThreadId)) return i;
-    if (op === "star" || op === "unstar") return { ...i, starred: op === "star" };
-    if (op === "unread") return { ...i, unread: true };
-    if (op === "labels" && payload) return { ...i, labelIds: [...new Set([...i.labelIds.filter(l => !payload.remove.includes(l)), ...payload.add])] };
-    return i;
+  const changes = op === "archive" ? { add: [], remove: ["INBOX"] }
+    : op === "unarchive" ? { add: ["INBOX"], remove: ["TRASH", "SPAM"] }
+    : op === "trash" ? { add: ["TRASH"], remove: ["INBOX"] }
+    : op === "untrash" ? { add: [], remove: ["TRASH"] }
+    : op === "spam" ? { add: ["SPAM"], remove: ["INBOX"] }
+    : op === "star" ? { add: ["STARRED"], remove: [] }
+    : op === "unstar" ? { add: [], remove: ["STARRED"] }
+    : op === "unread" ? { add: ["UNREAD"], remove: [] }
+    : payload ?? { add: [], remove: [] };
+  return items.flatMap(i => {
+    if (!ids.has(i.gmailThreadId)) return [i];
+    if (op === "trash" && view === "trash") return []; // Permanent deletion.
+    const labelIds = [...new Set([...(i.labelIds ?? []).filter(l => !changes.remove.includes(l)), ...changes.add])];
+    const has = (label: string) => labelIds.includes(label);
+    const excluded = (view !== "trash" && has("TRASH")) || (view !== "spam" && has("SPAM"));
+    if (excluded) return [];
+    if ((view === "inbox" || view === "unread" || view.startsWith("smart:")) && !has("INBOX")) return [];
+    if (view === "unread" && !has("UNREAD") && !i.unread) return [];
+    const required: Record<string, string> = { starred: "STARRED", drafts: "DRAFT", sent: "SENT", spam: "SPAM", trash: "TRASH" };
+    if (required[view] && !has(required[view])) return [];
+    if (view === "archive" && (has("INBOX") || has("DRAFT"))) return [];
+    if (view === "label" && labelId && !has(labelId)) return [];
+    if (op === "archive" && ["overdue", "assigned", "matter"].includes(view)) return [];
+    return [{ ...i, labelIds, ...(op === "star" || op === "unstar" ? { starred: op === "star" } : {}), ...(op === "unread" ? { unread: true } : {}) }];
   });
 }

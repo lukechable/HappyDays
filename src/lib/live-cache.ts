@@ -14,6 +14,7 @@ export const EMPTY_SLOT: Slot<never> = {};
 
 export const subscribeLive = (l: () => void) => { listeners.add(l); return () => { listeners.delete(l); }; };
 export const readLive = <T,>(key: string): Slot<T> => (store.get(key) as Slot<T> | undefined) ?? (EMPTY_SLOT as Slot<T>);
+export const liveEntries = <T,>(prefix: string): Array<[string, Slot<T>]> => Array.from(store.entries()).filter(([key]) => key.startsWith(prefix)) as Array<[string, Slot<T>]>;
 export function writeLive<T>(key: string, patch: Partial<Slot<T>>) {
   const cur = store.get(key) ?? {};
   store.delete(key); store.set(key, { ...cur, ...patch });
