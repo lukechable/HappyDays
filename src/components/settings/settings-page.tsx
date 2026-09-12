@@ -8,7 +8,7 @@ import { useAction, useMutation } from "convex/react";
 import { useQuery } from "convex-helpers/react/cache/hooks";
 import { toast } from "sonner";
 import { api } from "../../../convex/_generated/api";
-import { DataTable, PageHeader, Panel, Pill, Dot, Facts, Empty, Loading } from "@/components/primitives";
+import { PageHeader, Panel, Pill, Dot, Facts, Empty, Loading } from "@/components/primitives";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -16,7 +16,6 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { ago, aud, TONES, TONE_CLASS, TONE_DOT } from "@/lib/format";
 import { cn, errorMessage } from "@/lib/utils";
-import { siteUrl } from "@/lib/public-url";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { AutoRepliesTab } from "./auto-replies";
 import { FolderRulesTab } from "./folder-rules";
@@ -24,7 +23,7 @@ import { NotificationsTab } from "./notifications-tab";
 import { mailStore } from "@/lib/mail-store";
 import { bytes } from "@/lib/format";
 
-const TABS = [["setup", "Setup"], ["google", "Google"], ["autoreplies", "Auto-replies"], ["folders", "Folder rules"], ["notifications", "Notifications"], ["cliniko", "Cliniko & pricing"], ["stripe", "Stripe"], ["signatures", "Signatures"], ["tags", "Tags"], ["practice", "Practice"]] as const;
+const TABS = [["setup", "Setup"], ["google", "Google"], ["autoreplies", "Auto-replies"], ["folders", "Folder rules"], ["notifications", "Notifications"], ["cliniko", "Cliniko"], ["stripe", "Stripe"], ["signatures", "Signatures"], ["tags", "Tags"], ["practice", "Preferences"]] as const;
 type Tab = (typeof TABS)[number][0];
 
 export function SettingsPage() {
@@ -38,7 +37,7 @@ export function SettingsPage() {
   }, [params]);
   return (
     <div className="space-y-5">
-      <PageHeader title="Settings" blurb="Connections, pricing, signatures and tags. Secrets live on the Convex deployment, never in this page." />
+      <PageHeader title="Settings" blurb="Connections, preferences, signatures and tags. Secrets live on the Convex deployment, never in this page." />
       <div className="flex flex-wrap gap-1 border-b border-border">
         {TABS.map(([key, label]) => <button key={key} type="button" onClick={() => replaceUrl(`/settings?tab=${key}`)} className={cn("-mb-px border-b-2 px-3 py-2 text-sm", tab === key ? "border-foreground font-medium text-foreground" : "border-transparent text-fg-tertiary hover:text-foreground")}>{label}</button>)}
       </div>
@@ -132,32 +131,28 @@ function GoogleTab() {
   );
 }
 
-/* ------------------------------ cliniko + pricing ------------------------------ */
+/* ------------------------------ cliniko ------------------------------ */
 
 type Practice = { businesses: Array<{ id: string; business_name: string; display_name?: string }>; practitioners: Array<{ id: string; first_name: string; last_name: string; designation?: string }>; appointmentTypes: Array<{ id: string; name: string; duration_in_minutes: number; show_in_online_bookings: boolean }> };
 
 function ClinikoTab() {
   const status = useQuery(api.settings.setupStatus);
-  const pricing = useQuery(api.bookings.pricing);
-  const setPricing = useMutation(api.bookings.setPricing);
-  const syncPricing = useAction(api.bookings.syncPricing);
   const settings = useQuery(api.settings.all);
   const setSetting = useMutation(api.settings.set);
   const live = useLive(api.bookings.practice, status?.cliniko ? {} : "skip");
   const practice: Practice | null | undefined = !status ? undefined : !status.cliniko ? null : live.error ? null : live.data;
   const error = live.error ?? null;
-  if (!status || pricing === undefined || practice === undefined) return <Loading rows={5} />;
+  if (!status || practice === undefined) return <Loading rows={5} />;
   return (
     <div className="space-y-4" id="cliniko">
-      <Panel title="Cliniko" blurb={`api.${status.clinikoShard}.cliniko.com · ${status.clinikoSubdomain ?? "subdomain not set"}`} actions={practice && <Button size="sm" variant="outline" onClick={async () => { try { const n = await syncPricing({}); toast.success(`${n} appointment types refreshed`); } catch (e) { toast.error(errorMessage(e)); } }}>Refresh appointment types</Button>}>
+      <Panel title="Cliniko" blurb={`api.${status.clinikoShard}.cliniko.com · ${status.clinikoSubdomain ?? "subdomain not set"}`} actions={practice && <Button size="sm" variant="outline" onClick={live.reload}>Refresh Cliniko</Button>}>
         {!status.cliniko ? <Empty title="No API key yet" body="Set CLINIKO_API_KEY, CLINIKO_SHARD and CLINIKO_SUBDOMAIN on the Convex deployment. The key inherits Luke's permissions." /> : error ? <p className="text-sm text-error">{error}</p> : practice && (
           <div className="grid grid-cols-[minmax(0,1fr)] gap-4 sm:grid-cols-3">
             <Facts items={[["Business", practice.businesses.map((b) => b.display_name || b.business_name).join(", ")], ["Default business id", String(settings?.["cliniko.businessId"] ?? practice.businesses[0]?.id ?? "")]]} />
             <Facts items={[["Practitioners", practice.practitioners.map((p) => `${p.first_name} ${p.last_name}`).join(", ")], ["Default practitioner id", String(settings?.["cliniko.practitionerId"] ?? practice.practitioners[0]?.id ?? "")]]} />
-            <Facts items={[["Appointment types", String(practice.appointmentTypes.length)], ["Priced for online booking", String(pricing.filter((p) => p.bookableOnline && p.mode !== "none").length)]]} />
+            <Facts items={[["Appointment types", String(practice.appointmentTypes.length)]]} />
           </div>
         )}
-        {practice && <IntakeFormSetting value={(settings?.["cliniko.intakeFormTemplateId"] as string | undefined) ?? ""} onChange={(v) => setSetting({ key: "cliniko.intakeFormTemplateId", value: v || null })} />}
         {practice && (
           <div className="mt-4 flex flex-wrap gap-3 text-sm">
             <label className="flex items-center gap-2">Default business<select className="h-8 rounded-lg border border-input bg-card px-2 text-sm" value={String(settings?.["cliniko.businessId"] ?? practice.businesses[0]?.id ?? "")} onChange={(e) => void setSetting({ key: "cliniko.businessId", value: e.target.value })}>{practice.businesses.map((b) => <option key={b.id} value={b.id}>{b.display_name || b.business_name}</option>)}</select></label>
@@ -165,29 +160,8 @@ function ClinikoTab() {
           </div>
         )}
       </Panel>
-      <Panel title="Happy Days checkout overrides" blurb="These settings control this app’s Stripe checkout. Actual Cliniko fees and deposit requirements appear under Appointment Types.">
-        <DataTable head={<><th>Type</th><th>Length</th><th>Cliniko online</th><th>Book here</th><th>Charge here</th><th>Fee</th><th>Deposit</th></>} minWidth={900}>
-          {pricing.map(p => <PricingRow key={`${p._id}:${p.updatedAt}`} p={p} clinikoOnline={practice?.appointmentTypes.find(t => t.id === p.clinikoAppointmentTypeId)?.show_in_online_bookings} onSave={patch => { void setPricing({ id: p._id, mode: patch.mode ?? p.mode, feeCents: patch.feeCents ?? p.feeCents, depositCents: patch.depositCents ?? p.depositCents, bookableOnline: patch.bookableOnline ?? p.bookableOnline }).then(() => toast.success("Checkout settings saved")).catch(e => toast.error(errorMessage(e))); }} />)}
-        </DataTable>
-      </Panel>
       {status.cliniko && <ClinikoUsersPanel />}
     </div>
-  );
-}
-
-export function PricingRow({ p, color, telehealth, clinikoOnline, onSave }: { p: { name: string; durationMinutes: number; mode: "full" | "deposit" | "none"; feeCents: number; depositCents?: number; bookableOnline: boolean }; color?: string; telehealth?: boolean; clinikoOnline?: boolean; onSave: (patch: Partial<{ mode: "full" | "deposit" | "none"; feeCents: number; depositCents: number; bookableOnline: boolean }>) => void }) {
-  const [fee, setFee] = useState((p.feeCents / 100).toFixed(2));
-  const [dep, setDep] = useState(((p.depositCents ?? 0) / 100).toFixed(2));
-  return (
-    <tr>
-      <td className="font-medium"><span className="mr-2 inline-block size-3 rounded-full align-middle ring-1 ring-black/10" style={{ background: color ?? "#0081f2" }} />{p.name}{telehealth && <Pill tone="info" className="ml-1">telehealth</Pill>}</td>
-      <td className="num text-fg-secondary">{p.durationMinutes} min</td>
-      <td>{clinikoOnline ? <Pill tone="good">yes</Pill> : <Pill>no</Pill>}</td>
-      <td><Switch checked={p.bookableOnline} onCheckedChange={(v) => onSave({ bookableOnline: v })} /></td>
-      <td><select className="h-8 rounded-lg border border-input bg-card px-2 text-sm" value={p.mode} onChange={(e) => onSave({ mode: e.target.value as "full" | "deposit" | "none" })}><option value="none">Checkout disabled here</option><option value="full">Full fee</option><option value="deposit">Deposit</option></select></td>
-      <td><Input className="num h-8 w-28" inputMode="decimal" value={fee} onChange={(e) => setFee(e.target.value)} onBlur={() => onSave({ feeCents: Math.round(Number(fee) * 100) || 0 })} /></td>
-      <td><Input className="num h-8 w-28" inputMode="decimal" value={dep} disabled={p.mode !== "deposit"} onChange={(e) => setDep(e.target.value)} onBlur={() => onSave({ depositCents: Math.round(Number(dep) * 100) || 0 })} /></td>
-    </tr>
   );
 }
 
@@ -201,25 +175,13 @@ function LocalDataPanel() {
   );
 }
 
-function IntakeFormSetting({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const templates = useLive(api.bookings.formTemplates, {});
-  return (
-    <div className="mt-4 text-sm">
-      <label className="flex flex-wrap items-center gap-2">Intake form for online bookings
-        <select className="h-8 rounded-lg border border-input bg-card px-2 text-sm" value={value} onChange={(e) => onChange(e.target.value)}><option value="">None</option>{(templates.data ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
-      </label>
-      <p className="mt-1 text-xs text-fg-tertiary">After a paid online booking, this Cliniko form is created against the appointment and its link is emailed from the practice mailbox.</p>
-    </div>
-  );
-}
-
 function ClinikoUsersPanel() {
   const users = useLive(api.bookings.clinikoUsers, {});
   return (
-    <Panel title="Cliniko users" blurb="Who exists in Cliniko, and whose permissions the API key carries." dense>
+    <Panel title="Cliniko users" blurb="Active Cliniko users and the owner of the connected API key." dense>
       {users.error ? <p className="text-sm text-error">{users.error}</p> : !users.data ? <Loading rows={2} /> : (
         <ul className="divide-y divide-border/70 text-sm">
-          {users.data.users.map((u) => <li key={u.id} className="flex items-center gap-2 py-1.5"><span className="font-medium">{u.name}</span><span className="text-xs text-fg-tertiary">{u.email}{u.role ? ` · ${u.role}` : ""}</span>{!u.active && <Pill>inactive</Pill>}{users.data!.apiKeyOwner === u.name && <Pill tone="info">API key owner</Pill>}</li>)}
+          {users.data.users.filter(u => u.active).map((u) => <li key={u.id} className="flex items-center gap-2 py-1.5"><span className="font-medium">{u.name}</span><span className="text-xs text-fg-tertiary">{u.email}{u.role ? ` · ${u.role}` : ""}</span>{users.data!.apiKeyOwner === u.name && <Pill tone="info">API key owner</Pill>}</li>)}
         </ul>
       )}
     </Panel>
@@ -326,30 +288,11 @@ function TagsTab() {
 /* ------------------------------ practice + preferences ------------------------------ */
 
 function PracticeTab() {
-  const settings = useQuery(api.settings.all);
-  const set = useMutation(api.settings.set);
   const me = useQuery(api.users.me);
   const updatePrefs = useMutation(api.users.updatePrefs);
-  const [name, setName] = useState<string | null>(null);
-  const [slug, setSlug] = useState<string | null>(null);
-  if (!settings || !me) return <Loading />;
-  const hours = (settings["practice.hours"] as { start?: number; end?: number; days?: number[]; tz?: string } | undefined) ?? { start: 9, end: 17, days: [1, 2, 3, 4, 5], tz: "Australia/Melbourne" };
-  const site = siteUrl();
+  if (!me) return <Loading />;
   return (
     <div className="space-y-4">
-      <Panel title="Practice" dense>
-        <div className="grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-2">
-          <div><Label htmlFor="pname">Name shown to clients</Label><Input id="pname" value={name ?? (settings["practice.name"] as string | undefined) ?? "Barbara Fraser & Associates"} onChange={(e) => setName(e.target.value)} onBlur={() => name !== null && set({ key: "practice.name", value: name })} /></div>
-          <div><Label htmlFor="pslug">Booking page</Label><div className="flex items-center gap-1 text-sm text-fg-tertiary">{site}/book/<Input id="pslug" className="w-44" value={slug ?? (settings["booking.slug"] as string | undefined) ?? "barbara-fraser"} onChange={(e) => setSlug(e.target.value.replace(/[^a-z0-9-]/gi, "-").toLowerCase())} onBlur={() => slug !== null && set({ key: "booking.slug", value: slug })} /></div></div>
-        </div>
-      </Panel>
-      <Panel title="Business hours" blurb="Used by auto-reply rules that only fire out of hours, and by the booking page." dense>
-        <div className="flex flex-wrap items-center gap-3 text-sm">
-          <label className="flex items-center gap-2">From<select className="h-8 rounded-lg border border-input bg-card px-2" value={hours.start ?? 9} onChange={(e) => set({ key: "practice.hours", value: { ...hours, start: Number(e.target.value) } })}>{Array.from({ length: 24 }, (_, h) => <option key={h} value={h}>{h}:00</option>)}</select></label>
-          <label className="flex items-center gap-2">To<select className="h-8 rounded-lg border border-input bg-card px-2" value={hours.end ?? 17} onChange={(e) => set({ key: "practice.hours", value: { ...hours, end: Number(e.target.value) } })}>{Array.from({ length: 24 }, (_, h) => <option key={h} value={h + 1}>{h + 1}:00</option>)}</select></label>
-          <div className="flex gap-1">{["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d, i) => { const on = (hours.days ?? []).includes(i); return <button key={d} type="button" onClick={() => set({ key: "practice.hours", value: { ...hours, days: on ? (hours.days ?? []).filter((x) => x !== i) : [...(hours.days ?? []), i].sort() } })} className={cn("h-8 rounded-lg px-2.5 text-xs font-medium", on ? "bg-foreground text-background" : "bg-muted text-fg-tertiary")}>{d}</button>; })}</div>
-        </div>
-      </Panel>
       <LocalDataPanel />
       <Panel title="Your preferences" dense>
         <div className="grid grid-cols-[minmax(0,1fr)] gap-4 sm:grid-cols-2">

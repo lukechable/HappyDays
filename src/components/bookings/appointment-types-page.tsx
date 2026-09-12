@@ -20,7 +20,7 @@ export function AppointmentTypesPage() {
       <DataTable head={<><th>Type</th><th>Length</th><th>Online booking</th><th>Payment at booking</th><th className="text-right">Fee incl. tax</th><th className="text-right">Deposit</th><th></th></>} minWidth={900}>
         {types.map(t => <tr key={t.id}><td className="font-medium"><span className="mr-2 inline-block size-3 rounded-full" style={{ background: t.color ?? "#999" }} />{t.name}</td><td className="num whitespace-nowrap">{t.durationMinutes} min</td><td><Pill tone={t.bookableOnline ? "good" : undefined}>{t.bookableOnline ? "Yes" : "No"}</Pill></td><td><Pill tone={t.mode === "deposit_required" ? "warn" : t.mode === "required" ? "good" : undefined}>{modes[t.mode] ?? t.mode}</Pill></td><td className="num text-right">{t.feeCents === null ? "Not supplied" : aud(t.feeCents)}</td><td className="num text-right">{t.mode === "deposit_required" ? t.depositCents === null ? "Not supplied" : aud(t.depositCents) : "—"}</td><td><a href={t.clinikoUrl} target="_blank" rel="noreferrer" className="whitespace-nowrap text-xs hover:underline">Edit in Cliniko ↗</a></td></tr>)}
       </DataTable>
-      <p className="mt-3 text-xs text-fg-tertiary">{types.filter(t => t.mode === "deposit_required").length} types require deposits. Fees use linked billable items and products; patient concessions may change the final invoice. Happy Days checkout overrides are managed in <Link href="/settings?tab=cliniko" className="underline">Settings</Link>.</p>
+      <p className="mt-3 text-xs text-fg-tertiary">{types.filter(t => t.mode === "deposit_required").length} types require deposits. Fees use linked billable items and products; patient concessions may change the final invoice.</p>
     </Panel>}
   </div>;
 }

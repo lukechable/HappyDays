@@ -83,25 +83,6 @@ export const backfill = action({
   },
 });
 
-/** Stripe Checkout for a public booking. Returns the hosted URL; the webhook does the rest. */
-export const createBookingCheckout = internalAction({
-  args: { bookingSessionId: v.id("bookingSessions"), amountCents: v.number(), description: v.string(), customerEmail: v.string(), customerName: v.string(), successUrl: v.string(), cancelUrl: v.string(), expiresAt: v.number() },
-  handler: async (_ctx, a): Promise<{ url: string; id: string }> => {
-    const session = await stripe().checkout.sessions.create({
-      mode: "payment",
-      customer_email: a.customerEmail,
-      line_items: [{ quantity: 1, price_data: { currency: "aud", unit_amount: a.amountCents, product_data: { name: a.description } } }],
-      metadata: { bookingSessionId: a.bookingSessionId, description: a.description, customerName: a.customerName },
-      payment_intent_data: { description: a.description, receipt_email: a.customerEmail },
-      success_url: a.successUrl,
-      cancel_url: a.cancelUrl,
-      expires_at: Math.max(Math.floor(a.expiresAt / 1000), Math.floor(Date.now() / 1000) + 31 * 60),
-    });
-    if (!session.url) throw new Error("Stripe did not return a checkout URL");
-    return { url: session.url, id: session.id };
-  },
-});
-
 /** Raise a Stripe invoice against a matter from the Money page. */
 export const createInvoice = action({
   args: { matterId: v.optional(v.id("matters")), customerEmail: v.string(), customerName: v.string(), description: v.string(), amountCents: v.number(), daysUntilDue: v.number(), send: v.boolean() },

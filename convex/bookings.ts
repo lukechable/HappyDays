@@ -1,4 +1,4 @@
-import { action, internalAction, internalMutation, internalQuery, mutation, query, type ActionCtx } from "./_generated/server";
+import { action, internalAction, internalMutation, internalQuery, query, type ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
@@ -34,7 +34,7 @@ export const practice = action({
   },
 });
 
-/** Actual Cliniko payment settings, kept separate from Happy Days checkout overrides. */
+/** Actual Cliniko payment settings: the source of truth for fees and deposits. */
 export const appointmentPaymentTypes = action({
   args: {},
   handler: async (ctx) => {
@@ -228,7 +228,7 @@ export const clinikoUsers = action({
   handler: async (ctx) => {
     await ctx.runQuery(internal.bookings.requireStaff, {});
     const [users, current] = await Promise.all([cliniko.listUsers(), cliniko.me().catch(() => null)]);
-    return { users: users.map((u) => ({ id: u.id, name: u.display_name || `${u.first_name} ${u.last_name}`, email: u.email, role: u.role, active: u.active !== false })), apiKeyOwner: current ? `${current.first_name} ${current.last_name}` : null };
+    return { users: users.filter(u => u.active !== false).map((u) => ({ id: u.id, name: u.display_name || `${u.first_name} ${u.last_name}`, email: u.email, role: u.role, active: u.active !== false })), apiKeyOwner: current ? `${current.first_name} ${current.last_name}` : null };
   },
 });
 
@@ -278,128 +278,15 @@ export const cancelAppointment = action({
   },
 });
 
-/* ------------------------------ pricing (ours) ------------------------------ */
+/* ------------------------------ Cliniko booking link and legacy receipts ------------------------------ */
 
-export const pricing = query({ args: {}, handler: async (ctx) => { await requireUser(ctx); return await ctx.db.query("appointmentPricing").collect(); } });
-
-/** Pull appointment types from Cliniko and make sure each has a pricing row (default: not bookable online). */
-export const syncPricing = action({
-  args: {},
-  handler: async (ctx) => {
-    await ctx.runQuery(internal.bookings.requireStaff, {});
-    const types = (await refData(ctx, true)).types.filter((t) => !t.archived_at);
-    await ctx.runMutation(internal.bookings.ensurePricingRows, { types: types.map((t) => ({ id: t.id, name: t.name, duration: t.duration_in_minutes, online: !!t.show_in_online_bookings })) });
-    return types.length;
-  },
-});
-
-export const ensurePricingRows = internalMutation({
-  args: { types: v.array(v.object({ id: v.string(), name: v.string(), duration: v.number(), online: v.boolean() })) },
-  handler: async (ctx, { types }) => {
-    for (const t of types) {
-      const row = await ctx.db.query("appointmentPricing").withIndex("by_cliniko", (q) => q.eq("clinikoAppointmentTypeId", t.id)).unique();
-      if (row) await ctx.db.patch(row._id, { name: t.name, durationMinutes: t.duration, updatedAt: Date.now() });
-      else await ctx.db.insert("appointmentPricing", { clinikoAppointmentTypeId: t.id, name: t.name, durationMinutes: t.duration, mode: "none", feeCents: 0, bookableOnline: t.online, updatedAt: Date.now() });
-    }
-  },
-});
-
-export const setPricing = mutation({
-  args: { id: v.id("appointmentPricing"), mode: v.union(v.literal("full"), v.literal("deposit"), v.literal("none")), feeCents: v.number(), depositCents: v.optional(v.number()), bookableOnline: v.boolean() },
-  handler: async (ctx, { id, ...patch }) => {
-    const user = await requireUser(ctx);
-    if (!Number.isSafeInteger(patch.feeCents) || patch.feeCents < 0 || (patch.depositCents !== undefined && (!Number.isSafeInteger(patch.depositCents) || patch.depositCents < 0 || patch.depositCents > patch.feeCents))) throw new Error("Enter valid fees; the deposit cannot exceed the full fee.");
-    if (patch.mode !== "none" && (patch.mode === "deposit" ? patch.depositCents ?? 0 : patch.feeCents) < 100) throw new Error("Online payment must be at least $1.");
-    await ctx.db.patch(id, { ...patch, updatedAt: Date.now() });
-    await audit(ctx, { userId: user._id, action: "bookings.pricing", subjectKind: "appointmentPricing", subjectId: id });
-  },
-});
-
-/* ------------------------------ public booking flow ------------------------------ */
-
-/** What the public page shows: bookable appointment types with their price, practitioners and the business. */
-export const publicOptions = action({
-  args: {},
-  handler: async (ctx) => {
-    const pricing: Doc<"appointmentPricing">[] = await ctx.runQuery(internal.bookings.publicPricing, {});
-    const { businesses, practitioners, types } = await refData(ctx);
-    const priced = new Map<string, Doc<"appointmentPricing">>(pricing.map((p) => [p.clinikoAppointmentTypeId, p]));
-    const business = businesses.find((b) => b.show_in_online_bookings !== false);
-    return {
-      business: business ? { id: business.id, name: business.display_name || business.business_name, address: [business.address_1, business.city, business.state, business.post_code].filter(Boolean).join(", "), timeZone: business.time_zone_identifier ?? "Australia/Melbourne" } : null,
-      practitioners: practitioners.filter((p) => p.active && p.show_in_online_bookings !== false).map((p) => ({ id: p.id, name: `${p.title ? p.title + " " : ""}${p.first_name} ${p.last_name}`, designation: p.designation, description: p.description })),
-      appointmentTypes: types.filter((t) => !t.archived_at && priced.get(t.id)?.bookableOnline && (priced.get(t.id)?.mode ?? "none") !== "none").map((t) => { const p = priced.get(t.id)!; return { id: t.id, name: t.name, description: t.description, durationMinutes: t.duration_in_minutes, telehealth: !!t.telehealth_enabled, feeCents: p.feeCents, mode: p.mode, payNowCents: p.mode === "deposit" ? (p.depositCents ?? 0) : p.feeCents }; }),
-    };
-  },
-});
-
-export const publicPricing = internalQuery({ args: {}, handler: async (ctx): Promise<Doc<"appointmentPricing">[]> => (await ctx.db.query("appointmentPricing").collect()).filter((p) => p.bookableOnline) });
-
-async function publicSelection(ctx: ActionCtx, a: { businessId: string; practitionerId: string; appointmentTypeId: string }) {
-  if (![a.businessId, a.practitionerId, a.appointmentTypeId].every(id => /^\d{1,30}$/.test(id))) throw new Error("Choose a valid appointment.");
-  const [data, pricing] = await Promise.all([refData(ctx), ctx.runQuery(internal.bookings.publicPricing, {})]);
-  const business = data.businesses.find(b => b.show_in_online_bookings !== false);
-  const practitioner = data.practitioners.find(p => p.id === a.practitionerId && p.active && p.show_in_online_bookings !== false);
-  const type = data.types.find(t => t.id === a.appointmentTypeId && !t.archived_at);
-  const price = pricing.find((p: Doc<"appointmentPricing">) => p.clinikoAppointmentTypeId === a.appointmentTypeId && p.mode !== "none");
-  if (business?.id !== a.businessId || !practitioner || !type || !price) throw new Error("This appointment is not available for online booking.");
-  return { price, type, timeZone: business.time_zone_identifier ?? "Australia/Melbourne" };
-}
+/** Cliniko owns availability, prices, deposits and checkout. No Happy Days pricing overrides. */
+export const publicBookingLink = query({ args: {}, handler: async () => ({ url: cliniko.clinikoWebUrl("/bookings") }) });
 
 function bookingDay(date: Date, timeZone: string) { return new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(date); }
 const escapeBookingHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
-export const publicAvailability = action({
-  args: { businessId: v.string(), practitionerId: v.string(), appointmentTypeId: v.string(), from: v.string(), to: v.string() },
-  handler: async (ctx, a) => {
-    if (![a.from, a.to].every(d => /^\d{4}-\d{2}-\d{2}$/.test(d) && Number.isFinite(Date.parse(d))) || Date.parse(a.to) < Date.parse(a.from) || Date.parse(a.to) - Date.parse(a.from) > 31 * 86_400_000 || Date.parse(a.from) < Date.now() - 2 * 86_400_000 || Date.parse(a.to) > Date.now() + 730 * 86_400_000) throw new Error("Choose a date range of up to 31 days.");
-    await publicSelection(ctx, a);
-    const times = await cliniko.availableTimes(a.businessId, a.practitionerId, a.appointmentTypeId, a.from, a.to);
-    return times.map((t) => t.appointment_start);
-  },
-});
-
-export const startPublicBooking = action({
-  args: { businessId: v.string(), practitionerId: v.string(), appointmentTypeId: v.string(), startsAt: v.string(), patient: v.object({ firstName: v.string(), lastName: v.string(), email: v.string(), phone: v.optional(v.string()), dob: v.optional(v.string()), notes: v.optional(v.string()) }), origin: v.string() },
-  handler: async (ctx, a): Promise<{ url: string }> => {
-    const { price: pricing, type, timeZone } = await publicSelection(ctx, a);
-    if (!pricing || pricing.mode === "none") throw new Error("This appointment type can't be booked online.");
-    const amount = pricing.mode === "deposit" ? (pricing.depositCents ?? 0) : pricing.feeCents;
-    if (!Number.isSafeInteger(amount) || amount < 100) throw new Error("This appointment type has no price set.");
-    const start = new Date(a.startsAt);
-    const end = new Date(start.getTime() + type.duration_in_minutes * 60_000);
-    const holdMinutes = 32;
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(a.patient.email) || !a.patient.firstName.trim() || !a.patient.lastName.trim()) throw new Error("Please enter your name and a valid email address.");
-    if (Number.isNaN(start.getTime()) || start.getTime() < Date.now()) throw new Error("That time has passed. Pick another.");
-    if ([a.patient.firstName, a.patient.lastName].some(n => n.length > 100) || a.patient.email.length > 254 || (a.patient.phone?.length ?? 0) > 40 || (a.patient.notes?.length ?? 0) > 4000 || (a.patient.dob && (!/^\d{4}-\d{2}-\d{2}$/.test(a.patient.dob) || !Number.isFinite(Date.parse(a.patient.dob)) || Date.parse(a.patient.dob) > Date.now()))) throw new Error("Please check your contact details.");
-    if (start.getTime() > Date.now() + 730 * 86_400_000) throw new Error("Choose an appointment within the next two years.");
-    const origin = process.env.APP_URL;
-    if (!origin || new URL(origin).origin !== new URL(a.origin).origin) throw new Error("Open the booking page from the practice website.");
-    const day = bookingDay(start, timeZone);
-    const slots = await cliniko.availableTimes(a.businessId, a.practitionerId, a.appointmentTypeId, day, day);
-    if (!slots.some(t => Date.parse(t.appointment_start) === start.getTime())) throw new Error("That time is no longer available. Pick another.");
-    const sessionId = await ctx.runMutation(internal.bookings.createSession, { businessId: a.businessId, practitionerId: a.practitionerId, appointmentTypeId: a.appointmentTypeId, startsAt: start.toISOString(), endsAt: end.toISOString(), patient: a.patient, amountCents: amount, mode: pricing.mode, expiresAt: Date.now() + holdMinutes * 60_000 });
-    const checkout = await ctx.runAction(internal.stripe.createBookingCheckout, { bookingSessionId: sessionId, amountCents: amount, description: `${pricing.name}${pricing.mode === "deposit" ? " (deposit)" : ""} — ${start.toLocaleString("en-AU", { timeZone: "Australia/Melbourne", dateStyle: "medium", timeStyle: "short" })}`, customerEmail: a.patient.email, customerName: `${a.patient.firstName} ${a.patient.lastName}`, successUrl: `${new URL(origin).origin}/book/done?session=${sessionId}`, cancelUrl: `${new URL(origin).origin}/book?cancelled=1`, expiresAt: Date.now() + holdMinutes * 60_000 });
-    await ctx.runMutation(internal.bookings.attachCheckout, { bookingSessionId: sessionId, stripeCheckoutSessionId: checkout.id });
-    return { url: checkout.url };
-  },
-});
-
-export const pendingForEmail = internalQuery({
-  args: { email: v.string() },
-  handler: async (ctx, { email }) => (await ctx.db.query("bookingSessions").withIndex("by_status", (q) => q.eq("status", "pending").gt("expiresAt", Date.now() - 3_600_000)).collect()).filter((s) => s.patient.email.toLowerCase() === email).length,
-});
-
-export const createSession = internalMutation({
-  args: { businessId: v.string(), practitionerId: v.string(), appointmentTypeId: v.string(), startsAt: v.string(), endsAt: v.string(), patient: v.object({ firstName: v.string(), lastName: v.string(), email: v.string(), phone: v.optional(v.string()), dob: v.optional(v.string()), notes: v.optional(v.string()) }), amountCents: v.number(), mode: v.union(v.literal("full"), v.literal("deposit")), expiresAt: v.number() },
-  handler: async (ctx, a) => {
-    const open = await ctx.db.query("bookingSessions").withIndex("by_status", q => q.eq("status", "pending").gt("expiresAt", Date.now())).collect();
-    if (open.filter(s => s.patient.email.toLowerCase() === a.patient.email.toLowerCase()).length >= 5) throw new Error("Too many booking attempts. Please try again later.");
-    if (open.some(s => s.practitionerId === a.practitionerId && Date.parse(s.startsAt) < Date.parse(a.endsAt) && Date.parse(s.endsAt) > Date.parse(a.startsAt))) throw new Error("That appointment is being booked. Choose another time or try again shortly.");
-    return await ctx.db.insert("bookingSessions", { ...a, status: "pending", createdAt: Date.now() });
-  },
-});
-export const attachCheckout = internalMutation({ args: { bookingSessionId: v.id("bookingSessions"), stripeCheckoutSessionId: v.string() }, handler: async (ctx, a) => { await ctx.db.patch(a.bookingSessionId, { stripeCheckoutSessionId: a.stripeCheckoutSessionId }); } });
+// Existing Stripe checkout receipts/webhooks remain valid; no new checkout sessions can be created here.
 export const markFailed = internalMutation({ args: { bookingSessionId: v.id("bookingSessions"), error: v.string() }, handler: async (ctx, a) => { const s = await ctx.db.get(a.bookingSessionId); if (s && s.status === "pending") await ctx.db.patch(a.bookingSessionId, { status: "failed", error: a.error }); } });
 export const sessionById = internalQuery({ args: { id: v.id("bookingSessions") }, handler: async (ctx, { id }) => await ctx.db.get(id) });
 export const finishSession = internalMutation({
@@ -444,7 +331,8 @@ export const completePaid = internalAction({
         // Remember the patient now so a retry after an appointment failure never creates a second record.
         await ctx.runMutation(internal.bookings.finishSession, { id: s._id, status: "paid", clinikoPatientId: patientId });
       }
-      const { timeZone } = await publicSelection(ctx, s);
+      const { businesses } = await refData(ctx);
+      const timeZone = businesses.find(b => b.id === s.businessId)?.time_zone_identifier ?? "Australia/Melbourne";
       const day = bookingDay(new Date(s.startsAt), timeZone);
       const slots = await cliniko.availableTimes(s.businessId, s.practitionerId, s.appointmentTypeId, day, day);
       if (!slots.some(t => Date.parse(t.appointment_start) === Date.parse(s.startsAt))) throw new Error("Payment received, but the appointment time needs staff confirmation.");

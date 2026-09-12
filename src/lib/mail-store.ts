@@ -66,5 +66,12 @@ export function scopedMailStore(scope: string) {
     getThread: <T,>(id: string) => mailStore.getThread<T>(prefix + id),
     putThread: (id: string, data: unknown, text: string) => mailStore.putThread(prefix + id, data, text),
     search: (q: string, limit?: number) => mailStore.search(q, limit, prefix),
+    async invalidate(completed: string[], removeBodies: boolean) {
+      try {
+        const keys = await tx<IDBValidKey[]>("lists", "readonly", s => s.getAllKeys());
+        await Promise.all(keys.filter(k => String(k).startsWith(prefix)).map(k => tx("lists", "readwrite", s => s.delete(k))));
+        if (removeBodies) await Promise.all(completed.map(id => mailStore.deleteThread(prefix + id)));
+      } catch { /* local cache unavailable */ }
+    },
   };
 }

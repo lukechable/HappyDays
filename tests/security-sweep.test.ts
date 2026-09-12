@@ -72,12 +72,10 @@ test("signed upload uses actual storage metadata and rejects a forged PDF", asyn
   expect((await t.query(api.signatures.publicByToken, { token }))?.status).toBe("signed");
 });
 
-test("concurrent booking holds and payment webhooks are claimed once", async () => {
+test("legacy payment webhooks are claimed once and uncertain external writes are not replayed", async () => {
   const { t } = await setup();
   const session = { businessId: "1", practitionerId: "2", appointmentTypeId: "3", startsAt: "2026-10-01T00:00:00Z", endsAt: "2026-10-01T01:00:00Z", patient: { firstName: "Test", lastName: "Patient", email: "test@example.test" }, mode: "full" as const, amountCents: 20000, expiresAt: Date.now() + 60_000 };
-  const holds = await Promise.allSettled([t.mutation(internal.bookings.createSession, session), t.mutation(internal.bookings.createSession, session)]);
-  expect(holds.filter(h => h.status === "fulfilled")).toHaveLength(1);
-  const id = (await t.run(ctx => ctx.db.query("bookingSessions").first()))!._id;
+  const id = await t.run(ctx => ctx.db.insert("bookingSessions", { ...session, status: "pending", createdAt: Date.now() }));
   const claims = await Promise.all([t.mutation(internal.bookings.claimPaid, { id, checkoutId: "cs_test" }), t.mutation(internal.bookings.claimPaid, { id, checkoutId: "cs_test" })]);
   expect(claims.filter(Boolean)).toHaveLength(1);
   await t.mutation(internal.bookings.finishSession, { id, status: "failed", error: "Network result uncertain" });

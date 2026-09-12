@@ -33,6 +33,7 @@ import type * as lib_rebateRules from "../lib/rebateRules.js";
 import type * as lib_smartMail from "../lib/smartMail.js";
 import type * as lib_tyro from "../lib/tyro.js";
 import type * as mail from "../mail.js";
+import type * as mailQuota from "../mailQuota.js";
 import type * as matters from "../matters.js";
 import type * as money from "../money.js";
 import type * as notifications from "../notifications.js";
@@ -82,6 +83,7 @@ declare const fullApi: ApiFromModules<{
   "lib/smartMail": typeof lib_smartMail;
   "lib/tyro": typeof lib_tyro;
   mail: typeof mail;
+  mailQuota: typeof mailQuota;
   matters: typeof matters;
   money: typeof money;
   notifications: typeof notifications;

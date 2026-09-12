@@ -291,6 +291,7 @@ export default defineSchema({
   }).index("by_user", ["userId", "readAt", "createdAt"]),
 
   /** How each Cliniko appointment type is charged. Cliniko is the source for the type itself. */
+  // Retained historical rows only. Override reads/writes and custom booking checkout have been removed.
   appointmentPricing: defineTable({
     clinikoAppointmentTypeId: v.string(),
     name: v.string(),

@@ -21,7 +21,8 @@ import { quoteHtml, textToHtml, sanitiseForEditor } from "@/lib/sanitise";
 import { Button } from "@/components/ui/button";
 import { Empty } from "@/components/primitives";
 import { useLive, useMediaQuery, useStored, useCacheScope } from "@/lib/hooks";
-import { readLive, subscribeLive, writeLive } from "@/lib/live-cache";
+import { dropLive, readLive, subscribeLive, writeLive } from "@/lib/live-cache";
+import { applyMailChange, type MailChange } from "@/lib/mail-change";
 import { gmailRead, COST } from "@/lib/gmail-budget";
 import { scopedMailStore, threadText } from "@/lib/mail-store";
 import { replaceSearch } from "@/lib/shallow";
@@ -72,7 +73,15 @@ export function MailPage() {
   const [appending, setAppending] = useState(false);
   const labels = labelsLive.data as Label[] | undefined;
   const [threadState, setThreadState] = useState<{ id: string; thread?: ThreadData; error?: string }>({ id: "" });
-  const [checked, setChecked] = useState<Set<string>>(new Set());
+  const [checkedState, setCheckedState] = useState<{ key: string; ids: Set<string> }>({ key: "", ids: new Set() });
+  const checked = checkedState.key === listKey ? checkedState.ids : new Set<string>();
+  const setChecked = (value: Set<string> | ((ids: Set<string>) => Set<string>)) => setCheckedState(cur => ({ key: listKey, ids: typeof value === "function" ? value(cur.key === listKey ? cur.ids : new Set()) : value }));
+  const [changing, setChanging] = useState(false);
+  const changeLock = useRef(false);
+  const activeListKey = useRef(listKey);
+  useEffect(() => { activeListKey.current = listKey; }, [listKey]);
+  const activeThreadId = useRef(selectedId);
+  useEffect(() => { activeThreadId.current = selectedId; }, [selectedId]);
   const [focused, setFocused] = useState(0);
   const [compose, setCompose] = useState<ComposeDraft | null>(null);
   const [searchText, setSearchText] = useState(q ?? "");
@@ -88,7 +97,10 @@ export function MailPage() {
   const thread = threadState.id === selectedId ? threadState.thread : undefined;
   const threadError = threadState.id === selectedId ? threadState.error : undefined;
   const threadLoading = !!selectedId && threadState.id !== selectedId;
-  const setItems = (fn: (cur: ListItem[]) => ListItem[]) => setList((cur) => { const next = { ...cur, key: listKey, items: fn(cur.key === listKey ? cur.items : items) }; writeLive(listCacheKey, { data: { items: next.items, nextToken: next.nextToken, missing: next.missing } }); return next; });
+  const setItems = (fn: (cur: ListItem[]) => ListItem[]) => setList(cur => ({ key: listKey, tick, missing: cur.key === listKey ? cur.missing : missing, nextToken: cur.key === listKey ? cur.nextToken : nextToken, items: fn(cur.key === listKey ? cur.items : items) }));
+  useEffect(() => {
+    if (list.key === listKey && list.tick === tick) writeLive(listCacheKey, { data: { items: list.items, nextToken: list.nextToken, missing: list.missing }, fetchedAt: Date.now() });
+  }, [list, listKey, listCacheKey, tick]);
   const setThread = (t: ThreadData | undefined) => setThreadState((cur) => ({ ...cur, thread: t }));
 
   const meta = useQuery(api.mail.meta, connected && items.length ? { gmailThreadIds: items.map((i) => i.gmailThreadId) } : "skip") ?? {};
@@ -136,15 +148,16 @@ export function MailPage() {
     // The shell may already be fetching this list (Prefetch); show its result rather than asking Gmail twice.
     if (tick === 0 && cached.inflight) { let live = true; void cached.inflight.then(() => { if (live && !readLive(listCacheKey).fetchedAt) setTick((t) => t + 1); }); return () => { live = false; }; }
     let live = true;
+    const request = pageRequest.current;
     const controller = new AbortController();
     const args = JSON.parse(listKey) as { view: ViewKey; labelId?: string; q?: string };
     gmailRead(COST.list, () => listThreads({ view: args.view, labelId: args.labelId, q: args.q }), { signal: controller.signal }).then((r) => {
-      if (!live) return;
+      if (!live || request !== pageRequest.current) return;
       const data = { items: r.items, nextToken: r.nextPageToken, missing: r.missing ?? 0 };
       writeLive(listCacheKey, { data, fetchedAt: Date.now() });
       if (args.view !== "search") void mailStore.putList(listCacheKey, { ...data, fetchedAt: Date.now() });
-      setList({ key: listKey, items: r.items, nextToken: r.nextPageToken, missing: r.missing ?? 0, tick }); setChecked(new Set()); setFocused(0);
-    }).catch((e: unknown) => { if (live) setList({ key: listKey, items: cached.data?.items ?? [], error: errorMessage(e), missing: 0, tick }); });
+      setList({ key: listKey, items: r.items, nextToken: r.nextPageToken, missing: r.missing ?? 0, tick }); setFocused(f => Math.min(f, Math.max(0, r.items.length - 1)));
+    }).catch((e: unknown) => { if (live && request === pageRequest.current) setList({ key: listKey, items: cached.data?.items ?? [], error: errorMessage(e), missing: 0, tick }); });
     return () => { live = false; controller.abort(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [listKey, tick, connected, listThreads]);
@@ -174,12 +187,13 @@ export function MailPage() {
       if (!useCached) writeLive(`mail:thread:${scope}:${selectedId}`, { data: t, fetchedAt: Date.now() });
       setThreadState({ id: selectedId, thread: t });
       const unread = t.messages.filter((m) => m.unread).map((m) => m.gmailMessageId);
-      if (unread.length) { void markRead({ gmailMessageIds: unread, read: true }); setList((cur) => ({ ...cur, items: cur.items.map((i) => (i.gmailThreadId === selectedId ? { ...i, unread: false } : i)) })); }
+      if (unread.length) { void markRead({ gmailMessageIds: unread, read: true }).then(() => { if (live) setList((cur) => ({ ...cur, items: cur.items.map((i) => (i.gmailThreadId === selectedId ? { ...i, unread: false } : i)) })); }).catch(e => { if (live) toast.error(errorMessage(e)); }); }
     }).catch((e: unknown) => { if (live) setThreadState({ id: selectedId, error: errorMessage(e) }); });
     return () => { live = false; controller.abort(); };
   }, [selectedId, connected, getThread, markRead, scope, mailStore]);
 
   const toggleCheck = (id: string, shift: boolean) => {
+    if (changeLock.current) return;
     setChecked((s) => {
       const n = new Set(s);
       if (shift && lastChecked.current) { const a = items.findIndex((i) => i.gmailThreadId === lastChecked.current); const b = items.findIndex((i) => i.gmailThreadId === id); if (a >= 0 && b >= 0) for (let i = Math.min(a, b); i <= Math.max(a, b); i++) n.add(items[i].gmailThreadId); }
@@ -194,43 +208,43 @@ export function MailPage() {
   // Outlook's habit: with a reading pane on screen and nothing chosen, the newest conversation is shown until the user picks another.
   const newestId = items[0]?.gmailThreadId;
   useEffect(() => {
-    if (!wide || selectedId || !newestId || dismissed.current === listKey) return;
+    if (!wide || selectedId || !newestId || checked.size || changing || dismissed.current === listKey) return;
     setParams({ thread: newestId });
-  }, [wide, selectedId, newestId, listKey, setParams]);
+  }, [wide, selectedId, newestId, listKey, setParams, checked.size, changing]);
 
-  const act = async (ids: string[], op: "archive" | "unarchive" | "trash" | "untrash" | "star" | "unstar" | "unread" | "spam" | "labels", payload?: { add: string[]; remove: string[] }) => {
-    if (!ids.length) return;
-    const removeFromList = op === "archive" || op === "trash" || op === "spam" || (op === "unarchive" && view === "archive") || (op === "untrash" && view === "trash");
-    const prev = list;
-    if (removeFromList) { setItems((cur) => cur.filter((i) => !ids.includes(i.gmailThreadId))); if (ids.includes(selectedId ?? "")) closeThread(); }
-    if (op === "star" || op === "unstar") setItems((cur) => cur.map((i) => (ids.includes(i.gmailThreadId) ? { ...i, starred: op === "star" } : i)));
-    if (op === "unread") { setItems((cur) => cur.map((i) => (ids.includes(i.gmailThreadId) ? { ...i, unread: true } : i))); if (ids.includes(selectedId ?? "")) closeThread(); }
+  const act = async (ids: string[], op: MailChange, payload?: { add: string[]; remove: string[] }): Promise<boolean> => {
+    if (!ids.length || changeLock.current) return false;
+    changeLock.current = true; setChanging(true);
+    const requestKey = listKey;
     try {
-      if (op === "archive") await modify({ gmailThreadIds: ids, remove: ["INBOX"] });
-      else if (op === "unarchive") await modify({ gmailThreadIds: ids, add: ["INBOX"], remove: ["TRASH", "SPAM"] });
-      else if (op === "trash") await modify({ gmailThreadIds: ids, op: view === "trash" ? "deleteForever" : "trash" });
-      else if (op === "untrash") await modify({ gmailThreadIds: ids, op: "untrash" });
-      else if (op === "star") await modify({ gmailThreadIds: ids, add: ["STARRED"] });
-      else if (op === "unstar") await modify({ gmailThreadIds: ids, remove: ["STARRED"] });
-      else if (op === "unread") await modify({ gmailThreadIds: ids, add: ["UNREAD"] });
-      else if (op === "spam") await modify({ gmailThreadIds: ids, add: ["SPAM"], remove: ["INBOX"] });
-      else if (op === "labels" && payload) {
-        await modify({ gmailThreadIds: ids, add: payload.add, remove: payload.remove });
-        if (thread && ids.includes(thread.gmailThreadId)) setThread({ ...thread, labelIds: [...thread.labelIds.filter((l) => !payload.remove.includes(l)), ...payload.add] });
-        const leaves = (view === "label" && labelId && payload.remove.includes(labelId)) || (payload.remove.includes("INBOX") && (view === "inbox" || view === "unread" || view.startsWith("smart:")));
-        if (leaves) { setItems((cur) => cur.filter((i) => !ids.includes(i.gmailThreadId))); if (ids.includes(selectedId ?? "")) closeThread(); }
-        else setItems((cur) => cur.map((i) => (ids.includes(i.gmailThreadId) ? { ...i, labelIds: [...i.labelIds.filter((l) => !payload.remove.includes(l)), ...payload.add] } : i)));
-        refreshLabels();
+      const args = op === "archive" ? { remove: ["INBOX"] } : op === "unarchive" ? { add: ["INBOX"], remove: ["TRASH", "SPAM"] } : op === "trash" ? { op: view === "trash" ? "deleteForever" as const : "trash" as const } : op === "untrash" ? { op: "untrash" as const } : op === "star" ? { add: ["STARRED"] } : op === "unstar" ? { remove: ["STARRED"] } : op === "unread" ? { add: ["UNREAD"] } : op === "spam" ? { add: ["SPAM"], remove: ["INBOX"] } : payload ?? {};
+      const result = await modify({ gmailThreadIds: ids, ...args });
+      if (result.completedIds.length) {
+        // Invalidate pending list requests before they can restore deleted rows.
+        if (activeListKey.current === requestKey) pageRequest.current++;
+        dropLive("mail:list:");
+        for (const id of result.completedIds) dropLive(`mail:thread:${scope}:${id}`);
+        void mailStore.invalidate(result.completedIds, op === "trash" || op === "spam");
+        if (activeListKey.current === requestKey) {
+          setItems(cur => applyMailChange(cur, result.completedIds, op, view, labelId, payload));
+          setChecked(cur => new Set([...cur].filter(id => !result.completedIds.includes(id))));
+          const selectedRemoved = selectedId && result.completedIds.includes(selectedId) && (op === "unread" || !applyMailChange(items, result.completedIds, op, view, labelId, payload).some(i => i.gmailThreadId === selectedId));
+          if (selectedRemoved && activeThreadId.current === selectedId) closeThread();
+          if (op === "labels") {
+            if (payload) setThreadState(cur => cur.thread && result.completedIds.includes(cur.id) ? { ...cur, thread: { ...cur.thread, labelIds: [...new Set([...cur.thread.labelIds.filter(l => !payload.remove.includes(l)), ...payload.add])] } } : cur);
+            refreshLabels();
+          }
+        }
       }
-      setChecked(new Set());
-      if (op === "trash" && view === "trash") toast.success("Deleted forever");
-    } catch (e) { setList(prev); toast.error(errorMessage(e)); }
+      if (result.failedIds.length) { toast.error(errorMessage(result.error), { description: result.completedIds.length ? `${result.completedIds.length} changed. Gmail did not confirm ${result.failedIds.length}; refresh and review the remaining selection before retrying.` : "Gmail did not confirm the change. Refresh and review the selection before retrying." }); return false; }
+      if (op === "trash") toast.success(view === "trash" ? "Deleted forever" : `${result.completedIds.length} conversation${result.completedIds.length === 1 ? "" : "s"} moved to Trash`);
+      return true;
+    } catch (e) { toast.error(errorMessage(e)); return false; }
+    finally { changeLock.current = false; setChanging(false); }
   };
 
-  /** "Move to folder": add the label and take the conversation out of the inbox, the way Gmail's Move to works. */
   const moveTo = async (ids: string[], label: Label) => {
-    await act(ids, "labels", { add: [label.id], remove: ["INBOX"] });
-    toast.success(ids.length === 1 ? `Moved to ${label.name}` : `Moved ${ids.length} conversations to ${label.name}`);
+    if (await act(ids, "labels", { add: [label.id], remove: ["INBOX"] })) toast.success(ids.length === 1 ? `Moved to ${label.name}` : `Moved ${ids.length} conversations to ${label.name}`);
   };
   const onDropThreads = (target: DropTarget, ids: string[]) => {
     if (target.labelId) { const l = labels?.find((x) => x.id === target.labelId); if (l) void moveTo(ids, l); return; }
@@ -284,7 +298,8 @@ export function MailPage() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
-      if (compose || e.metaKey || e.ctrlKey || e.altKey || t.closest("input, textarea, [contenteditable=true], [role=dialog]")) return;
+      if (compose || e.metaKey || e.ctrlKey || e.altKey || t.closest("input:not([type=checkbox]), textarea, [contenteditable=true], [role=dialog]")) return;
+      if (changeLock.current || e.repeat) return;
       const cur = items[focused];
       const key = e.key;
       if (key === "j" || key === "ArrowDown") { e.preventDefault(); setFocused((f) => Math.min(items.length - 1, f + 1)); }
@@ -294,7 +309,7 @@ export function MailPage() {
       else if (key === "c") { e.preventDefault(); setCompose({ mode: "new", to: [], cc: [], bcc: [], subject: "", html: "" }); }
       else if (key === "/") { e.preventDefault(); document.getElementById("mail-search")?.focus(); }
       else if (key === "e" && (selectedId || cur)) void act(selectedId ? [selectedId] : [cur!.gmailThreadId], "archive");
-      else if (key === "#" && (selectedId || cur)) void act(selectedId ? [selectedId] : [cur!.gmailThreadId], "trash");
+      else if ((key === "#" || key === "Delete" || key === "Backspace") && (checked.size || selectedId || cur)) { e.preventDefault(); void act(checked.size ? [...checked] : selectedId ? [selectedId] : [cur!.gmailThreadId], "trash"); }
       else if (key === "s" && cur) void act([cur.gmailThreadId], cur.starred ? "unstar" : "star");
       else if (key === "u" && (selectedId || cur)) void act(selectedId ? [selectedId] : [cur!.gmailThreadId], "unread");
       else if (key === "x" && cur) toggleCheck(cur.gmailThreadId, false);
@@ -357,11 +372,11 @@ export function MailPage() {
         </form>
         {checked.size > 0 && (
           <div className="flex items-center gap-1 rounded-full bg-muted px-2 py-1 text-xs">
-            <span className="num px-1 font-medium">{checked.size} selected</span>
-            <Button size="xs" variant="ghost" onClick={() => act(selectedIds, "archive")}><Archive className="size-3.5" />Archive</Button>
-            <Button size="xs" variant="ghost" onClick={() => act(selectedIds, "trash")}><Trash2 className="size-3.5" />Delete</Button>
-            <Button size="xs" variant="ghost" onClick={() => act(selectedIds, "unread")}><MailOpen className="size-3.5" />Unread</Button>
-            <Button size="xs" variant="ghost" onClick={() => setChecked(new Set())}><X className="size-3.5" /></Button>
+            <span className="num px-1 font-medium">{changing ? "Applying changes…" : `${checked.size} selected`}</span>
+            <Button size="xs" variant="ghost" disabled={changing} onClick={() => act(selectedIds, "archive")}><Archive className="size-3.5" />Archive</Button>
+            <Button size="xs" variant="ghost" disabled={changing} onClick={() => act(selectedIds, "trash")}><Trash2 className="size-3.5" />Delete</Button>
+            <Button size="xs" variant="ghost" disabled={changing} onClick={() => act(selectedIds, "unread")}><MailOpen className="size-3.5" />Unread</Button>
+            <Button size="xs" variant="ghost" disabled={changing} onClick={() => setChecked(new Set())}><X className="size-3.5" /></Button>
           </div>
         )}
         <Button size="sm" variant="ghost" onClick={() => { reload(); refreshLabels(); }} aria-label="Refresh" title="Refresh"><RefreshCw className={cn("size-3.5", listLoading && "animate-spin")} /></Button>
@@ -377,7 +392,7 @@ export function MailPage() {
           <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-1.5">
             <span className="truncate text-[13px] font-medium">{title}</span>
             {missing > 0 && <span className="text-[11px] text-fg-tertiary" title="These threads exist only in the other mailbox">{missing} not in your mailbox</span>}
-            <label className="ml-auto flex items-center gap-1 text-[11px] text-fg-tertiary"><input type="checkbox" className="size-3.5 accent-foreground" checked={items.length > 0 && checked.size === items.length} onChange={(e) => setChecked(e.target.checked ? new Set(items.map((i) => i.gmailThreadId)) : new Set())} />all</label>
+            <label className="ml-auto flex items-center gap-1 text-[11px] text-fg-tertiary"><input type="checkbox" className="size-3.5 accent-foreground" disabled={changing} checked={items.length > 0 && checked.size === items.length} onChange={(e) => setChecked(e.target.checked ? new Set(items.map((i) => i.gmailThreadId)) : new Set())} />all</label>
           </div>
           {view.startsWith("smart:") && (
             <div className="flex shrink-0 flex-wrap gap-1 border-b border-border px-2 py-1" aria-label="Gmail categories">

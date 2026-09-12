@@ -1,5 +1,10 @@
-import { Suspense } from "react";
-import { PublicBooking } from "@/components/bookings/public-booking";
+import { redirect } from "next/navigation";
+import { convexPublic } from "@/lib/convex-server";
+import { api } from "../../../convex/_generated/api";
 
 export const metadata = { title: "Book an appointment", robots: { index: true, follow: false } };
-export default function Page() { return <Suspense><PublicBooking /></Suspense>; }
+export const dynamic = "force-dynamic";
+export default async function Page() {
+  const { url } = await convexPublic().query(api.bookings.publicBookingLink, {});
+  redirect(url);
+}
