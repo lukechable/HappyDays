@@ -15,7 +15,7 @@ export function ThreadList({ items, meta, selectedId, focusedIndex, checked, onO
 }) {
   const labelById = new Map((labels ?? []).map((l) => [l.id, l]));
   const errorText = error && /rate-limiting|rateLimitExceeded/i.test(error) ? "Gmail is temporarily limiting requests. Please wait a moment, then retry." : error;
-  if (!loading && !error && items.length === 0) return <div className="px-4 py-12 text-center text-sm text-fg-tertiary">{emptyText}</div>;
+  if (!loading && !error && !hasMore && items.length === 0) return <div className="px-4 py-12 text-center text-sm text-fg-tertiary">{emptyText}</div>;
   return (
     <div className="flex h-full flex-col">
       {errorText && <div role="alert" className="shrink-0 border-b border-border p-3 text-sm text-error"><p>{errorText}</p>{items.length > 0 && <p className="mt-1 text-xs text-fg-secondary">Showing previously loaded conversations.</p>}{onRetry && <button type="button" onClick={onRetry} disabled={loading} className="mt-2 rounded-full border border-border px-3 py-1 text-xs text-fg-secondary hover:bg-muted disabled:opacity-50">Retry</button>}</div>}
@@ -58,7 +58,7 @@ export function ThreadList({ items, meta, selectedId, focusedIndex, checked, onO
             </li>
           );
         })}
-        {loading && <li className="p-3"><div className="space-y-2">{[0, 1, 2, 3].map((i) => <div key={i} className="h-12 animate-pulse rounded-lg bg-muted" />)}</div></li>}
+        {loading && <li className="p-3"><p role="status" className="mb-3 text-sm text-fg-secondary">{items.length ? "Loading more conversations…" : "Loading mailbox…"}</p><div className="space-y-2">{[0, 1, 2, 3].map((i) => <div key={i} className="h-12 animate-pulse rounded-lg bg-muted" />)}</div></li>}
         {!loading && hasMore && <li className="p-3 text-center"><button type="button" onClick={onMore} className="rounded-full border border-border px-3 py-1 text-xs text-fg-secondary hover:bg-muted">Load more</button></li>}
       </ul>
     </div>

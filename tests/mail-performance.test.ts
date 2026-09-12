@@ -43,3 +43,14 @@ test("Cliniko pagination cannot send credentials to another origin", async () =>
     expect(vi.mocked(fetch).mock.calls[0][1]?.redirect).toBe("error");
   } finally { vi.unstubAllEnvs(); }
 });
+
+test.each([500, 503, 403])("Gmail part failure %s is an error, never an empty mailbox", async code => {
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(`--reply\r\nContent-ID: <response-t0>\r\n\r\n${JSON.stringify({ error: { code, message: "Provider failure" } })}\r\n--reply--`, { headers: { "Content-Type": "multipart/mixed; boundary=reply" } })));
+  await expect(batchGetThreads("test-token", ["a"])).rejects.toThrow();
+});
+test("missing or malformed Gmail batch parts cannot become empty results", async () => {
+  for (const body of ["--reply--", "--reply\r\nContent-ID: <response-t0>\r\n\r\n{broken}\r\n--reply--"]) {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(body, { headers: { "Content-Type": "multipart/mixed; boundary=reply" } })));
+    await expect(batchGetThreads("test-token", ["a"])).rejects.toThrow();
+  }
+});

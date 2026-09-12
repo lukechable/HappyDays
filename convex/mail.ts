@@ -140,7 +140,7 @@ export const listThreads = action({
     let estimate = 0;
     let missing = 0;
     const gq = (base: string) => [base, q].filter(Boolean).join(" ");
-    const page = async (opts: { labelIds?: string[]; q?: string }) => { await mailBudget(ctx, account._id, 10); const r = await gmail.listThreadIds(token, { ...opts, pageToken, maxResults: 20 }); ids = r.ids; nextPageToken = r.nextPageToken; estimate = r.estimate; };
+    const page = async (opts: { labelIds?: string[]; q?: string; includeSpamTrash?: boolean }) => { await mailBudget(ctx, account._id, 10); const r = await gmail.listThreadIds(token, { ...opts, pageToken, maxResults: pageToken ? 20 : 10 }); ids = r.ids; nextPageToken = r.nextPageToken; estimate = r.estimate; };
     switch (view) {
       case "inbox": await page({ labelIds: ["INBOX"], q: q || undefined }); break;
       case "unread": await page({ labelIds: ["INBOX", "UNREAD"], q: q || undefined }); break;
@@ -150,8 +150,8 @@ export const listThreads = action({
       case "sent": await page({ labelIds: ["SENT"], q: q || undefined }); break;
       case "drafts": await page({ labelIds: ["DRAFT"], q: q || undefined }); break;
       case "archive": await page({ q: gq("-in:inbox -in:trash -in:spam -in:draft") }); break;
-      case "spam": await page({ labelIds: ["SPAM"], q: q || undefined }); break;
-      case "trash": await page({ labelIds: ["TRASH"], q: q || undefined }); break;
+      case "spam": await page({ labelIds: ["SPAM"], includeSpamTrash: true, q: q || undefined }); break;
+      case "trash": await page({ labelIds: ["TRASH"], includeSpamTrash: true, q: q || undefined }); break;
       case "all": await page({ q: gq("-in:trash -in:spam") }); break;
       case "label": if (!labelId) throw new Error("Pick a folder."); await page({ labelIds: [labelId], q: q || undefined }); break;
       case "search": if (!q) return { items: [], estimate: 0 }; await page({ q }); break;
@@ -204,8 +204,9 @@ export const threadIdsForView = internalQuery({
     }
     const offset = pageToken ? Number(pageToken) : 0;
     if (!Number.isSafeInteger(offset) || offset < 0) throw new Error("Invalid mail page.");
-    return { gmailThreadIds: gmailThreadIds.slice(offset, offset + 20), missing, total: gmailThreadIds.length,
-      nextPageToken: offset + 20 < gmailThreadIds.length ? String(offset + 20) : undefined };
+    const pageSize = pageToken ? 20 : 10;
+    return { gmailThreadIds: gmailThreadIds.slice(offset, offset + pageSize), missing, total: gmailThreadIds.length,
+      nextPageToken: offset + pageSize < gmailThreadIds.length ? String(offset + pageSize) : undefined };
   },
 });
 

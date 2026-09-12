@@ -1,37 +1,36 @@
 /**
- * Current Gmail defaults allow 6,000 units per minute (a thread read costs 40, a list page about 810). Every Gmail
- * read the browser starts goes through this bucket, so the shell prefetch, the dashboard, the folder list and the
- * warm-ups queue up behind one another instead of colliding in the same second and being refused. Reads the user
- * is waiting on go first; warm-ups only run when there is budget to spare.
+ * Limit concurrent browser reads and discard queued reads for folders already left.
+ * The server owns the shared Gmail quota across tabs and sync workers. A second
+ * per-tab token bucket delayed even empty/cached provider reads by up to ten seconds.
  */
-const PER_SECOND = 80;
-const CAPACITY = 1000;
-const RESERVE = 80; // background reads leave room for a click
-let tokens = CAPACITY;
-let refilledAt = Date.now();
-const waiting: Array<{ cost: number; background: boolean; go: () => void }> = [];
-let timer: ReturnType<typeof setTimeout> | undefined;
-
-function refill() { const now = Date.now(); tokens = Math.min(CAPACITY, tokens + ((now - refilledAt) / 1000) * PER_SECOND); refilledAt = now; }
+const MAX_ACTIVE = 2;
+let active = 0;
+const waiting: Array<{ background: boolean; go: () => void }> = [];
 function pump() {
-  refill();
-  const fgPending = waiting.some((w) => !w.background);
-  const next = waiting.find((w) => !w.background) ?? (fgPending ? undefined : waiting[0]);
-  if (!next) return;
-  const need = next.cost + (next.background ? RESERVE : 0);
-  if (tokens >= Math.min(need, CAPACITY)) { waiting.splice(waiting.indexOf(next), 1); tokens -= next.cost; next.go(); pump(); return; }
-  if (!timer) timer = setTimeout(() => { timer = undefined; pump(); }, Math.ceil(((need - tokens) / PER_SECOND) * 1000) + 20);
+  while (active < MAX_ACTIVE) {
+    const index = waiting.findIndex(w => !w.background);
+    // Background work leaves a slot free for a user opening a folder or message.
+    const next = index >= 0 ? index : active === 0 && waiting.length ? 0 : -1;
+    if (next < 0) return;
+    const [entry] = waiting.splice(next, 1);
+    active++;
+    entry.go();
+  }
 }
-
-/** Run a Gmail-backed call once the per-second budget allows. `background` reads (warm-ups) yield to everything else. */
-export function gmailRead<T>(cost: number, fn: () => Promise<T>, opts: { background?: boolean; signal?: AbortSignal } = {}): Promise<T> {
+export function gmailRead<T>(fn: () => Promise<T>, opts: { background?: boolean; signal?: AbortSignal } = {}): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     if (opts.signal?.aborted) { reject(new DOMException("Cancelled", "AbortError")); return; }
-    const cancel = () => { const i = waiting.indexOf(entry); if (i >= 0) waiting.splice(i, 1); reject(new DOMException("Cancelled", "AbortError")); };
-    const entry = { cost, background: !!opts.background, go: () => { opts.signal?.removeEventListener("abort", cancel); void Promise.resolve().then(fn).then(resolve, reject); } };
+    const cancel = () => {
+      const index = waiting.indexOf(entry);
+      if (index >= 0) waiting.splice(index, 1);
+      reject(new DOMException("Cancelled", "AbortError"));
+      pump();
+    };
+    const entry = { background: !!opts.background, go: () => {
+      opts.signal?.removeEventListener("abort", cancel);
+      void Promise.resolve().then(fn).then(resolve, reject).finally(() => { active--; pump(); });
+    } };
     opts.signal?.addEventListener("abort", cancel, { once: true });
     waiting.push(entry); pump();
   });
 }
-/** Quota units per call: threads.list (10) plus a 20-thread batch (800); one thread (40). */
-export const COST = { list: 810, thread: 40 } as const;

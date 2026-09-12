@@ -76,11 +76,12 @@ export const profile = (token: string) => call<{ emailAddress: string; historyId
 export const listLabels = async (token: string) => (await call<{ labels: GmailLabel[] }>(token, "/labels")).labels ?? [];
 export const getLabel = (token: string, id: string) => call<GmailLabel>(token, `/labels/${encodeURIComponent(id)}`);
 
-export async function listThreadIds(token: string, opts: { labelIds?: string[]; q?: string; pageToken?: string; maxResults?: number }) {
+export async function listThreadIds(token: string, opts: { labelIds?: string[]; q?: string; pageToken?: string; maxResults?: number; includeSpamTrash?: boolean }) {
   const p = new URLSearchParams();
   for (const l of opts.labelIds ?? []) p.append("labelIds", l);
   if (opts.q) p.set("q", opts.q);
   if (opts.pageToken) p.set("pageToken", opts.pageToken);
+  if (opts.includeSpamTrash) p.set("includeSpamTrash", "true");
   p.set("maxResults", String(opts.maxResults ?? 25));
   const r = await call<{ threads?: Array<{ id: string; snippet?: string; historyId?: string }>; nextPageToken?: string; resultSizeEstimate?: number }>(token, `/threads?${p}`);
   return { ids: (r.threads ?? []).map((t) => t.id), nextPageToken: r.nextPageToken, estimate: r.resultSizeEstimate ?? 0 };
@@ -139,19 +140,30 @@ async function batchOnce(token: string, ids: string[], p: URLSearchParams): Prom
   const ct = res.headers.get("content-type") ?? "";
   const rb = /boundary=([^;]+)/.exec(ct)?.[1]?.replace(/^"|"$/g, "");
   if (!rb) throw new GmailError("Gmail batch response had no boundary", 502);
-  const threads: GmailThread[] = []; const rateLimited: string[] = [];
+  const threads: GmailThread[] = [];
+  const rateLimited: string[] = [];
+  const answered = new Set<string>();
   for (const chunk of text.split(`--${rb}`)) {
+    if (!chunk.trim() || chunk.trim() === "--") continue;
     const start = chunk.indexOf("{");
     const end = chunk.lastIndexOf("}");
-    if (start === -1 || end === -1) continue;
-    // Each part answers to the Content-ID it was asked with (<response-t3> for <t3>), which is how a 429 part maps back to its thread.
+    if (start === -1 || end === -1) throw new GmailError("Gmail returned an incomplete mailbox response. Retry this mailbox.", 502);
     const idx = Number(/Content-ID:\s*<response-t(\d+)>/i.exec(chunk)?.[1] ?? -1);
-    try {
-      const json = JSON.parse(chunk.slice(start, end + 1)) as GmailThread & { error?: { code?: number; errors?: Array<{ reason?: string }> } };
-      if (json.id && !json.error) threads.push(json);
-      else if (json.error && (json.error.code === 429 || json.error.errors?.some((e) => /rateLimitExceeded/i.test(e.reason ?? ""))) && ids[idx]) rateLimited.push(ids[idx]);
-    } catch { /* skip malformed part */ }
+    let json: GmailThread & { error?: { code?: number; errors?: Array<{ reason?: string }> } };
+    try { json = JSON.parse(chunk.slice(start, end + 1)); }
+    catch { throw new GmailError("Gmail returned an unreadable mailbox response. Retry this mailbox.", 502); }
+    const id = ids[idx] ?? (json.id && ids.includes(json.id) ? json.id : undefined);
+    if (!id) throw new GmailError("Gmail returned an unexpected mailbox response. Retry this mailbox.", 502);
+    answered.add(id);
+    if (json.error) {
+      if (json.error.code === 404) continue; // Deleted between listing and reading the thread.
+      if (json.error.code === 429 || json.error.errors?.some(e => /rateLimitExceeded/i.test(e.reason ?? ""))) { rateLimited.push(id); continue; }
+      throw new GmailError(`Gmail couldn’t load a conversation (${json.error.code ?? "unknown error"}). Retry this mailbox.`, json.error.code ?? 502);
+    }
+    if (json.id !== id) throw new GmailError("Gmail returned an incomplete conversation. Retry this mailbox.", 502);
+    threads.push(json);
   }
+  if (ids.some(id => !answered.has(id))) throw new GmailError("Gmail returned an incomplete mailbox response. Retry this mailbox.", 502);
   return { threads, rateLimited };
 }
 
