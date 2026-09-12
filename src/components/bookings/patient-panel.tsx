@@ -12,6 +12,7 @@ import { PageHeader, Panel, Pill, statusTone, Facts, Loading, ErrorBox, DataTabl
 import { Button } from "@/components/ui/button";
 import { useLive, useNow } from "@/lib/hooks";
 import { day, time, ago } from "@/lib/format";
+import { ReferralCaseDialog } from "./referral-case-dialog";
 import { errorMessage } from "@/lib/utils";
 
 /**
@@ -23,10 +24,10 @@ export function PatientPanel({ patientId }: { patientId: string }) {
   const live = useLive(api.bookings.patient, patientId ? { patientId } : "skip");
   const matters = useQuery(api.matters.list, {});
   const save = useMutation(api.matters.save);
-  const createCase = useAction(api.bookings.createCase);
+
   const sendForm = useAction(api.bookings.sendForm);
   const formTemplates = useLive(api.bookings.formTemplates, {});
-  const [newCase, setNewCase] = useState<string | null>(null);
+  const [newCase, setNewCase] = useState(false);
   const [formTemplate, setFormTemplate] = useState("");
   const [busy, setBusy] = useState(false);
   const p = live.data;
@@ -36,7 +37,7 @@ export function PatientPanel({ patientId }: { patientId: string }) {
   const link = async (id: (typeof linkable)[number]) => { try { await save({ id: id._id, name: id.name, courtFileNo: id.courtFileNo, court: id.court, parties: id.parties, clinikoPatientIds: [...id.clinikoPatientIds, patientId], notes: id.notes, status: id.status }); toast.success(`Linked to ${id.name}`); live.reload(); } catch (e) { toast.error(errorMessage(e)); } };
   return (
     <div className="space-y-5">
-      <PageHeader title={p.name} blurb={[p.dob ? `DOB ${day(p.dob)}` : "", p.email, p.phone].filter(Boolean).join(" · ")} meta={<span>Cliniko record updated {ago(Date.parse(p.updatedAt))}. Nothing here is stored by Happy Days.</span>} actions={<><Button variant="outline" render={<a href={p.clinikoUrl} target="_blank" rel="noreferrer" />}><ExternalLink className="size-3.5" />Open in Cliniko</Button><Button render={<Link href={`/bookings?d=${now}`} />}><Plus className="size-3.5" />Book</Button></>} />
+      <PageHeader title={p.name} blurb={[p.dob ? `DOB ${day(p.dob)}` : "", p.email, p.phone].filter(Boolean).join(" · ")} meta={<span>Cliniko record updated {ago(Date.parse(p.updatedAt))}. Patient details are read live from Cliniko.</span>} actions={<><Button variant="outline" render={<a href={p.clinikoUrl} target="_blank" rel="noreferrer" />}><ExternalLink className="size-3.5" />Open in Cliniko</Button><Button render={<Link href={`/bookings?d=${now}`} />}><Plus className="size-3.5" />Book</Button></>} />
       {(p.alerts.length > 0 || p.medicalAlerts) && <div className="flex items-start gap-2 rounded-2xl bg-warning-soft px-4 py-3 text-sm"><AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" /><div><b className="font-semibold">Alerts:</b> {[...p.alerts, p.medicalAlerts].filter(Boolean).join("; ")}</div></div>}
       <div className="grid grid-cols-[minmax(0,1fr)] gap-3 lg:grid-cols-3">
         <Panel title="Contact" dense><Facts items={[["Email", p.email ? <a href={`mailto:${p.email}`} className="underline">{p.email}</a> : "—"], ["Phones", p.phones.length ? p.phones.map((x) => `${x.number} (${x.phone_type})`).join(", ") : "—"], ["Address", p.address || "—"], ["Preferred name", p.preferredName || "—"]]} />{p.notes && <p className="mt-3 whitespace-pre-wrap rounded-lg bg-muted px-2.5 py-1.5 text-xs">{p.notes}</p>}</Panel>
@@ -52,9 +53,9 @@ export function PatientPanel({ patientId }: { patientId: string }) {
         <Panel title="Treatment notes" dense blurb="Titles and dates only. Notes open in Cliniko.">
           {p.treatmentNotes.length === 0 ? <p className="text-sm text-fg-tertiary">No notes.</p> : <ul className="space-y-1 text-sm">{p.treatmentNotes.slice(0, 8).map((n) => <li key={n.id} className="flex items-center gap-2"><NotebookPen className="size-3.5 shrink-0 text-fg-tertiary" /><a href={n.clinikoUrl} target="_blank" rel="noreferrer" className="min-w-0 flex-1 truncate hover:underline">{n.title}</a>{n.draft && <Pill tone="warn">draft</Pill>}<span className="shrink-0 text-xs text-fg-tertiary">{day(n.createdAt)}{n.author ? ` · ${n.author}` : ""}</span></li>)}</ul>}
         </Panel>
-        <Panel title="Cases" dense blurb="Cliniko cases for this patient." actions={<Button size="xs" variant="ghost" onClick={() => setNewCase("")}><Plus className="size-3" />New</Button>}>
-          {p.cases.length === 0 && newCase === null ? <p className="text-sm text-fg-tertiary">No cases.</p> : <ul className="space-y-1 text-sm">{p.cases.map((c) => <li key={c.id} className="flex items-center gap-2"><FolderOpen className="size-3.5 shrink-0 text-fg-tertiary" /><a href={c.clinikoUrl} target="_blank" rel="noreferrer" className="min-w-0 flex-1 truncate hover:underline">{c.name}</a><Pill tone={c.closed ? "neutral" : "good"}>{c.closed ? "closed" : "open"}</Pill></li>)}</ul>}
-          {newCase !== null && <form className="mt-2 flex gap-1" onSubmit={async (e) => { e.preventDefault(); if (!newCase.trim()) return; setBusy(true); try { await createCase({ patientId, name: newCase.trim() }); toast.success("Case created in Cliniko"); setNewCase(null); live.reload(); } catch (err) { toast.error(errorMessage(err)); } finally { setBusy(false); } }}><input autoFocus value={newCase} onChange={(e) => setNewCase(e.target.value)} placeholder="Case name" className="h-8 min-w-0 flex-1 rounded-md border border-input bg-card px-2 text-sm" /><Button size="sm" type="submit" disabled={busy}>Create</Button><Button size="sm" type="button" variant="ghost" onClick={() => setNewCase(null)}>Cancel</Button></form>}
+        <Panel title="Cases" dense blurb="Cliniko cases for this patient." actions={<Button size="xs" variant="ghost" onClick={() => setNewCase(true)}><Plus className="size-3" />New</Button>}>
+          {p.cases.length === 0 && !newCase ? <p className="text-sm text-fg-tertiary">No cases.</p> : <ul className="space-y-1 text-sm">{p.cases.map((c) => <li key={c.id} className="flex items-center gap-2"><FolderOpen className="size-3.5 shrink-0 text-fg-tertiary" /><a href={c.clinikoUrl} target="_blank" rel="noreferrer" className="min-w-0 flex-1 truncate hover:underline">{c.name}</a><Pill tone={c.closed ? "neutral" : "good"}>{c.closed ? "closed" : "open"}</Pill></li>)}</ul>}
+          {newCase && <ReferralCaseDialog patientId={patientId} onClose={() => setNewCase(false)} onCreated={live.reload} />}
         </Panel>
         <Panel title="Forms" dense blurb="Intake and consent forms from Cliniko templates.">
           {p.forms.length === 0 ? <p className="text-sm text-fg-tertiary">No forms yet.</p> : <ul className="space-y-1 text-sm">{p.forms.map((f) => <li key={f.id} className="flex items-center gap-2"><ClipboardList className="size-3.5 shrink-0 text-fg-tertiary" /><a href={f.clinikoUrl} target="_blank" rel="noreferrer" className="min-w-0 flex-1 truncate hover:underline">{f.name}</a><Pill tone={f.completed ? "good" : "warn"}>{f.completed ? `done ${f.completedAt ? day(f.completedAt) : ""}` : "waiting"}</Pill></li>)}</ul>}
@@ -64,10 +65,10 @@ export function PatientPanel({ patientId }: { patientId: string }) {
           </form>
         </Panel>
       </div>
-      <Panel title="Appointments" dense>
+      <Panel title="Appointments" dense actions={<Button variant="outline" render={<Link href={`/bookings/rebates?patientId=${patientId}`} />}>Medicare rebates</Button>}>
         {p.appointments.length === 0 ? <p className="text-sm text-fg-tertiary">No appointments.</p> : (
           <DataTable head={<><th>When</th><th>Type</th><th>Practitioner</th><th>Status</th><th></th></>} minWidth={560}>
-            {p.appointments.map((a) => <tr key={a.id}><td className="num whitespace-nowrap">{day(a.startsAt)} {time(a.startsAt)}</td><td>{a.typeName}</td><td>{a.practitionerName}</td><td>{a.cancelledAt ? <Pill tone="bad">cancelled</Pill> : a.didNotArrive ? <Pill tone="warn">did not arrive</Pill> : Date.parse(a.endsAt) < now ? <Pill tone="neutral">attended</Pill> : <Pill tone="info">upcoming</Pill>}</td><td><a href={a.clinikoUrl} target="_blank" rel="noreferrer" className="text-xs text-fg-tertiary hover:text-foreground">Cliniko ↗</a></td></tr>)}
+            {p.appointments.map((a) => <tr key={a.id}><td className="num whitespace-nowrap">{day(a.startsAt)} {time(a.startsAt)}</td><td>{a.typeName}</td><td>{a.practitionerName}</td><td>{a.cancelledAt ? <Pill tone="bad">cancelled</Pill> : a.didNotArrive ? <Pill tone="warn">did not arrive</Pill> : Date.parse(a.endsAt) < now ? <Pill tone={a.arrived ? "good" : "warn"}>{a.arrived ? "attended" : "attendance unconfirmed"}</Pill> : <Pill tone="info">upcoming</Pill>}</td><td><a href={a.clinikoUrl} target="_blank" rel="noreferrer" className="text-xs text-fg-tertiary hover:text-foreground">Cliniko ↗</a></td></tr>)}
           </DataTable>
         )}
       </Panel>

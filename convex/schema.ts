@@ -12,6 +12,26 @@ export const direction = v.union(v.literal("in"), v.literal("out"));
 export const tone = v.union(v.literal("neutral"), v.literal("blue"), v.literal("green"), v.literal("amber"), v.literal("red"), v.literal("purple"));
 
 export default defineSchema({
+  /** Fixed once configured; not editable through generic settings. */
+  rebateLaunch: defineTable({ goLiveAt: v.number(), configuredBy: v.id("users"), configuredAt: v.number() }),
+  carePlanReviews: defineTable({
+    caseId: v.string(), patientId: v.string(), caseUpdatedAt: v.string(),
+    reviewedBy: v.id("users"), reviewedAt: v.number(),
+  }).index("by_case", ["caseId"]),
+  caseImportSettings: defineTable({ enabled: v.boolean(), enabledAt: v.number(), updatedBy: v.id("users") }),
+  caseImportEvents: defineTable({ key: v.string(), userId: v.id("users"), status: v.string(), createdAt: v.number() }).index("by_key", ["key"]),
+  caseCreations: defineTable({
+    key: v.string(), patientId: v.string(), status: v.string(), caseId: v.optional(v.string()), createdAt: v.number(),
+  }).index("by_key", ["key"]),
+  /** Claim metadata only. Patient names, card numbers and clinical documents remain in Cliniko/Tyro. */
+  rebateClaims: defineTable({
+    appointmentId: v.string(), patientId: v.string(), caseId: v.string(), invoiceId: v.string(),
+    serviceDate: v.string(), amountCents: v.number(), itemCode: v.string(),
+    invoiceReference: v.string(), status: v.string(), transactionId: v.optional(v.string()),
+    createdBy: v.id("users"), createdAt: v.number(), updatedAt: v.number(),
+    eligibilityConfirmedAt: v.number(), lastCheckedAt: v.optional(v.number()), detail: v.optional(v.string()),
+  }).index("by_appointment", ["appointmentId"]).index("by_case", ["caseId"]).index("by_reference", ["invoiceReference"]).index("by_created", ["createdAt"]).index("by_poll", ["status", "lastCheckedAt"]),
+
   users: defineTable({
     clerkId: v.string(),
     email: v.string(),
@@ -302,7 +322,7 @@ export default defineSchema({
     error: v.optional(v.string()),
     createdAt: v.number(),
     expiresAt: v.number(),
-  }).index("by_status", ["status", "expiresAt"]).index("by_checkout", ["stripeCheckoutSessionId"]),
+  }).index("by_status", ["status", "expiresAt"]).index("by_checkout", ["stripeCheckoutSessionId"]).index("by_appointment", ["clinikoAppointmentId"]),
 
   /** Files the practice itself uploads for delivery (reports, signed forms). These are ours and are stored. */
   files: defineTable({

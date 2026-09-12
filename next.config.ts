@@ -11,7 +11,7 @@ const CSP = [
   "img-src 'self' data: blob: https:",
   "font-src 'self' data: https://fonts.gstatic.com",
   "connect-src 'self' https: wss:",
-  "frame-src 'self' blob: data: https://js.stripe.com https://hooks.stripe.com https://checkout.stripe.com https://*.clerk.accounts.dev https://clerk.barbarafraser.net https://challenges.cloudflare.com",
+  "frame-src 'self' blob: data: https://js.stripe.com https://hooks.stripe.com https://checkout.stripe.com https://tyrohealth.medipass.io https://stg-tyrohealth.medipass.io https://*.clerk.accounts.dev https://clerk.barbarafraser.net https://challenges.cloudflare.com",
   "media-src 'self' https: blob:",
   "worker-src 'self' blob:",
   "frame-ancestors 'self'",

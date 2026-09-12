@@ -49,3 +49,11 @@ Convex functions are pushed with `npx convex dev --once`. See docs/PLAN.md §7.
 ```bash
 pnpm typecheck && pnpm lint && pnpm build
 ```
+
+## Medicare referral cases and rebates
+
+Cliniko → Medicare Rebates supports manual referral cases, opt-in automatic imports from labelled incoming
+Gmail referrals, referral verification, and a guarded Tyro patient-claim workflow. Attendance and full payment
+must be confirmed, and appointments before the fixed HappyDays go-live cutoff are excluded. Leave go-live
+unset until launch; Tyro claiming stays disabled until partner onboarding and credentials are complete.
+See [the workflow, setup and recovery guide](docs/REBATES.md). Run `pnpm test` for the isolated rebate tests.
