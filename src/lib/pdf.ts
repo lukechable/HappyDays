@@ -8,10 +8,10 @@ import { PDFDocument, degrees, rgb, StandardFonts } from "pdf-lib";
  * the user saves, and then only to the practice's own Files.
  */
 
-type PdfJs = typeof import("pdfjs-dist");
+type PdfJs = typeof import("pdfjs-dist/legacy/build/pdf.mjs");
 let pdfjsPromise: Promise<PdfJs> | null = null;
 export function loadPdfJs(): Promise<PdfJs> {
-  if (!pdfjsPromise) pdfjsPromise = import("pdfjs-dist").then((lib) => { lib.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString(); return lib; });
+  if (!pdfjsPromise) pdfjsPromise = import("pdfjs-dist/legacy/build/pdf.mjs").then((lib) => { lib.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/legacy/build/pdf.worker.min.mjs", import.meta.url).toString(); return lib; });
   return pdfjsPromise;
 }
 
@@ -110,7 +110,24 @@ export async function flatten(bytes: Uint8Array, annotations: Annotation[]): Pro
       page.drawImage(img, { x: p.x, y: p.y - a.h * H, width: a.w * W, height: a.h * H });
     }
   }
-  return doc.save();
+  const redactedPages = new Set(annotations.filter(a => a.kind === "redact").map(a => a.page));
+  if (!redactedPages.size) return doc.save();
+  // A black overlay alone leaves extractable text and images underneath it. Rebuild redacted pages
+  // from their rendered pixels in a NEW document, so no source objects from those pages survive.
+  const rendered = await openPdf(await doc.save());
+  const safe = await PDFDocument.create();
+  try {
+    for (let i = 0; i < pages.length; i++) {
+      if (!redactedPages.has(i)) { const [page] = await safe.copyPages(doc, [i]); safe.addPage(page); continue; }
+      const canvas = await renderPage(rendered, i + 1, 2);
+      const image = await safe.embedPng(canvas.toDataURL("image/png"));
+      const viewport = (await rendered.doc.getPage(i + 1)).getViewport({ scale: 1 });
+      const page = safe.addPage([viewport.width, viewport.height]);
+      page.drawImage(image, { x: 0, y: 0, width: viewport.width, height: viewport.height });
+      canvas.width = 0; canvas.height = 0;
+    }
+    return await safe.save();
+  } finally { await rendered.doc.loadingTask.destroy(); }
 }
 
 /** Signature pad output → tight-cropped transparent PNG data URL. */

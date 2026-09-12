@@ -7,17 +7,18 @@ import { cn } from "@/lib/utils";
 import { mailDate, TONE_CLASS } from "@/lib/format";
 
 /** The middle column: one row per conversation with the pills that make it a shared inbox. */
-export function ThreadList({ items, meta, selectedId, focusedIndex, checked, onOpen, onToggleCheck, onStar, loading, error, hasMore, onMore, emptyText, myFirst, labels, onContextMenu, onDragStart }: {
+export function ThreadList({ items, meta, selectedId, focusedIndex, checked, onOpen, onToggleCheck, onStar, loading, error, onRetry, hasMore, onMore, emptyText, myFirst, labels, onContextMenu, onDragStart }: {
   items: ListItem[]; meta: Record<string, ThreadMeta>; selectedId?: string; focusedIndex: number; checked: Set<string>;
   onOpen: (id: string) => void; onToggleCheck: (id: string, shift: boolean) => void; onStar: (item: ListItem) => void;
-  loading: boolean; error?: string; hasMore: boolean; onMore: () => void; emptyText: string; myFirst?: string;
+  loading: boolean; error?: string; onRetry?: () => void; hasMore: boolean; onMore: () => void; emptyText: string; myFirst?: string;
   labels?: Label[]; onContextMenu?: (e: React.MouseEvent, item: ListItem) => void; onDragStart?: (e: React.DragEvent, item: ListItem) => void;
 }) {
   const labelById = new Map((labels ?? []).map((l) => [l.id, l]));
-  if (error) return <div className="p-4 text-sm text-error">{error}</div>;
-  if (!loading && items.length === 0) return <div className="px-4 py-12 text-center text-sm text-fg-tertiary">{emptyText}</div>;
+  const errorText = error && /rate-limiting|rateLimitExceeded/i.test(error) ? "Gmail is temporarily limiting requests. Please wait a moment, then retry." : error;
+  if (!loading && !error && items.length === 0) return <div className="px-4 py-12 text-center text-sm text-fg-tertiary">{emptyText}</div>;
   return (
     <div className="flex h-full flex-col">
+      {errorText && <div role="alert" className="shrink-0 border-b border-border p-3 text-sm text-error"><p>{errorText}</p>{items.length > 0 && <p className="mt-1 text-xs text-fg-secondary">Showing previously loaded conversations.</p>}{onRetry && <button type="button" onClick={onRetry} disabled={loading} className="mt-2 rounded-full border border-border px-3 py-1 text-xs text-fg-secondary hover:bg-muted disabled:opacity-50">Retry</button>}</div>}
       <ul className="min-h-0 flex-1 overflow-y-auto [scrollbar-width:thin]" role="listbox" aria-label="Conversations">
         {items.map((t, i) => {
           const m = meta[t.gmailThreadId];

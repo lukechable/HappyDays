@@ -23,8 +23,14 @@ function pump() {
 }
 
 /** Run a Gmail-backed call once the per-second budget allows. `background` reads (warm-ups) yield to everything else. */
-export function gmailRead<T>(cost: number, fn: () => Promise<T>, opts: { background?: boolean } = {}): Promise<T> {
-  return new Promise<T>((resolve, reject) => { waiting.push({ cost, background: !!opts.background, go: () => fn().then(resolve, reject) }); pump(); });
+export function gmailRead<T>(cost: number, fn: () => Promise<T>, opts: { background?: boolean; signal?: AbortSignal } = {}): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    if (opts.signal?.aborted) { reject(new DOMException("Cancelled", "AbortError")); return; }
+    const cancel = () => { const i = waiting.indexOf(entry); if (i >= 0) waiting.splice(i, 1); reject(new DOMException("Cancelled", "AbortError")); };
+    const entry = { cost, background: !!opts.background, go: () => { opts.signal?.removeEventListener("abort", cancel); void Promise.resolve().then(fn).then(resolve, reject); } };
+    opts.signal?.addEventListener("abort", cancel, { once: true });
+    waiting.push(entry); pump();
+  });
 }
 /** Quota units per call: threads.list (10) plus a 20-thread batch (200); one thread (10). */
 export const COST = { list: 210, thread: 10 } as const;

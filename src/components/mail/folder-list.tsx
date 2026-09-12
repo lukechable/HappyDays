@@ -3,15 +3,16 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useAction } from "convex/react";
-import { Inbox, MailOpen, Sparkles, AlarmClock, UserCheck, Star, Send, FileText, Archive, ShieldAlert, Trash2, Folder, Plus, Pencil, X, Check, SlidersHorizontal } from "lucide-react";
+import { Inbox, MailOpen, Sparkles, AlarmClock, UserCheck, Star, Send, FileText, Archive, ShieldAlert, Trash2, Folder, Plus, Pencil, X, Check, SlidersHorizontal, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../../../convex/_generated/api";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { GMAIL_SWATCHES, textOn } from "@/lib/gmail-palette";
+import { useStored } from "@/lib/hooks";
 import { cn, errorMessage } from "@/lib/utils";
 
 export type Label = { id: string; name: string; type: "system" | "user"; unread: number; total: number; color?: { textColor?: string; backgroundColor?: string }; hidden: boolean };
-export type ViewKey = "inbox" | "unread" | "smart:primary" | "smart:newsletter" | "smart:notification" | "smart:social" | "overdue" | "assigned" | "starred" | "sent" | "drafts" | "archive" | "spam" | "trash" | "label" | "search" | "matter" | "all";
+export type ViewKey = "inbox" | "unread" | "smart:primary" | "smart:newsletter" | "smart:notification" | "smart:social" | "smart:forums" | "overdue" | "assigned" | "starred" | "sent" | "drafts" | "archive" | "spam" | "trash" | "label" | "search" | "matter" | "all";
 
 /** Drag payload type for conversations being moved between folders. */
 export const DRAG_MIME = "application/x-happydays-threads";
@@ -31,11 +32,16 @@ const VIEWS: Array<{ key: ViewKey; label: string; icon: React.ComponentType<{ cl
   { key: "trash", label: "Trash", icon: Trash2, droppable: true },
 ];
 
+const MORE_VIEWS = new Set<ViewKey>(["smart:primary", "sent", "drafts", "archive", "spam", "trash"]);
+
 const hasDrag = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes(DRAG_MIME);
 const readDrag = (e: React.DragEvent): string[] => { try { const ids = JSON.parse(e.dataTransfer.getData(DRAG_MIME)); return Array.isArray(ids) ? ids.filter((x) => typeof x === "string") : []; } catch { return []; } };
 
 /** Left column of the mail page: fixed views, then Gmail labels as folders (create, edit, delete, drop targets). */
 export function FolderList({ view, labelId, labels, badges, onSelect, onLabelsChanged, onDropThreads }: { view: ViewKey; labelId?: string; labels: Label[] | undefined; badges: { overdue: number; assigned: number }; onSelect: (view: ViewKey, labelId?: string) => void; onLabelsChanged: () => void; onDropThreads?: (target: DropTarget, ids: string[]) => void }) {
+  const [moreOpen, setMoreOpen] = useStored("hd-mail-more-open", false);
+  const [foldersOpen, setFoldersOpen] = useStored("hd-mail-folders-open", true);
+  const [collapsedFolders, setCollapsedFolders] = useStored<string[]>("hd-mail-collapsed-folders", []);
   const createLabel = useAction(api.mail.createLabel);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
@@ -51,10 +57,7 @@ export function FolderList({ view, labelId, labels, badges, onSelect, onLabelsCh
     onDrop: (e: React.DragEvent) => { if (!hasDrag(e)) return; e.preventDefault(); setOver(null); const ids = readDrag(e); if (ids.length) onDropThreads(target, ids); },
   } : {};
 
-  return (
-    <nav className="flex h-full flex-col gap-4 overflow-y-auto px-2 py-3 [scrollbar-width:thin]" aria-label="Mail folders">
-      <ul className="space-y-px">
-        {VIEWS.map((v) => {
+  const renderView = (v: (typeof VIEWS)[number]) => {
           const active = v.key === "smart:primary" ? isSmart : view === v.key;
           const n = v.badge ? counts[v.badge] ?? 0 : 0;
           const alert = v.badge === "overdue";
@@ -64,16 +67,24 @@ export function FolderList({ view, labelId, labels, badges, onSelect, onLabelsCh
               <button type="button" onClick={() => onSelect(v.key)} className={cn("hd-press flex w-full items-center gap-2 rounded-lg px-2 py-[6px] text-[13px] leading-tight", active ? "bg-foreground text-background" : "text-fg-secondary hover:bg-muted hover:text-foreground", isOver && "ring-2 ring-blue ring-offset-1 ring-offset-surface-2 bg-blue-soft text-foreground")}><v.icon className="size-4 shrink-0 opacity-80" /><span className="min-w-0 flex-1 truncate text-left">{v.label}</span>{n > 0 && <span className={cn("hd-pop num rounded-full px-1.5 text-[10.5px] font-semibold leading-4", active ? "bg-background/20 text-background" : alert ? "bg-error/90 text-white" : "bg-muted text-fg-secondary")}>{n > 99 ? "99+" : n}</span>}</button>
             </li>
           );
-        })}
+
+  };
+
+  return (
+    <nav className="flex h-full flex-col gap-4 overflow-y-auto px-2 py-3 [scrollbar-width:thin]" aria-label="Mail folders">
+      <ul className="space-y-px">
+        {VIEWS.filter(v => !MORE_VIEWS.has(v.key)).map(renderView)}
+        <li><button type="button" aria-expanded={moreOpen} aria-controls="more-mailboxes" onClick={() => setMoreOpen(!moreOpen)} className="flex w-full items-center gap-2 rounded-lg px-2 py-[6px] text-[13px] text-fg-secondary hover:bg-muted"><ChevronRight className={cn("size-4 transition-transform", moreOpen && "rotate-90")} /><span>More mailboxes</span>{!moreOpen && (isSmart || MORE_VIEWS.has(view)) && <span className="ml-auto truncate text-[10px]">{isSmart ? "Smart" : VIEWS.find(v => v.key === view)?.label}</span>}</button><ul id="more-mailboxes" hidden={!moreOpen} className="space-y-px pl-2">{VIEWS.filter(v => MORE_VIEWS.has(v.key)).map(renderView)}</ul></li>
       </ul>
       <div>
         <div className="flex items-center justify-between px-2 pb-1">
-          <span className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-fg-tertiary">Folders</span>
+          <button type="button" aria-expanded={foldersOpen} aria-controls="mail-user-folders" onClick={() => setFoldersOpen(!foldersOpen)} className="flex items-center gap-1 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-fg-tertiary"><ChevronRight className={cn("size-3.5 transition-transform", foldersOpen && "rotate-90")} />Folders</button>
           <span className="flex items-center gap-0.5">
             <Link href="/settings?tab=folders" className="rounded p-0.5 text-fg-tertiary hover:bg-muted hover:text-foreground" aria-label="Folder rules" title="Folder rules"><SlidersHorizontal className="size-3.5" /></Link>
-            <button type="button" onClick={() => setCreating(true)} className="rounded p-0.5 text-fg-tertiary hover:bg-muted hover:text-foreground" aria-label="New folder" title="New folder"><Plus className="size-3.5" /></button>
+            <button type="button" onClick={() => { setFoldersOpen(true); setCreating(true); }} className="rounded p-0.5 text-fg-tertiary hover:bg-muted hover:text-foreground" aria-label="New folder" title="New folder"><Plus className="size-3.5" /></button>
           </span>
         </div>
+        <div id="mail-user-folders" hidden={!foldersOpen}>
         {creating && (
           <form className="flex items-center gap-1 px-1 pb-1" onSubmit={async (e) => { e.preventDefault(); if (!newName.trim()) return; try { await createLabel({ name: newName }); setNewName(""); setCreating(false); onLabelsChanged(); toast.success("Folder created"); } catch (err) { toast.error(errorMessage(err)); } }}>
             <input autoFocus value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Folder name (Parent/Child for nesting)" className="h-7 min-w-0 flex-1 rounded-md border border-input bg-card px-2 text-xs" />
@@ -83,7 +94,9 @@ export function FolderList({ view, labelId, labels, badges, onSelect, onLabelsCh
         )}
         {labels === undefined ? <p className="px-2 text-xs text-fg-quaternary">Loading folders…</p> : userLabels.length === 0 ? <p className="px-2 text-xs text-fg-quaternary">No folders yet. Drag a conversation here once you make one.</p> : (
           <ul className="space-y-px">
-            {userLabels.map((l) => {
+            {userLabels.filter(l => !collapsedFolders.some(parent => l.name.startsWith(`${parent}/`))).map((l) => {
+              const hasChildren = userLabels.some(child => child.name.startsWith(`${l.name}/`));
+              const collapsed = collapsedFolders.includes(l.name);
               const depth = l.name.split("/").length - 1;
               const short = l.name.split("/").pop() ?? l.name;
               const active = view === "label" && labelId === l.id;
@@ -91,6 +104,7 @@ export function FolderList({ view, labelId, labels, badges, onSelect, onLabelsCh
               return (
                 <li key={l.id} className="group" {...dropProps(l.id, { labelId: l.id })}>
                   <div className={cn("hd-row flex items-center gap-1 rounded-lg pr-1", active ? "bg-foreground text-background" : "text-fg-secondary hover:bg-muted hover:text-foreground", isOver && "ring-2 ring-blue ring-offset-1 ring-offset-surface-2 bg-blue-soft text-foreground")} style={{ paddingLeft: depth * 10 }}>
+                    {hasChildren && <button type="button" aria-label={`${collapsed ? "Expand" : "Collapse"} ${l.name}`} aria-expanded={!collapsed} onClick={() => setCollapsedFolders(collapsed ? collapsedFolders.filter(n => n !== l.name) : [...collapsedFolders, l.name])} className="rounded p-0.5 hover:bg-muted"><ChevronRight className={cn("size-3", !collapsed && "rotate-90")} /></button>}
                     <button type="button" onClick={() => onSelect("label", l.id)} className="flex min-w-0 flex-1 items-center gap-2 px-2 py-[6px] text-[13px] leading-tight"><Folder className="size-3.5 shrink-0" style={{ color: active ? undefined : l.color?.backgroundColor }} /><span className="min-w-0 flex-1 truncate text-left">{short}</span>{l.unread > 0 && <span className={cn("num text-[10.5px] font-semibold", active ? "text-background/80" : "text-fg-tertiary")}>{l.unread}</span>}</button>
                     <FolderEditor label={l} onChanged={() => { onLabelsChanged(); }} onDeleted={() => { onLabelsChanged(); if (active) onSelect("inbox"); }} />
                   </div>
@@ -99,6 +113,7 @@ export function FolderList({ view, labelId, labels, badges, onSelect, onLabelsCh
             })}
           </ul>
         )}
+        </div>
       </div>
     </nav>
   );
@@ -152,7 +167,8 @@ function FolderEditor({ label, onChanged, onDeleted }: { label: Label; onChanged
 
 export const SMART_TABS: Array<{ key: ViewKey; label: string }> = [
   { key: "smart:primary", label: "Primary" },
-  { key: "smart:newsletter", label: "Newsletters" },
+  { key: "smart:newsletter", label: "Newsletters & offers" },
   { key: "smart:notification", label: "Notifications" },
-  { key: "smart:social", label: "Social & forums" },
+  { key: "smart:social", label: "Social" },
+  { key: "smart:forums", label: "Forums" },
 ];

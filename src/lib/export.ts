@@ -12,7 +12,7 @@ export function downloadBlob(blob: Blob, filename: string) {
 }
 
 export function exportCsv(t: ExportTable) {
-  const esc = (s: string) => `"${s.replace(/"/g, '""')}"`;
+  const esc = (s: string) => `"${(/^[\s]*[=+@-]|^[\t\r\n]/.test(s) ? "'" + s : s).replace(/"/g, '""')}"`;
   const lines = [t.columns.map((c) => esc(c.label)).join(","), ...t.rows.map((r) => t.columns.map((c) => esc(cell(r[c.key]))).join(","))];
   downloadBlob(new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" }), `${t.filename}.csv`);
 }

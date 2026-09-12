@@ -23,18 +23,17 @@ function timingSafeEqual(a: string, b: string): boolean {
 }
 export const GUEST_EMAIL = "guest@barbarafraser.net";
 
-type KeyPair = { privatePem: string; publicJwk: Record<string, string>; kid: string };
+type KeyPair = { privatePem: string; publicJwk: Record<string, string>; kid: string; version: number };
 
 async function keys(ctx: ActionCtx): Promise<KeyPair> {
   const existing = (await ctx.runQuery(internal.settings.getInternal, { key: "guest.keypair" })) as KeyPair | null;
-  if (existing?.privatePem) return existing;
+  if (existing?.privatePem && existing.version === 2) return existing;
   const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
   const privatePem = privateKey.export({ type: "pkcs8", format: "pem" }).toString();
   const jwk = createPublicKey(createPrivateKey(privatePem)).export({ format: "jwk" }) as Record<string, string>;
   const kid = `guest-${Date.now().toString(36)}`;
-  const pair: KeyPair = { privatePem, publicJwk: { ...jwk, kid, use: "sig", alg: "RS256" }, kid };
-  await ctx.runMutation(internal.settings.setInternal, { key: "guest.keypair", value: pair });
-  return pair;
+  const pair: KeyPair = { version: 2, privatePem, publicJwk: { ...jwk, kid, use: "sig", alg: "RS256" }, kid };
+  return await ctx.runMutation(internal.guestData.installKeys, { pair });
 }
 
 /** Public JWKS document, served by the /guest/jwks.json HTTP route. */
@@ -47,24 +46,21 @@ export const jwks = internalAction({
   },
 });
 
-/** Exchange the guest password for a signed token. Rate limiting is left to the password's entropy and the log. */
+/** Exchange the guest password for a signed token. Password attempts are limited atomically across requests. */
 export const issueToken = action({
   args: { password: v.string(), hours: v.optional(v.number()) },
   handler: async (ctx, { password, hours }): Promise<{ token: string; expiresAt: number }> => {
     const expected = process.env.GUEST_PASSWORD;
     if (!expected) throw new Error("Guest access is switched off on this deployment.");
-    const lock = ((await ctx.runQuery(internal.settings.getInternal, { key: "guest.failures" })) as { count: number; at: number } | null) ?? { count: 0, at: 0 };
-    const withinHour = Date.now() - lock.at < 3_600_000;
-    if (withinHour && lock.count >= 10) throw new Error("Too many attempts. Try again in an hour.");
-    if (!timingSafeEqual(password, expected)) {
-      await ctx.runMutation(internal.settings.setInternal, { key: "guest.failures", value: { count: withinHour ? lock.count + 1 : 1, at: Date.now() } });
+    await ctx.runMutation(internal.guestData.attempt, {});
+    if (password.length > 1024 || !timingSafeEqual(password, expected)) {
       await new Promise((r) => setTimeout(r, 800));
       throw new Error("That password isn’t right.");
     }
-    if (lock.count) await ctx.runMutation(internal.settings.setInternal, { key: "guest.failures", value: { count: 0, at: 0 } });
+    await ctx.runMutation(internal.settings.setInternal, { key: "guest.failures", value: { count: 0, at: 0 } });
     const k = await keys(ctx);
     const pk = await importPKCS8(k.privatePem, "RS256");
-    const ttl = Math.min(24 * 7, Math.max(1, hours ?? 1));
+    const ttl = Math.min(24 * 7, Math.max(1, Number.isFinite(hours) ? hours! : 1));
     const expiresAt = Date.now() + ttl * 3_600_000;
     const token = await new SignJWT({ email: GUEST_EMAIL, name: "Guest Tester", email_verified: true })
       .setProtectedHeader({ alg: "RS256", kid: k.kid })
@@ -83,7 +79,7 @@ export const refreshToken = action({
   args: {},
   handler: async (ctx): Promise<{ token: string; expiresAt: number } | null> => {
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity || identity.subject !== "guest" || !process.env.GUEST_PASSWORD) return null;
+    if (!identity || identity.subject !== "guest" || identity.issuer !== process.env.CONVEX_SITE_URL || !process.env.GUEST_PASSWORD) return null;
     const k = await keys(ctx);
     const pk = await importPKCS8(k.privatePem, "RS256");
     const expiresAt = Date.now() + 3_600_000;

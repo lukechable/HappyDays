@@ -8,7 +8,7 @@ import { useAction, useMutation } from "convex/react";
 import { useQuery } from "convex-helpers/react/cache/hooks";
 import { toast } from "sonner";
 import { api } from "../../../convex/_generated/api";
-import { PageHeader, Panel, Pill, Dot, Facts, Empty, Loading } from "@/components/primitives";
+import { DataTable, PageHeader, Panel, Pill, Dot, Facts, Empty, Loading } from "@/components/primitives";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -139,6 +139,7 @@ type Practice = { businesses: Array<{ id: string; business_name: string; display
 function ClinikoTab() {
   const status = useQuery(api.settings.setupStatus);
   const pricing = useQuery(api.bookings.pricing);
+  const setPricing = useMutation(api.bookings.setPricing);
   const syncPricing = useAction(api.bookings.syncPricing);
   const settings = useQuery(api.settings.all);
   const setSetting = useMutation(api.settings.set);
@@ -164,7 +165,11 @@ function ClinikoTab() {
           </div>
         )}
       </Panel>
-      <p className="text-xs text-fg-tertiary">Prices for online booking are set per appointment type under Cliniko Link → Appointment Types.</p>
+      <Panel title="Happy Days checkout overrides" blurb="These settings control this app’s Stripe checkout. Actual Cliniko fees and deposit requirements appear under Appointment Types.">
+        <DataTable head={<><th>Type</th><th>Length</th><th>Cliniko online</th><th>Book here</th><th>Charge here</th><th>Fee</th><th>Deposit</th></>} minWidth={900}>
+          {pricing.map(p => <PricingRow key={`${p._id}:${p.updatedAt}`} p={p} clinikoOnline={practice?.appointmentTypes.find(t => t.id === p.clinikoAppointmentTypeId)?.show_in_online_bookings} onSave={patch => { void setPricing({ id: p._id, mode: patch.mode ?? p.mode, feeCents: patch.feeCents ?? p.feeCents, depositCents: patch.depositCents ?? p.depositCents, bookableOnline: patch.bookableOnline ?? p.bookableOnline }).then(() => toast.success("Checkout settings saved")).catch(e => toast.error(errorMessage(e))); }} />)}
+        </DataTable>
+      </Panel>
       {status.cliniko && <ClinikoUsersPanel />}
     </div>
   );
@@ -179,7 +184,7 @@ export function PricingRow({ p, color, telehealth, clinikoOnline, onSave }: { p:
       <td className="num text-fg-secondary">{p.durationMinutes} min</td>
       <td>{clinikoOnline ? <Pill tone="good">yes</Pill> : <Pill>no</Pill>}</td>
       <td><Switch checked={p.bookableOnline} onCheckedChange={(v) => onSave({ bookableOnline: v })} /></td>
-      <td><select className="h-8 rounded-lg border border-input bg-card px-2 text-sm" value={p.mode} onChange={(e) => onSave({ mode: e.target.value as "full" | "deposit" | "none" })}><option value="none">Not payable online</option><option value="full">Full fee</option><option value="deposit">Deposit</option></select></td>
+      <td><select className="h-8 rounded-lg border border-input bg-card px-2 text-sm" value={p.mode} onChange={(e) => onSave({ mode: e.target.value as "full" | "deposit" | "none" })}><option value="none">Checkout disabled here</option><option value="full">Full fee</option><option value="deposit">Deposit</option></select></td>
       <td><Input className="num h-8 w-28" inputMode="decimal" value={fee} onChange={(e) => setFee(e.target.value)} onBlur={() => onSave({ feeCents: Math.round(Number(fee) * 100) || 0 })} /></td>
       <td><Input className="num h-8 w-28" inputMode="decimal" value={dep} disabled={p.mode !== "deposit"} onChange={(e) => setDep(e.target.value)} onBlur={() => onSave({ depositCents: Math.round(Number(dep) * 100) || 0 })} /></td>
     </tr>

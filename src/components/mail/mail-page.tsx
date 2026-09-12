@@ -20,10 +20,10 @@ import type { ComposeDraft } from "./compose";
 import { quoteHtml, textToHtml, sanitiseForEditor } from "@/lib/sanitise";
 import { Button } from "@/components/ui/button";
 import { Empty } from "@/components/primitives";
-import { useLive, useMediaQuery, useStored } from "@/lib/hooks";
+import { useLive, useMediaQuery, useStored, useCacheScope } from "@/lib/hooks";
 import { readLive, subscribeLive, writeLive } from "@/lib/live-cache";
 import { gmailRead, COST } from "@/lib/gmail-budget";
-import { mailStore, threadText } from "@/lib/mail-store";
+import { scopedMailStore, threadText } from "@/lib/mail-store";
 import { replaceSearch } from "@/lib/shallow";
 import { cn, errorMessage } from "@/lib/utils";
 
@@ -39,6 +39,8 @@ const EMPTY_TEXT: Record<string, string> = { inbox: "Inbox zero.", unread: "Noth
 export function MailPage() {
   const params = useSearchParams();
   const me = useQuery(api.users.me);
+  const scope = useCacheScope();
+  const mailStore = useMemo(() => scopedMailStore(scope), [scope]);
   const view = (params.get("view") as ViewKey | null) ?? "inbox";
   const labelId = params.get("label") ?? undefined;
   const q = params.get("q") ?? undefined;
@@ -64,7 +66,7 @@ export function MailPage() {
   const dismissed = useRef<string | null>(null);
 
   const connected = me?.google?.status === "connected";
-  const listKey = JSON.stringify({ view, labelId, q, connected });
+  const listKey = JSON.stringify({ view, labelId, q, connected, scope, ...(view.startsWith("smart:") ? { smartVersion: 2 } : {}) });
   const [list, setList] = useState<{ key: string; items: ListItem[]; nextToken?: string; error?: string; missing: number; tick: number }>({ key: "", items: [], missing: 0, tick: 0 });
   const [tick, setTick] = useState(0);
   const [appending, setAppending] = useState(false);
@@ -93,10 +95,20 @@ export function MailPage() {
   const signatures = useQuery(api.signaturesEmail.mine);
 
   const reload = useCallback(() => setTick((t) => t + 1), []);
+  const pageRequest = useRef(0);
+  useEffect(() => { const request = ++pageRequest.current; return () => { pageRequest.current = request + 1; }; }, [listKey, tick]);
   const loadMore = async () => {
     if (!connected || !nextToken || appending) return;
+    const request = pageRequest.current;
     setAppending(true);
-    try { const r = await gmailRead(COST.list, () => listThreads({ view, labelId, q, pageToken: nextToken })); setList((cur) => ({ ...cur, items: [...cur.items, ...r.items], nextToken: r.nextPageToken })); }
+    try {
+      const r = await gmailRead(COST.list, () => listThreads({ view, labelId, q, pageToken: nextToken }));
+      if (request !== pageRequest.current) return;
+      const data = { items: [...new Map([...items, ...r.items].map(i => [i.gmailThreadId, i])).values()], nextToken: r.nextPageToken, missing: missing + (r.missing ?? 0) };
+      writeLive(listCacheKey, { data, fetchedAt: Date.now() });
+      if (view !== "search") void mailStore.putList(listCacheKey, { ...data, fetchedAt: Date.now() });
+      setList({ key: listKey, ...data, tick });
+    }
     catch (e) { toast.error(errorMessage(e)); }
     finally { setAppending(false); }
   };
@@ -109,7 +121,7 @@ export function MailPage() {
     let live = true;
     void mailStore.getList<ListItem>(listCacheKey).then((r) => { if (live && r && !readLive(listCacheKey).data) writeLive(listCacheKey, { data: { items: r.items, nextToken: r.nextToken, missing: r.missing }, fetchedAt: 0 }); });
     return () => { live = false; };
-  }, [connected, listCacheKey]);
+  }, [connected, listCacheKey, mailStore]);
 
   // Gmail push landed (the account's last sync moved): refresh the list we are looking at, quietly.
   const lastSyncAt = me?.google?.lastSyncAt;
@@ -124,18 +136,16 @@ export function MailPage() {
     // The shell may already be fetching this list (Prefetch); show its result rather than asking Gmail twice.
     if (tick === 0 && cached.inflight) { let live = true; void cached.inflight.then(() => { if (live && !readLive(listCacheKey).fetchedAt) setTick((t) => t + 1); }); return () => { live = false; }; }
     let live = true;
+    const controller = new AbortController();
     const args = JSON.parse(listKey) as { view: ViewKey; labelId?: string; q?: string };
-    gmailRead(COST.list, () => listThreads({ view: args.view, labelId: args.labelId, q: args.q })).then((r) => {
+    gmailRead(COST.list, () => listThreads({ view: args.view, labelId: args.labelId, q: args.q }), { signal: controller.signal }).then((r) => {
       if (!live) return;
       const data = { items: r.items, nextToken: r.nextPageToken, missing: r.missing ?? 0 };
       writeLive(listCacheKey, { data, fetchedAt: Date.now() });
       if (args.view !== "search") void mailStore.putList(listCacheKey, { ...data, fetchedAt: Date.now() });
       setList({ key: listKey, items: r.items, nextToken: r.nextPageToken, missing: r.missing ?? 0, tick }); setChecked(new Set()); setFocused(0);
-      // Warm the first few conversations so opening them is instant.
-      const warm = r.items.slice(0, 6);
-      (async () => { for (const it of warm) { if (!live) return; if (await mailStore.hasThread(it.gmailThreadId)) continue; try { const t = await gmailRead(COST.thread, () => getThread({ gmailThreadId: it.gmailThreadId }), { background: true }); writeLive(`mail:thread:${it.gmailThreadId}`, { data: t, fetchedAt: Date.now() }); await mailStore.putThread(it.gmailThreadId, t, threadText(t)); } catch { /* skip */ } await new Promise((res) => setTimeout(res, 400)); } })();
     }).catch((e: unknown) => { if (live) setList({ key: listKey, items: cached.data?.items ?? [], error: errorMessage(e), missing: 0, tick }); });
-    return () => { live = false; };
+    return () => { live = false; controller.abort(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [listKey, tick, connected, listThreads]);
 
@@ -155,18 +165,19 @@ export function MailPage() {
   useEffect(() => {
     if (!selectedId || !connected) return;
     let live = true;
-    const cachedThread = readLive<ThreadData>(`mail:thread:${selectedId}`);
+    const controller = new AbortController();
+    const cachedThread = readLive<ThreadData>(`mail:thread:${scope}:${selectedId}`);
     const useCached = cachedThread.data && cachedThread.fetchedAt && Date.now() - cachedThread.fetchedAt < 120_000;
     const fromDevice = async () => { const d = await mailStore.getThread<ThreadData>(selectedId); if (d && live) setThreadState({ id: selectedId, thread: d.data }); return d; };
-    (useCached ? Promise.resolve(cachedThread.data as ThreadData) : fromDevice().then(async (d) => { const t = await gmailRead(COST.thread, () => getThread({ gmailThreadId: selectedId })); if (!d || JSON.stringify(d.data.messages.map((m) => m.gmailMessageId)) !== JSON.stringify(t.messages.map((m) => m.gmailMessageId)) || d.data.labelIds.join() !== t.labelIds.join()) void mailStore.putThread(selectedId, t, threadText(t)); return t; })).then((t) => {
+    (useCached ? Promise.resolve(cachedThread.data as ThreadData) : fromDevice().then(async (d) => { const t = await gmailRead(COST.thread, () => getThread({ gmailThreadId: selectedId }), { signal: controller.signal }); if (live && (!d || JSON.stringify(d.data.messages.map((m) => m.gmailMessageId)) !== JSON.stringify(t.messages.map((m) => m.gmailMessageId)) || d.data.labelIds.join() !== t.labelIds.join())) void mailStore.putThread(selectedId, t, threadText(t)); return t; })).then((t) => {
       if (!live) return;
-      if (!useCached) writeLive(`mail:thread:${selectedId}`, { data: t, fetchedAt: Date.now() });
+      if (!useCached) writeLive(`mail:thread:${scope}:${selectedId}`, { data: t, fetchedAt: Date.now() });
       setThreadState({ id: selectedId, thread: t });
       const unread = t.messages.filter((m) => m.unread).map((m) => m.gmailMessageId);
       if (unread.length) { void markRead({ gmailMessageIds: unread, read: true }); setList((cur) => ({ ...cur, items: cur.items.map((i) => (i.gmailThreadId === selectedId ? { ...i, unread: false } : i)) })); }
     }).catch((e: unknown) => { if (live) setThreadState({ id: selectedId, error: errorMessage(e) }); });
-    return () => { live = false; };
-  }, [selectedId, connected, getThread, markRead]);
+    return () => { live = false; controller.abort(); };
+  }, [selectedId, connected, getThread, markRead, scope, mailStore]);
 
   const toggleCheck = (id: string, shift: boolean) => {
     setChecked((s) => {
@@ -300,7 +311,7 @@ export function MailPage() {
     const q2 = searchText.trim(); if (q2.length < 2) return;
     let live = true; const t = setTimeout(() => { void mailStore.search(q2, 20).then((h) => { if (live) setLocalSearch({ q: q2, hits: h }); }); }, 150);
     return () => { live = false; clearTimeout(t); };
-  }, [searchText]);
+  }, [searchText, mailStore]);
 
   const defaultSignature = useMemo(() => { if (!signatures || !compose) return undefined; return (compose.mode === "new" ? signatures.find((s) => s.isDefaultNew) : signatures.find((s) => s.isDefaultReply))?.html ?? signatures[0]?.html; }, [signatures, compose]);
 
@@ -335,7 +346,7 @@ export function MailPage() {
         <Button size="sm" onClick={() => setCompose({ mode: "new", to: [], cc: [], bcc: [], subject: "", html: "" })}><PenSquare className="size-3.5" />Compose</Button>
         <form className="relative min-w-0 flex-1 max-w-xl" onSubmit={(e) => { e.preventDefault(); if (searchText.trim()) setParams({ view: "search", q: searchText.trim(), thread: undefined, label: undefined }); else setParams({ view: "inbox", q: undefined }); }}>
           <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-fg-quaternary" />
-          <input id="mail-search" value={searchText} onChange={(e) => setSearchText(e.target.value)} placeholder="Search all mail (Gmail syntax works: from:, has:attachment, newer_than:7d)" className="h-8 w-full rounded-full border border-border bg-card pl-8 pr-8 text-sm outline-none focus:border-input" />
+          <input id="mail-search" value={searchText} onChange={(e) => setSearchText(e.target.value)} placeholder="Search all mail, including Sent (e.g. in:sent)" className="h-8 w-full rounded-full border border-border bg-card pl-8 pr-8 text-sm outline-none focus:border-input" />
           {q && <button type="button" onClick={() => { setSearchText(""); setParams({ view: "inbox", q: undefined, thread: undefined }); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-fg-tertiary" aria-label="Clear search"><X className="size-3.5" /></button>}
           {localHits.length > 0 && searchText.trim() !== q && (
             <div className="absolute left-0 top-full z-30 mt-1 w-full rounded-xl bg-popover p-1 shadow-md ring-1 ring-border">
@@ -369,12 +380,12 @@ export function MailPage() {
             <label className="ml-auto flex items-center gap-1 text-[11px] text-fg-tertiary"><input type="checkbox" className="size-3.5 accent-foreground" checked={items.length > 0 && checked.size === items.length} onChange={(e) => setChecked(e.target.checked ? new Set(items.map((i) => i.gmailThreadId)) : new Set())} />all</label>
           </div>
           {view.startsWith("smart:") && (
-            <div className="flex shrink-0 gap-1 border-b border-border px-2 py-1">
-              {SMART_TABS.map((t) => <button key={t.key} type="button" onClick={() => setParams({ view: t.key, thread: undefined })} className={cn("rounded-full px-2.5 py-0.5 text-xs", view === t.key ? "bg-foreground text-background" : "text-fg-secondary hover:bg-muted")}>{t.label}</button>)}
+            <div className="flex shrink-0 flex-wrap gap-1 border-b border-border px-2 py-1" aria-label="Gmail categories">
+              {SMART_TABS.map((t) => <button key={t.key} type="button" onClick={() => setParams({ view: t.key, label: undefined, q: undefined, thread: undefined })} aria-pressed={view === t.key} className={cn("rounded-full px-2.5 py-0.5 text-xs", view === t.key ? "bg-foreground text-background" : "text-fg-secondary hover:bg-muted")}>{t.label}</button>)}
             </div>
           )}
           <div className="min-h-0 flex-1">
-            <ThreadList items={items} meta={meta} selectedId={selectedId} focusedIndex={focused} checked={checked} onOpen={open} onToggleCheck={toggleCheck} onStar={(i) => act([i.gmailThreadId], i.starred ? "unstar" : "star")} loading={listLoading || appending} error={listError} hasMore={!!nextToken} onMore={() => void loadMore()} emptyText={EMPTY_TEXT[view] ?? "Nothing here."} myFirst={me?.first} labels={labels} onContextMenu={onContextMenu} onDragStart={onDragStart} />
+            <ThreadList items={items} meta={meta} selectedId={selectedId} focusedIndex={focused} checked={checked} onOpen={open} onToggleCheck={toggleCheck} onStar={(i) => act([i.gmailThreadId], i.starred ? "unstar" : "star")} loading={listLoading || appending} error={listError} onRetry={reload} hasMore={!!nextToken} onMore={() => void loadMore()} emptyText={EMPTY_TEXT[view] ?? "Nothing here."} myFirst={me?.first} labels={labels} onContextMenu={onContextMenu} onDragStart={onDragStart} />
           </div>
         </section>
         {/* The divider is the reading pane's thick edge: drag it to resize, double-click to reset. */}

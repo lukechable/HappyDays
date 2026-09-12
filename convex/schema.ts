@@ -315,6 +315,7 @@ export default defineSchema({
     amountCents: v.number(),
     mode: v.union(v.literal("full"), v.literal("deposit")),
     stripeCheckoutSessionId: v.optional(v.string()),
+    fulfillmentStartedAt: v.optional(v.number()),
     stripePaymentIntentId: v.optional(v.string()),
     status: v.union(v.literal("pending"), v.literal("paid"), v.literal("booked"), v.literal("failed"), v.literal("expired")),
     clinikoPatientId: v.optional(v.string()),

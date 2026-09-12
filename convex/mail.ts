@@ -10,6 +10,7 @@ import { accessTokenFor } from "./google";
 import * as gmail from "./lib/gmail";
 import { userLabelIds } from "./labelRules";
 import type { GmailMessage, GmailThread } from "./lib/gmail";
+import { SMART_LABELS } from "./lib/smartMail";
 
 /* ------------------------------------------------------------------ */
 /*  Shapes the UI consumes. Everything comes straight from Gmail.     */
@@ -113,7 +114,7 @@ async function myAccount(ctx: ActionCtx): Promise<{ me: { _id: Id<"users">; emai
 /*  Views                                                              */
 /* ------------------------------------------------------------------ */
 
-export const VIEWS = ["inbox", "unread", "smart:primary", "smart:newsletter", "smart:notification", "smart:social", "overdue", "assigned", "starred", "sent", "drafts", "archive", "spam", "trash", "label", "search", "matter", "all"] as const;
+export const VIEWS = ["inbox", "unread", "smart:primary", "smart:newsletter", "smart:notification", "smart:social", "smart:forums", "overdue", "assigned", "starred", "sent", "drafts", "archive", "spam", "trash", "label", "search", "matter", "all"] as const;
 
 /** One page of a mailbox view, straight from Gmail. Headers are indexed as a side effect so meta queries can join. */
 export const listThreads = action({
@@ -130,10 +131,8 @@ export const listThreads = action({
     switch (view) {
       case "inbox": await page({ labelIds: ["INBOX"], q: q || undefined }); break;
       case "unread": await page({ labelIds: ["INBOX", "UNREAD"], q: q || undefined }); break;
-      case "smart:primary": await page({ q: gq("in:inbox category:primary") }); break;
-      case "smart:newsletter": await page({ q: gq("in:inbox category:promotions") }); break;
-      case "smart:notification": await page({ q: gq("in:inbox category:updates") }); break;
-      case "smart:social": await page({ q: gq("in:inbox (category:social OR category:forums)") }); break;
+      case "smart:primary": case "smart:newsletter": case "smart:notification": case "smart:social": case "smart:forums":
+        await page({ labelIds: ["INBOX", SMART_LABELS[view]], q: q || undefined }); break;
       case "starred": await page({ labelIds: ["STARRED"], q: q || undefined }); break;
       case "sent": await page({ labelIds: ["SENT"], q: q || undefined }); break;
       case "drafts": await page({ labelIds: ["DRAFT"], q: q || undefined }); break;

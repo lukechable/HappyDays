@@ -32,7 +32,7 @@ async function api<T>(tok: string, path: string, init: RequestInit = {}): Promis
   return (await r.json()) as T;
 }
 
-export type BankTransaction = { id: string; description: string; amountCents: number; direction: "credit" | "debit"; postDate: string; status: string; accountId: string; accountName?: string };
+export type BankTransaction = { id: string; description: string; amountCents: number; direction: "credit" | "debit"; postDate: string; transactionDate?: string; status: string; accountId: string; accountName?: string };
 
 export const status = query({
   args: {},
@@ -64,21 +64,36 @@ export const connectLink = action({
 /** Recent transactions across the linked accounts, credits first, newest first. */
 export const transactions = action({
   args: {},
-  handler: async (ctx): Promise<{ linked: boolean; accounts: Array<{ id: string; name: string; accountNo?: string; institution?: string }>; rows: BankTransaction[] }> => {
+  handler: async (ctx): Promise<{ linked: boolean; accounts: Array<{ id: string; name: string; accountNo?: string; institution?: string }>; rows: BankTransaction[]; complete: boolean; fetchedAt: number }> => {
     const me = await ctx.runQuery(internal.bookings.requireStaff, {});
     const userId = (await ctx.runQuery(internal.settings.getInternal, { key: USER_KEY })) as string | null;
-    if (!userId) return { linked: false, accounts: [], rows: [] };
+    if (!userId) return { linked: false, accounts: [], rows: [], complete: true, fetchedAt: Date.now() };
     const server = await token("SERVER_ACCESS");
     type Acc = { id: string; name?: string; accountNo?: string; institution?: string };
     type Tx = { id: string; description?: string; amount?: string; direction?: string; postDate?: string; transactionDate?: string; status?: string; account?: string };
     const accounts = (await api<{ data: Acc[] }>(server, `/users/${userId}/accounts`)).data ?? [];
-    const tx = (await api<{ data: Tx[] }>(server, `/users/${userId}/transactions?limit=500`)).data ?? [];
+    const tx: Tx[] = [];
+    let path: string | undefined = `/users/${userId}/transactions?limit=500`;
+    const seen = new Set<string>();
+    while (path && seen.size < 50) {
+      if (seen.has(path)) throw new Error("Bank pagination repeated a page; refresh the bank feed.");
+      seen.add(path);
+      const page: { data: Tx[]; links?: { next?: string } } = await api(server, path);
+      if (!Array.isArray(page.data)) throw new Error("The bank feed returned an incomplete page.");
+      tx.push(...page.data);
+      const next: string | undefined = page.links?.next;
+      if (next) {
+        const url = new URL(next, BASE);
+        if (url.origin !== BASE || url.pathname !== `/users/${userId}/transactions`) throw new Error("Unexpected bank pagination link.");
+        path = url.pathname + url.search;
+      } else path = undefined;
+    }
     const accName = new Map(accounts.map((a) => [a.id, a.name ?? a.accountNo ?? a.id]));
     await ctx.runMutation(internal.bookings.logAccess, { userId: me._id, action: "bank.transactions" });
     return {
-      linked: true,
+      linked: true, complete: !path, fetchedAt: Date.now(),
       accounts: accounts.map((a) => ({ id: a.id, name: a.name ?? a.accountNo ?? a.id, accountNo: a.accountNo, institution: a.institution })),
-      rows: tx.map((t) => ({ id: t.id, description: (t.description ?? "").trim(), amountCents: Math.round(Math.abs(Number(t.amount ?? 0)) * 100), direction: (t.direction === "credit" ? "credit" : "debit") as "credit" | "debit", postDate: t.postDate ?? t.transactionDate ?? "", status: t.status ?? "posted", accountId: t.account ?? "", accountName: accName.get(t.account ?? "") })).sort((a, b) => (b.postDate > a.postDate ? 1 : b.postDate < a.postDate ? -1 : 0)),
+      rows: [...new Map(tx.map(t => [t.id, t])).values()].map((t) => ({ id: t.id, description: (t.description ?? "").trim(), amountCents: Math.round(Math.abs(Number(t.amount ?? 0)) * 100), direction: (t.direction === "credit" ? "credit" : "debit") as "credit" | "debit", postDate: t.postDate ?? t.transactionDate ?? "", transactionDate: t.transactionDate, status: t.status ?? "unknown", accountId: t.account ?? "", accountName: accName.get(t.account ?? "") })).sort((a, b) => (b.postDate > a.postDate ? 1 : b.postDate < a.postDate ? -1 : 0)),
     };
   },
 });

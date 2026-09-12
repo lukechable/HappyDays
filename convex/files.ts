@@ -218,6 +218,7 @@ export const publicRedeem = internalMutation({
     }
     const ids = fileId ? c.fileIds.filter((x) => x === fileId) : c.fileIds;
     const files = (await Promise.all(ids.map((id) => ctx.db.get(id)))).filter((f): f is NonNullable<typeof f> => !!f);
+    if (!files.length) return { ok: false as const, reason: "unknown" as const };
     const out = [];
     for (const f of files) out.push({ _id: f._id, name: f.name, mime: f.mime, size: f.size, url: await ctx.storage.getUrl(f.storageId) });
     await ctx.db.insert("downloadEvents", { codeId: c._id, fileId, at: Date.now(), ip, userAgent, outcome: "ok" });

@@ -25,6 +25,10 @@ export const handleWebhook = internalAction({
       }
       case "checkout.session.completed": case "checkout.session.async_payment_succeeded": {
         const s = event.data.object as Stripe.Checkout.Session;
+        if (s.metadata?.bookingSessionId && s.payment_status === "paid") {
+          const booking = await ctx.runQuery(internal.bookings.sessionById, { id: s.metadata.bookingSessionId as Id<"bookingSessions"> });
+          if (!booking || s.currency !== "aud" || s.amount_total !== booking.amountCents || (booking.stripeCheckoutSessionId && booking.stripeCheckoutSessionId !== s.id)) throw new Error("Booking payment does not match the expected checkout, currency or amount.");
+        }
         await ctx.runMutation(internal.money.upsertPayment, { payment: { stripeId: s.id, kind: "checkout", amountCents: s.amount_total ?? 0, currency: (s.currency ?? "aud").toUpperCase(), status: s.payment_status, customerEmail: s.customer_details?.email ?? s.customer_email ?? undefined, description: s.metadata?.description, bookingSessionId: (s.metadata?.bookingSessionId as Id<"bookingSessions"> | undefined), createdAt: s.created * 1000 } });
         if (s.metadata?.bookingSessionId && s.payment_status === "paid") await ctx.runAction(internal.bookings.completePaid, { bookingSessionId: s.metadata.bookingSessionId as Id<"bookingSessions">, stripeCheckoutSessionId: s.id, stripePaymentIntentId: typeof s.payment_intent === "string" ? s.payment_intent : s.payment_intent?.id });
         break;

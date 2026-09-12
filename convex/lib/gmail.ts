@@ -104,7 +104,7 @@ export const getAttachment = (token: string, messageId: string, attachmentId: st
  * Thread reads in Gmail's multipart batch endpoint. Gmail allows 250 quota units per user per second and a thread
  * read costs 10, so a batch is 20 reads, and when a part comes back 429 only that part is retried (with a pause),
  * so a busy second (inbox prefetch, dashboard, background indexing) degrades to a short wait, not an error.
- * Whatever Gmail did return is kept; the call only fails when nothing at all came back.
+ * Never advance pagination with a partial page after exhausted retries: that would silently skip mail.
  */
 export async function batchGetThreads(token: string, ids: string[], format: "metadata" | "full" = "metadata"): Promise<GmailThread[]> {
   if (!ids.length) return [];
@@ -116,14 +116,14 @@ export async function batchGetThreads(token: string, ids: string[], format: "met
     if (attempt > 0) await sleep(600 * 2 ** (attempt - 1));
     const limited: string[] = [];
     for (let i = 0; i < pending.length; i += 20) {
-      if (i > 0) await sleep(300);
+      if (i > 0) await sleep(1100);
       const r = await batchOnce(token, pending.slice(i, i + 20), p);
       for (const t of r.threads) got.set(t.id, t);
       limited.push(...r.rateLimited);
     }
     pending = limited;
   }
-  if (pending.length && got.size === 0) throw new GmailError("Gmail is rate-limiting requests for a moment. Wait a few seconds and try again.", 429);
+  if (pending.length) throw new GmailError("Gmail is rate-limiting requests for a moment. Wait a few seconds and try again.", 429);
   return ids.map((id) => got.get(id)).filter((t): t is GmailThread => !!t);
 }
 
