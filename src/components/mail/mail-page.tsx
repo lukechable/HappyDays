@@ -20,10 +20,10 @@ import type { ComposeDraft } from "./compose";
 import { quoteHtml, textToHtml, sanitiseForEditor } from "@/lib/sanitise";
 import { Button } from "@/components/ui/button";
 import { Empty } from "@/components/primitives";
-import { useLive, useMediaQuery, useStored, useCacheScope } from "@/lib/hooks";
+import { useLive, useMediaQuery, useStored, useCacheScope, useNow } from "@/lib/hooks";
 import { dropLive, readLive, subscribeLive, writeLive } from "@/lib/live-cache";
 import { applyMailChange, type MailChange } from "@/lib/mail-change";
-import { gmailRead, COST } from "@/lib/gmail-budget";
+import { gmailRead } from "@/lib/gmail-budget";
 import { scopedMailStore, threadText } from "@/lib/mail-store";
 import { replaceSearch } from "@/lib/shallow";
 import { cn, errorMessage } from "@/lib/utils";
@@ -41,6 +41,7 @@ export function MailPage() {
   const params = useSearchParams();
   const me = useQuery(api.users.me);
   const scope = useCacheScope();
+  const now = useNow();
   const mailStore = useMemo(() => scopedMailStore(scope), [scope]);
   const view = (params.get("view") as ViewKey | null) ?? "inbox";
   const labelId = params.get("label") ?? undefined;
@@ -67,7 +68,7 @@ export function MailPage() {
   const dismissed = useRef<string | null>(null);
 
   const connected = me?.google?.status === "connected";
-  const listKey = JSON.stringify({ view, labelId, q, connected, scope, ...(view.startsWith("smart:") ? { smartVersion: 2 } : {}) });
+  const listKey = JSON.stringify({ cacheVersion: 3, view, labelId, q, connected, scope, ...(view.startsWith("smart:") ? { smartVersion: 2 } : {}) });
   const [list, setList] = useState<{ key: string; items: ListItem[]; nextToken?: string; error?: string; missing: number; tick: number }>({ key: "", items: [], missing: 0, tick: 0 });
   const [tick, setTick] = useState(0);
   const [appending, setAppending] = useState(false);
@@ -91,15 +92,16 @@ export function MailPage() {
   const listFresh = list.key === listKey && list.tick === tick;
   const items = list.key === listKey ? list.items : cachedList.data?.items ?? [];
   const nextToken = listFresh ? list.nextToken : cachedList.data?.nextToken;
-  const listLoading = connected && !listFresh && !cachedList.data;
-  const listError = listFresh ? list.error : undefined;
+  const cacheFresh = !!cachedList.data && !cachedList.error && !!cachedList.fetchedAt && now - cachedList.fetchedAt < 60_000;
+  const listLoading = connected && !listFresh && !cacheFresh && items.length === 0;
+  const listError = listFresh ? list.error : cachedList.error;
   const missing = listFresh ? list.missing : cachedList.data?.missing ?? 0;
   const thread = threadState.id === selectedId ? threadState.thread : undefined;
   const threadError = threadState.id === selectedId ? threadState.error : undefined;
   const threadLoading = !!selectedId && threadState.id !== selectedId;
   const setItems = (fn: (cur: ListItem[]) => ListItem[]) => setList(cur => ({ key: listKey, tick, missing: cur.key === listKey ? cur.missing : missing, nextToken: cur.key === listKey ? cur.nextToken : nextToken, items: fn(cur.key === listKey ? cur.items : items) }));
   useEffect(() => {
-    if (list.key === listKey && list.tick === tick) writeLive(listCacheKey, { data: { items: list.items, nextToken: list.nextToken, missing: list.missing }, fetchedAt: Date.now() });
+    if (list.key === listKey && list.tick === tick && !list.error) writeLive(listCacheKey, { data: { items: list.items, nextToken: list.nextToken, missing: list.missing } });
   }, [list, listKey, listCacheKey, tick]);
   const setThread = (t: ThreadData | undefined) => setThreadState((cur) => ({ ...cur, thread: t }));
 
@@ -114,10 +116,10 @@ export function MailPage() {
     const request = pageRequest.current;
     setAppending(true);
     try {
-      const r = await gmailRead(COST.list, () => listThreads({ view, labelId, q, pageToken: nextToken }));
+      const r = await gmailRead(() => listThreads({ view, labelId, q, pageToken: nextToken }));
       if (request !== pageRequest.current) return;
-      const data = { items: [...new Map([...items, ...r.items].map(i => [i.gmailThreadId, i])).values()], nextToken: r.nextPageToken, missing: missing + (r.missing ?? 0) };
-      writeLive(listCacheKey, { data, fetchedAt: Date.now() });
+      const data = { items: [...new Map([...items, ...r.items].map(i => [i.gmailThreadId, i])).values()], nextToken: r.nextPageToken, missing: r.missing ?? missing };
+      writeLive(listCacheKey, { data, fetchedAt: Date.now(), error: undefined });
       if (view !== "search") void mailStore.putList(listCacheKey, { ...data, fetchedAt: Date.now() });
       setList({ key: listKey, ...data, tick });
     }
@@ -144,20 +146,26 @@ export function MailPage() {
     if (!connected) return;
     // A list seen in the last minute is shown as is; older ones show instantly and refresh behind the scenes.
     const cached = readLive<{ items: ListItem[] }>(listCacheKey);
-    if (tick === 0 && cached.fetchedAt && Date.now() - cached.fetchedAt < 60_000) return; // shown from the cache already
+    if (tick === 0 && cached.data && !cached.error && cached.fetchedAt && Date.now() - cached.fetchedAt < 60_000) return; // shown from the cache already
     // The shell may already be fetching this list (Prefetch); show its result rather than asking Gmail twice.
     if (tick === 0 && cached.inflight) { let live = true; void cached.inflight.then(() => { if (live && !readLive(listCacheKey).fetchedAt) setTick((t) => t + 1); }); return () => { live = false; }; }
     let live = true;
     const request = pageRequest.current;
     const controller = new AbortController();
     const args = JSON.parse(listKey) as { view: ViewKey; labelId?: string; q?: string };
-    gmailRead(COST.list, () => listThreads({ view: args.view, labelId: args.labelId, q: args.q }), { signal: controller.signal }).then((r) => {
+    gmailRead(() => listThreads({ view: args.view, labelId: args.labelId, q: args.q }), { signal: controller.signal }).then((r) => {
       if (!live || request !== pageRequest.current) return;
       const data = { items: r.items, nextToken: r.nextPageToken, missing: r.missing ?? 0 };
-      writeLive(listCacheKey, { data, fetchedAt: Date.now() });
+      writeLive(listCacheKey, { data, fetchedAt: Date.now(), error: undefined });
       if (args.view !== "search") void mailStore.putList(listCacheKey, { ...data, fetchedAt: Date.now() });
       setList({ key: listKey, items: r.items, nextToken: r.nextPageToken, missing: r.missing ?? 0, tick }); setFocused(f => Math.min(f, Math.max(0, r.items.length - 1)));
-    }).catch((e: unknown) => { if (live && request === pageRequest.current) setList({ key: listKey, items: cached.data?.items ?? [], error: errorMessage(e), missing: 0, tick }); });
+    }).catch((e: unknown) => {
+      if (!live || request !== pageRequest.current) return;
+      const error = errorMessage(e);
+      // Failed reads are not successful empty mailboxes. Keep the last good rows and retry on return.
+      writeLive(listCacheKey, { error, fetchedAt: undefined });
+      setList({ key: listKey, items: cached.data?.items ?? [], error, missing: 0, tick });
+    });
     return () => { live = false; controller.abort(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [listKey, tick, connected, listThreads]);
@@ -182,7 +190,7 @@ export function MailPage() {
     const cachedThread = readLive<ThreadData>(`mail:thread:${scope}:${selectedId}`);
     const useCached = cachedThread.data && cachedThread.fetchedAt && Date.now() - cachedThread.fetchedAt < 120_000;
     const fromDevice = async () => { const d = await mailStore.getThread<ThreadData>(selectedId); if (d && live) setThreadState({ id: selectedId, thread: d.data }); return d; };
-    (useCached ? Promise.resolve(cachedThread.data as ThreadData) : fromDevice().then(async (d) => { const t = await gmailRead(COST.thread, () => getThread({ gmailThreadId: selectedId }), { signal: controller.signal }); if (live && (!d || JSON.stringify(d.data.messages.map((m) => m.gmailMessageId)) !== JSON.stringify(t.messages.map((m) => m.gmailMessageId)) || d.data.labelIds.join() !== t.labelIds.join())) void mailStore.putThread(selectedId, t, threadText(t)); return t; })).then((t) => {
+    (useCached ? Promise.resolve(cachedThread.data as ThreadData) : fromDevice().then(async (d) => { const t = await gmailRead(() => getThread({ gmailThreadId: selectedId }), { signal: controller.signal }); if (live && (!d || JSON.stringify(d.data.messages.map((m) => m.gmailMessageId)) !== JSON.stringify(t.messages.map((m) => m.gmailMessageId)) || d.data.labelIds.join() !== t.labelIds.join())) void mailStore.putThread(selectedId, t, threadText(t)); return t; })).then((t) => {
       if (!live) return;
       if (!useCached) writeLive(`mail:thread:${scope}:${selectedId}`, { data: t, fetchedAt: Date.now() });
       setThreadState({ id: selectedId, thread: t });
@@ -432,7 +440,7 @@ export function MailPage() {
         </ContextMenu>
       )}
       {filterFor && <FilterDialog item={filterFor.item} ids={filterFor.ids} myEmail={me?.email} folders={(labels ?? []).filter((l) => l.type === "user" && !l.hidden).sort((a, b) => a.name.localeCompare(b.name))} onSearch={(fq) => { setSearchText(fq); setParams({ view: "search", q: fq, thread: undefined, label: undefined }); }} onMove={moveTo} onClose={() => setFilterFor(null)} />}
-      {compose && signatures !== undefined && <Compose key={`${compose.mode}-${compose.inReplyTo ?? compose.draftId ?? "new"}`} draft={compose} signatureHtml={defaultSignature} signatureAbove={me?.prefs.signatureAbove ?? true} onClose={() => setCompose(null)} onSent={(r) => { const matterId = compose.matterId; setCompose(null); reload(); if (selectedId) gmailRead(COST.thread, () => getThread({ gmailThreadId: selectedId })).then(setThread).catch(() => undefined); if (matterId && r.attachments > 0) toast("Was that the report?", { description: "Mark the matter’s report as delivered by email.", action: { label: "Yes, delivered", onClick: () => reportSent({ matterId: matterId as Id<"matters"> }).then(() => toast.success("Marked delivered")).catch((e: unknown) => toast.error(errorMessage(e))) } }); }} />}
+      {compose && signatures !== undefined && <Compose key={`${compose.mode}-${compose.inReplyTo ?? compose.draftId ?? "new"}`} draft={compose} signatureHtml={defaultSignature} signatureAbove={me?.prefs.signatureAbove ?? true} onClose={() => setCompose(null)} onSent={(r) => { const matterId = compose.matterId; setCompose(null); reload(); if (selectedId) gmailRead(() => getThread({ gmailThreadId: selectedId })).then(setThread).catch(() => undefined); if (matterId && r.attachments > 0) toast("Was that the report?", { description: "Mark the matter’s report as delivered by email.", action: { label: "Yes, delivered", onClick: () => reportSent({ matterId: matterId as Id<"matters"> }).then(() => toast.success("Marked delivered")).catch((e: unknown) => toast.error(errorMessage(e))) } }); }} />}
       {view === "search" && q && <span className="sr-only">Showing Gmail results for {q}</span>}
       <TagIcon className="hidden" />
     </div>

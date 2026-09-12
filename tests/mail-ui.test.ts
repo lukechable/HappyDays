@@ -11,8 +11,8 @@ vi.mock("next/dynamic", () => ({ default: () => () => null }));
 vi.mock("next/link", () => ({ default: () => null }));
 vi.mock("convex/react", () => ({ useAction: (ref: Parameters<typeof getFunctionName>[0]) => getFunctionName(ref) === "mail:modify" ? state.modify : state.list, useMutation: () => state.reload }));
 vi.mock("convex-helpers/react/cache/hooks", () => ({ useQuery: (ref: Parameters<typeof getFunctionName>[0]) => getFunctionName(ref) === "users:me" ? { google: { status: "connected" }, prefs: {}, badges: {} } : getFunctionName(ref) === "signaturesEmail:mine" ? [] : {} }));
-vi.mock("../src/lib/hooks", () => ({ useCacheScope: () => "fixture", useMediaQuery: () => false, useStored: (_key: string, value: unknown) => useState(value), useLive: () => ({ data: [], reload: state.reload }) }));
-vi.mock("../src/lib/gmail-budget", () => ({ COST: { list: 810, thread: 40 }, gmailRead: (_cost: number, fn: () => Promise<unknown>) => fn() }));
+vi.mock("../src/lib/hooks", () => ({ useCacheScope: () => "fixture", useNow: () => Date.now(), useMediaQuery: () => false, useStored: (_key: string, value: unknown) => useState(value), useLive: () => ({ data: [], reload: state.reload }) }));
+vi.mock("../src/lib/gmail-budget", () => ({ gmailRead: (fn: () => Promise<unknown>) => fn() }));
 vi.mock("../src/lib/shallow", () => ({ replaceSearch: state.navigate }));
 vi.mock("sonner", () => ({ toast: Object.assign(vi.fn(), { error: state.error, success: vi.fn() }) }));
 vi.mock("../src/components/ui/button", () => ({ Button: ({ children, disabled, onClick, ...props }: { children: React.ReactNode; disabled?: boolean; onClick?: React.MouseEventHandler; "aria-label"?: string }) => h("button", { disabled, onClick, "aria-label": props["aria-label"] }, children) }));
@@ -21,7 +21,7 @@ vi.mock("../src/components/mail/folder-list", () => ({ FolderList: () => null, V
 vi.mock("../src/components/mail/context-menu", () => ({ ContextMenu: () => null, MenuItem: () => null, MenuSeparator: () => null, MenuHeading: () => null }));
 vi.mock("../src/components/mail/thread-view", () => ({ ThreadView: () => null }));
 vi.mock("../src/components/mail/filter-dialog", () => ({ FilterDialog: () => null }));
-vi.mock("../src/components/mail/thread-list", () => ({ ThreadList: ({ items, checked, onToggleCheck }: { items: ListItem[]; checked: Set<string>; onToggleCheck: (id: string, shift: boolean) => void }) => h("div", {}, ...items.map(i => h("input", { key: i.gmailThreadId, type: "checkbox", "data-thread": i.gmailThreadId, checked: checked.has(i.gmailThreadId), onChange: () => onToggleCheck(i.gmailThreadId, false) }))) }));
+vi.mock("../src/components/mail/thread-list", () => ({ ThreadList: ({ items, checked, onToggleCheck, error, loading, hasMore, onMore }: { error?: string; loading: boolean; hasMore: boolean; onMore: () => void; items: ListItem[]; checked: Set<string>; onToggleCheck: (id: string, shift: boolean) => void }) => h("div", {}, error && h("div", { role: "alert" }, error), loading && h("div", { role: "status" }, "Loading mailbox"), hasMore && h("button", { onClick: onMore }, "Load more"), ...items.map(i => h("input", { key: i.gmailThreadId, type: "checkbox", "data-thread": i.gmailThreadId, checked: checked.has(i.gmailThreadId), onChange: () => onToggleCheck(i.gmailThreadId, false) }))) }));
 import { MailPage } from "../src/components/mail/mail-page";
 let root: Root;
 let container: HTMLDivElement;
@@ -66,4 +66,45 @@ test("finishing deletion after switching folders does not cancel the new folder'
   expect(rows().map(r => r.dataset.thread)).toEqual(["sent-message"]);
   expect(rows()[0].checked).toBe(false);
   expect(state.navigate).not.toHaveBeenCalled();
+});
+
+test("a failed mailbox read is not cached as a successful empty folder when switching back", async () => {
+  state.list.mockImplementation(async ({ view }: { view: string }) => {
+    if (view === "inbox") throw new Error("Mailbox temporarily unavailable");
+    return { items: [{ gmailThreadId: "overdue-mail", labelIds: [] }], missing: 0 };
+  });
+  state.params = new URLSearchParams("view=inbox");
+  await act(async () => root.render(h(MailPage)));
+  expect(container.querySelector('[role="alert"]')?.textContent).toBe("Mailbox temporarily unavailable");
+  state.params = new URLSearchParams("view=overdue");
+  await act(async () => root.render(h(MailPage)));
+  const recovered = deferred<{ items: { gmailThreadId: string; labelIds: string[] }[] }>();
+  state.list.mockReturnValue(recovered.promise);
+  state.params = new URLSearchParams("view=inbox");
+  await act(async () => root.render(h(MailPage)));
+  expect(state.list.mock.calls.filter(([args]) => args.view === "inbox")).toHaveLength(2);
+  expect(container.querySelector('[role="status"]')).not.toBeNull();
+  await act(async () => recovered.resolve({ items: [{ gmailThreadId: "inbox-recovered", labelIds: ["INBOX"] }] }));
+  expect(rows().map(r => r.dataset.thread)).toEqual(["inbox-recovered"]);
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+});
+test("overdue pagination does not add the same other-mailbox count twice", async () => {
+  state.list.mockResolvedValueOnce({ items: [{ gmailThreadId: "overdue-first", labelIds: [] }], missing: 1, nextPageToken: "20" });
+  state.params = new URLSearchParams("view=overdue");
+  await act(async () => root.render(h(MailPage)));
+  state.list.mockResolvedValueOnce({ items: [{ gmailThreadId: "overdue-second", labelIds: [] }], missing: 1 });
+  await act(async () => [...container.querySelectorAll("button")].find(b => b.textContent === "Load more")!.click());
+  expect(container.textContent).toContain("1 not in your mailbox");
+  expect(rows()).toHaveLength(2);
+});
+test("returning to a recently loaded folder displays its cached conversations immediately", async () => {
+  state.list.mockResolvedValueOnce({ items: [{ gmailThreadId: "sent-fixture", labelIds: ["SENT"] }], missing: 0 });
+  state.params = new URLSearchParams("view=sent");
+  await act(async () => root.render(h(MailPage)));
+  const calls = state.list.mock.calls.length;
+  state.params = new URLSearchParams("view=unread");
+  await act(async () => root.render(h(MailPage)));
+  expect(rows().map(r => r.dataset.thread)).toEqual(["first", "second", "third"]);
+  expect(state.list).toHaveBeenCalledTimes(calls);
+  expect(container.querySelector('[role="status"]')).toBeNull();
 });
