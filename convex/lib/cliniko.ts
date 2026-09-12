@@ -12,8 +12,11 @@ export class ClinikoError extends Error { constructor(message: string, public st
 async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
   const key = process.env.CLINIKO_API_KEY;
   if (!key) throw new ClinikoError("CLINIKO_API_KEY is not set on the Convex deployment.", 500);
-  const res = await fetch(path.startsWith("http") ? path : `${base()}${path}`, {
+  const url = new URL(path.startsWith("http") ? path : `${base()}${path}`);
+  if (url.origin !== new URL(base()).origin || !url.pathname.startsWith("/v1/") || url.username || url.password) throw new ClinikoError("Invalid Cliniko API link", 400);
+  const res = await fetch(url.toString(), {
     ...init,
+    redirect: "error",
     headers: { Authorization: `Basic ${btoa(`${key}:`)}`, Accept: "application/json", "User-Agent": "Happy Days (luke@barbarafraser.net)", ...(init.body ? { "Content-Type": "application/json" } : {}), ...(init.headers ?? {}) },
   });
   if (res.status === 204) return undefined as T;
@@ -42,7 +45,7 @@ async function all<T>(path: string, key: string, max = 1000): Promise<T[]> {
 
 export type Business = { id: string; business_name: string; display_name?: string; address_1?: string; address_2?: string; city?: string; post_code?: string; state?: string; country?: string; time_zone?: string; time_zone_identifier?: string; email_reply_to?: string; website_address?: string; show_in_online_bookings?: boolean };
 export type Practitioner = { id: string; first_name: string; last_name: string; display_name?: string; title?: string; designation?: string; active: boolean; show_in_online_bookings?: boolean; description?: string; user?: { links: { self: string } } };
-export type AppointmentType = { id: string; name: string; category?: string; color?: string; duration_in_minutes: number; description?: string; show_in_online_bookings: boolean; online_bookings_lead_time_hours?: number; max_attendees?: number; telehealth_enabled?: boolean; archived_at?: string | null; billable_items?: unknown; practitioners?: { links: { self: string } } };
+export type AppointmentType = { online_payments_enabled?: boolean | null; online_payments_mode?: "required" | "optional" | "deposit_required" | null; deposit_price?: string | null; billable_item?: { links: { self: string } }; product?: { links: { self: string } }; id: string; name: string; category?: string; color?: string; duration_in_minutes: number; description?: string; show_in_online_bookings: boolean; online_bookings_lead_time_hours?: number; max_attendees?: number; telehealth_enabled?: boolean; archived_at?: string | null; billable_items?: unknown; practitioners?: { links: { self: string } } };
 export type Patient = { id: string; first_name: string; last_name: string; preferred_first_name?: string; title?: string; email?: string; date_of_birth?: string; medicare?: string | null; medicare_reference_number?: string | null; sex?: string; address_1?: string; address_2?: string; city?: string; post_code?: string; state?: string; country?: string; notes?: string; created_at: string; updated_at: string; archived_at?: string | null; medical_alerts?: unknown; patient_phone_numbers?: Array<{ number: string; phone_type: string }>; referral_source?: unknown; links?: { self: string } };
 export type Appointment = { archived_at?: string | null; deleted_at?: string | null; id: string; starts_at: string; ends_at: string; notes?: string; cancelled_at?: string | null; cancellation_reason?: number; cancellation_note?: string; did_not_arrive?: boolean; patient_arrived?: boolean; telehealth_url?: string; online_booking_policy_accepted?: boolean; created_at: string; updated_at: string; patient?: { links: { self: string } }; practitioner?: { links: { self: string } }; appointment_type?: { links: { self: string } }; business?: { links: { self: string } }; invoices?: { links: { self: string } }; patient_name?: string; conflicts?: { exists: boolean } };
 export type AvailableTime = { appointment_start: string };
@@ -50,7 +53,7 @@ export type AvailabilityBlock = { id: string; starts_at: string; ends_at: string
 export type UnavailableBlock = { id: string; starts_at: string; ends_at: string; notes?: string; practitioner?: { links: { self: string } }; business?: { links: { self: string } }; deleted_at?: string | null };
 export type PatientAttachment = { id: string; description?: string; content_type?: string; filename?: string; upload_url?: string; content_url?: string; created_at: string; updated_at: string; archived_at?: string | null; user?: { links: { self: string } }; patient?: { links: { self: string } }; links?: { self: string } };
 export type MedicalAlert = { id: string; name: string; created_at: string; archived_at?: string | null; patient?: { links: { self: string } } };
-export type Invoice = { id: string; number: number; patient_name?: string; status: number; status_description?: string; issue_date: string; closed_at?: string | null; total_amount: number | string; net_amount?: number | string; discounted_amount?: number | string; created_at: string; updated_at: string; patient?: { links: { self: string } }; appointment?: { links: { self: string } }; online_payment_url?: string };
+export type Invoice = { booking?: { links: { self: string } }; archived_at?: string | null; deleted_at?: string | null; id: string; number: number; patient_name?: string; status: number; status_description?: string; issue_date: string; closed_at?: string | null; total_amount: number | string; net_amount?: number | string; discounted_amount?: number | string; created_at: string; updated_at: string; patient?: { links: { self: string } }; appointment?: { links: { self: string } }; online_payment_url?: string };
 
 export const idFromLink = (link?: { links: { self: string } }) => (link ? link.links.self.split("/").pop() : undefined);
 
@@ -100,7 +103,7 @@ export const unavailableBlocks = (fromIso: string, toIso: string) => all<Unavail
 export const recentPatients = (limit = 50) => call<{ patients: Patient[] }>(`/patients?per_page=${limit}&sort=updated_at:desc`).then((r) => r.patients);
 /** Invoices issued in a date window (YYYY-MM-DD), for matching to the appointments on the calendar. */
 export const invoicesBetween = (fromDate: string, toDate: string) => all<Invoice>(`/invoices?q[]=issue_date:>=${fromDate}&q[]=issue_date:<=${toDate}&sort=issue_date:desc`, "invoices", 500);
-export const listInvoices = (sinceDate: string) => all<Invoice>(`/invoices?q[]=issue_date:>=${sinceDate}&sort=issue_date:desc`, "invoices", 300);
+export const listInvoices = (sinceDate: string) => complete<Invoice>(`/invoices?q[]=issue_date:>=${sinceDate}&sort=issue_date:desc`, "invoices");
 export const me = () => call<{ id: string; first_name: string; last_name: string; email: string }>("/user");
 
 /* ------------------------------ writes ------------------------------ */
@@ -122,7 +125,7 @@ export type PatientForm = { id: string; name?: string; completed: boolean; compl
 export type PatientFormTemplate = { id: string; name: string; email_to_patient_on_completion?: boolean; restricted_to_practitioner?: boolean; created_at: string; archived_at?: string | null };
 export type GroupAppointment = { id: string; starts_at: string; ends_at: string; max_attendees?: number; notes?: string; created_at: string; updated_at: string; appointment_type?: { links: { self: string } }; practitioner?: { links: { self: string } }; business?: { links: { self: string } }; attendees?: { links: { self: string } }; deleted_at?: string | null };
 export type BillableItem = { id: string; name: string; item_code?: string; price: number | string; tax?: { links: { self: string } }; archived_at?: string | null };
-export type Product = { id: string; name: string; item_code?: string; price: number | string; stock_level?: number; tax?: { links: { self: string } }; archived_at?: string | null };
+export type Product = { price_including_tax?: string | number; price_ex_tax?: string | number; id: string; name: string; item_code?: string; price: number | string; stock_level?: number; tax?: { links: { self: string } }; archived_at?: string | null };
 export type Tax = { id: string; name: string; rate: number | string; amount?: number | string };
 export type ConcessionType = { id: string; name: string; archived_at?: string | null };
 export type ConcessionPrice = { id: string; price: number | string; billable_item?: { links: { self: string } }; concession_type?: { links: { self: string } } };
@@ -174,3 +177,25 @@ export const getContact = (id: string) => call<{ id: string; first_name?: string
 
 export const rebateAppointments = (patientId: string) => complete<Appointment>(`/individual_appointments?q[]=patient_id:=${encodeURIComponent(patientId)}&sort=starts_at:desc`, "individual_appointments");
 export const practitionerReferences = (practitionerId: string, businessId: string) => complete<{ reference_number?: string | null }>(`/practitioner_reference_numbers?q[]=practitioner_id:=${encodeURIComponent(practitionerId)}&q[]=business_id:=${encodeURIComponent(businessId)}`, "practitioner_reference_numbers");
+
+export type AppointmentCharge = { appointmentTypeId: string; itemId: string; kind: "service" | "product"; quantity: string; discountPercentage?: string | null; discountedAmount?: string | null; monetaryDiscount?: boolean | null };
+type ChargeLink = { appointment_type?: { links: { self: string } }; billable_item?: { links: { self: string } }; product?: { links: { self: string } }; quantity: string; discount_percentage?: string | null; discounted_amount?: string | null; is_monetary_discount?: boolean | null };
+export async function appointmentCharges(): Promise<AppointmentCharge[]> {
+  const [services, products] = await Promise.all([complete<ChargeLink>("/appointment_type_billable_items", "appointment_type_billable_items"), complete<ChargeLink>("/appointment_type_products", "appointment_type_products")]);
+  return [...services.map(c => ({ c, kind: "service" as const })), ...products.map(c => ({ c, kind: "product" as const }))].map(({ c, kind }) => ({ appointmentTypeId: idFromLink(c.appointment_type) ?? "", itemId: idFromLink(kind === "service" ? c.billable_item : c.product) ?? "", kind, quantity: c.quantity, discountPercentage: c.discount_percentage, discountedAmount: c.discounted_amount, monetaryDiscount: c.is_monetary_discount }));
+}
+export const paymentSettings = () => call<{ account?: { invoice_calculation_method?: number }; online_payments?: { activated?: boolean } }>("/settings");
+/** Resolve only referenced records in bounded batches, with no patient-count or date-window truncation. */
+async function byIds<T>(path: string, key: string, ids: string[]): Promise<T[]> {
+  const out: T[] = [];
+  const unique = [...new Set(ids)];
+  for (let offset = 0; offset < unique.length; offset += 50) {
+    const params = new URLSearchParams();
+    params.append("q[]", `id:=${unique.slice(offset, offset + 50).join(",")}`);
+    params.append("q[]", "archived_at:*");
+    out.push(...await complete<T>(`${path}?${params}`, key));
+  }
+  return out;
+}
+export const invoiceBookings = (ids: string[]) => byIds<Appointment>("/bookings", "bookings", ids);
+export const invoicePatients = (ids: string[]) => byIds<Patient>("/patients", "patients", ids);

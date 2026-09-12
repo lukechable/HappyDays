@@ -25,6 +25,10 @@ export const handleWebhook = internalAction({
       }
       case "checkout.session.completed": case "checkout.session.async_payment_succeeded": {
         const s = event.data.object as Stripe.Checkout.Session;
+        if (s.metadata?.bookingSessionId && s.payment_status === "paid") {
+          const booking = await ctx.runQuery(internal.bookings.sessionById, { id: s.metadata.bookingSessionId as Id<"bookingSessions"> });
+          if (!booking || s.currency !== "aud" || s.amount_total !== booking.amountCents || (booking.stripeCheckoutSessionId && booking.stripeCheckoutSessionId !== s.id)) throw new Error("Booking payment does not match the expected checkout, currency or amount.");
+        }
         await ctx.runMutation(internal.money.upsertPayment, { payment: { stripeId: s.id, kind: "checkout", amountCents: s.amount_total ?? 0, currency: (s.currency ?? "aud").toUpperCase(), status: s.payment_status, customerEmail: s.customer_details?.email ?? s.customer_email ?? undefined, description: s.metadata?.description, bookingSessionId: (s.metadata?.bookingSessionId as Id<"bookingSessions"> | undefined), createdAt: s.created * 1000 } });
         if (s.metadata?.bookingSessionId && s.payment_status === "paid") await ctx.runAction(internal.bookings.completePaid, { bookingSessionId: s.metadata.bookingSessionId as Id<"bookingSessions">, stripeCheckoutSessionId: s.id, stripePaymentIntentId: typeof s.payment_intent === "string" ? s.payment_intent : s.payment_intent?.id });
         break;
@@ -76,25 +80,6 @@ export const backfill = action({
     for await (const inv of s.invoices.list({ created: { gte: since }, limit: 100 })) { await ctx.runMutation(internal.money.upsertInvoice, { invoice: shapeInvoice(inv) }); count++; }
     for await (const p of s.paymentIntents.list({ created: { gte: since }, limit: 100 })) { await ctx.runMutation(internal.money.upsertPayment, { payment: { stripeId: p.id, kind: "payment_intent", amountCents: p.amount, currency: p.currency.toUpperCase(), status: p.status, customerEmail: p.receipt_email ?? undefined, description: p.description ?? undefined, createdAt: p.created * 1000 } }); count++; }
     return { count };
-  },
-});
-
-/** Stripe Checkout for a public booking. Returns the hosted URL; the webhook does the rest. */
-export const createBookingCheckout = internalAction({
-  args: { bookingSessionId: v.id("bookingSessions"), amountCents: v.number(), description: v.string(), customerEmail: v.string(), customerName: v.string(), successUrl: v.string(), cancelUrl: v.string(), expiresAt: v.number() },
-  handler: async (_ctx, a): Promise<{ url: string; id: string }> => {
-    const session = await stripe().checkout.sessions.create({
-      mode: "payment",
-      customer_email: a.customerEmail,
-      line_items: [{ quantity: 1, price_data: { currency: "aud", unit_amount: a.amountCents, product_data: { name: a.description } } }],
-      metadata: { bookingSessionId: a.bookingSessionId, description: a.description, customerName: a.customerName },
-      payment_intent_data: { description: a.description, receipt_email: a.customerEmail },
-      success_url: a.successUrl,
-      cancel_url: a.cancelUrl,
-      expires_at: Math.max(Math.floor(a.expiresAt / 1000), Math.floor(Date.now() / 1000) + 31 * 60),
-    });
-    if (!session.url) throw new Error("Stripe did not return a checkout URL");
-    return { url: session.url, id: session.id };
   },
 });
 

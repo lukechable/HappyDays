@@ -291,6 +291,7 @@ export default defineSchema({
   }).index("by_user", ["userId", "readAt", "createdAt"]),
 
   /** How each Cliniko appointment type is charged. Cliniko is the source for the type itself. */
+  // Retained historical rows only. Override reads/writes and custom booking checkout have been removed.
   appointmentPricing: defineTable({
     clinikoAppointmentTypeId: v.string(),
     name: v.string(),
@@ -315,6 +316,7 @@ export default defineSchema({
     amountCents: v.number(),
     mode: v.union(v.literal("full"), v.literal("deposit")),
     stripeCheckoutSessionId: v.optional(v.string()),
+    fulfillmentStartedAt: v.optional(v.number()),
     stripePaymentIntentId: v.optional(v.string()),
     status: v.union(v.literal("pending"), v.literal("paid"), v.literal("booked"), v.literal("failed"), v.literal("expired")),
     clinikoPatientId: v.optional(v.string()),

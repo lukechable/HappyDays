@@ -10,6 +10,7 @@ import { accessTokenFor } from "./google";
 import * as gmail from "./lib/gmail";
 import { userLabelIds } from "./labelRules";
 import type { GmailMessage, GmailThread } from "./lib/gmail";
+import { SMART_LABELS } from "./lib/smartMail";
 
 /* ------------------------------------------------------------------ */
 /*  Shapes the UI consumes. Everything comes straight from Gmail.     */
@@ -109,11 +110,23 @@ async function myAccount(ctx: ActionCtx): Promise<{ me: { _id: Id<"users">; emai
   return { me, account, token };
 }
 
+/** Shared across tabs and background workers, keyed by actual Gmail email address. */
+async function mailBudget(ctx: ActionCtx, accountId: Id<"googleAccounts">, cost: number) {
+  let waited = 0;
+  for (;;) {
+    const wait = await ctx.runMutation(internal.mailQuota.reserve, { accountId, cost });
+    if (!wait) return;
+    waited += wait;
+    if (waited > 45_000) throw new gmail.GmailError("Gmail is rate-limiting requests for a moment. Wait a few seconds and try again.", 429);
+    await new Promise(resolve => setTimeout(resolve, wait));
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /*  Views                                                              */
 /* ------------------------------------------------------------------ */
 
-export const VIEWS = ["inbox", "unread", "smart:primary", "smart:newsletter", "smart:notification", "smart:social", "overdue", "assigned", "starred", "sent", "drafts", "archive", "spam", "trash", "label", "search", "matter", "all"] as const;
+export const VIEWS = ["inbox", "unread", "smart:primary", "smart:newsletter", "smart:notification", "smart:social", "smart:forums", "overdue", "assigned", "starred", "sent", "drafts", "archive", "spam", "trash", "label", "search", "matter", "all"] as const;
 
 /** One page of a mailbox view, straight from Gmail. Headers are indexed as a side effect so meta queries can join. */
 export const listThreads = action({
@@ -126,14 +139,12 @@ export const listThreads = action({
     let estimate = 0;
     let missing = 0;
     const gq = (base: string) => [base, q].filter(Boolean).join(" ");
-    const page = async (opts: { labelIds?: string[]; q?: string }) => { const r = await gmail.listThreadIds(token, { ...opts, pageToken, maxResults: 20 }); ids = r.ids; nextPageToken = r.nextPageToken; estimate = r.estimate; };
+    const page = async (opts: { labelIds?: string[]; q?: string }) => { await mailBudget(ctx, account._id, 10); const r = await gmail.listThreadIds(token, { ...opts, pageToken, maxResults: 20 }); ids = r.ids; nextPageToken = r.nextPageToken; estimate = r.estimate; };
     switch (view) {
       case "inbox": await page({ labelIds: ["INBOX"], q: q || undefined }); break;
       case "unread": await page({ labelIds: ["INBOX", "UNREAD"], q: q || undefined }); break;
-      case "smart:primary": await page({ q: gq("in:inbox category:primary") }); break;
-      case "smart:newsletter": await page({ q: gq("in:inbox category:promotions") }); break;
-      case "smart:notification": await page({ q: gq("in:inbox category:updates") }); break;
-      case "smart:social": await page({ q: gq("in:inbox (category:social OR category:forums)") }); break;
+      case "smart:primary": case "smart:newsletter": case "smart:notification": case "smart:social": case "smart:forums":
+        await page({ labelIds: ["INBOX", SMART_LABELS[view]], q: q || undefined }); break;
       case "starred": await page({ labelIds: ["STARRED"], q: q || undefined }); break;
       case "sent": await page({ labelIds: ["SENT"], q: q || undefined }); break;
       case "drafts": await page({ labelIds: ["DRAFT"], q: q || undefined }); break;
@@ -151,7 +162,7 @@ export const listThreads = action({
       default: throw new Error(`Unknown view ${view}`);
     }
     if (!ids.length) return { items: [], nextPageToken, estimate, missing };
-    const threads = await gmail.batchGetThreads(token, ids, "metadata");
+    const threads = await gmail.batchGetThreads(token, ids, "metadata", cost => mailBudget(ctx, account._id, cost));
     const items = threads.map((t) => summarise(t, account.email, orgEmails));
     await ctx.runMutation(internal.mail.indexHeaders, { accountId: account._id, threads: threads.map(toIndex) });
     return { items, nextPageToken, estimate, missing };
@@ -215,6 +226,7 @@ export const getThread = action({
   handler: async (ctx, { gmailThreadId }): Promise<{ gmailThreadId: string; subject: string; messages: MessageView[]; labelIds: string[] }> => {
     const { account, token } = await myAccount(ctx);
     const orgEmails = new Set(allowedEmails().concat(account.email));
+    await mailBudget(ctx, account._id, 40);
     const t = await gmail.getThread(token, gmailThreadId, "full");
     const messages: MessageView[] = (t.messages ?? []).map((m) => {
       const body = gmail.parseBody(m.payload);
@@ -297,27 +309,41 @@ export const modify = action({
   args: { gmailThreadIds: v.array(v.string()), add: v.optional(v.array(v.string())), remove: v.optional(v.array(v.string())), op: v.optional(v.union(v.literal("trash"), v.literal("untrash"), v.literal("deleteForever"))) },
   handler: async (ctx, { gmailThreadIds, add = [], remove = [], op }) => {
     const { token, account } = await myAccount(ctx);
-    for (const id of gmailThreadIds) {
-      if (op === "trash") await gmail.trashThread(token, id);
-      else if (op === "untrash") await gmail.untrashThread(token, id);
-      else if (op === "deleteForever") await gmail.deleteThreadForever(token, id);
-      else if (add.length || remove.length) await gmail.modifyThread(token, id, add, remove);
+    if (gmailThreadIds.length > 200) throw new Error("Choose up to 200 conversations at a time.");
+    const completedIds: string[] = [];
+    const uniqueIds = [...new Set(gmailThreadIds)];
+    let error: string | undefined;
+    for (const id of uniqueIds) {
+      try {
+        await mailBudget(ctx, account._id, op === "trash" || op === "deleteForever" ? 20 : 10);
+        if (op === "trash") await gmail.trashThread(token, id);
+        else if (op === "untrash") await gmail.untrashThread(token, id);
+        else if (op === "deleteForever") await gmail.deleteThreadForever(token, id);
+        else if (add.length || remove.length) await gmail.modifyThread(token, id, add, remove);
+        completedIds.push(id);
+      } catch (e) { error = e instanceof Error ? e.message : "Gmail could not finish this change."; break; }
     }
     // Filing into a folder (or taking it back out) teaches the folder rules.
     const userAdd = userLabelIds(add);
     const userRemove = userLabelIds(remove);
-    if (!op && (userAdd.length || userRemove.length)) {
+    if (completedIds.length && !op && (userAdd.length || userRemove.length)) {
       const named = await Promise.all(userAdd.map((id) => gmail.getLabel(token, id).then((l) => ({ id, name: l.name })).catch(() => ({ id, name: id }))));
-      await ctx.runMutation(internal.labelRules.learn, { accountId: account._id, gmailThreadIds, add: named, remove: userRemove });
+      await ctx.runMutation(internal.labelRules.learn, { accountId: account._id, gmailThreadIds: completedIds, add: named, remove: userRemove }).catch(e => console.error("Folder rule learning failed", e));
     }
+    return { completedIds, failedIds: uniqueIds.filter(id => !completedIds.includes(id)), error };
   },
 });
 
 export const markMessageRead = action({
   args: { gmailMessageIds: v.array(v.string()), read: v.boolean() },
   handler: async (ctx, { gmailMessageIds, read }) => {
-    const { token } = await myAccount(ctx);
-    await Promise.all(gmailMessageIds.map((id) => gmail.modifyMessage(token, id, read ? [] : ["UNREAD"], read ? ["UNREAD"] : [])));
+    const { token, account } = await myAccount(ctx);
+    const ids = [...new Set(gmailMessageIds)];
+    if (ids.length > 1000) throw new Error("Choose up to 1,000 messages at a time.");
+    if (!ids.length) return;
+    if (ids.length <= 10) {
+      for (const id of ids) { await mailBudget(ctx, account._id, 5); await gmail.modifyMessage(token, id, read ? [] : ["UNREAD"], read ? ["UNREAD"] : []); }
+    } else { await mailBudget(ctx, account._id, 50); await gmail.batchModifyMessages(token, ids, read ? [] : ["UNREAD"], read ? ["UNREAD"] : []); }
   },
 });
 
@@ -543,8 +569,9 @@ export const indexRecent = internalAction({
   args: { accountId: v.id("googleAccounts"), days: v.number(), pageToken: v.optional(v.string()), page: v.optional(v.number()) },
   handler: async (ctx, { accountId, days, pageToken, page = 0 }) => {
     const token = await accessTokenFor(ctx, accountId);
+    await mailBudget(ctx, accountId, 10);
     const r = await gmail.listThreadIds(token, { q: `newer_than:${days}d -in:spam -in:trash`, pageToken, maxResults: 20 });
-    const threads = await gmail.batchGetThreads(token, r.ids, "metadata");
+    const threads = await gmail.batchGetThreads(token, r.ids, "metadata", cost => mailBudget(ctx, accountId, cost));
     await ctx.runMutation(internal.mail.indexHeaders, { accountId, threads: threads.map(toIndex) });
     await ctx.runMutation(internal.googleData.patchAccount, { accountId, patch: { lastSyncAt: Date.now() } });
     if (r.nextPageToken && page < 40) await ctx.scheduler.runAfter(6_000, internal.mail.indexRecent, { accountId, days, pageToken: r.nextPageToken, page: page + 1 });
@@ -564,6 +591,7 @@ export const syncHistory = internalAction({
     let newest = account.historyId;
     try {
       do {
+        await mailBudget(ctx, accountId, 2);
         const h = await gmail.listHistory(token, account.historyId, pageToken);
         for (const item of h.history ?? []) for (const a of item.messagesAdded ?? []) threadIds.add(a.message.threadId);
         newest = h.historyId ?? newest;
@@ -582,7 +610,7 @@ export const syncHistory = internalAction({
     const ids = Array.from(threadIds);
     let newInbound: Array<{ threadId: Id<"threads">; gmailMessageId: string; gmailThreadId: string }> = [];
     for (let i = 0; i < ids.length; i += 50) {
-      const threads = await gmail.batchGetThreads(token, ids.slice(i, i + 50), "metadata");
+      const threads = await gmail.batchGetThreads(token, ids.slice(i, i + 50), "metadata", cost => mailBudget(ctx, accountId, cost));
       newInbound = newInbound.concat(await ctx.runMutation(internal.mail.indexHeaders, { accountId, threads: threads.map(toIndex) }));
     }
     await ctx.runMutation(internal.googleData.patchAccount, { accountId, patch: { historyId: newest, lastSyncAt: Date.now() } });

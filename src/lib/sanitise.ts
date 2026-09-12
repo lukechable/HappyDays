@@ -28,14 +28,21 @@ export function sanitiseEmailHtml(html: string, opts: { showImages: boolean; cid
   });
   doc.querySelectorAll("[background]").forEach((el) => { const bg = el.getAttribute("background") ?? ""; if (!opts.showImages || /^\s*(https?:)?\/\//i.test(bg)) { el.removeAttribute("background"); if (!opts.showImages) blocked++; } });
   doc.querySelectorAll("a").forEach((a) => { a.setAttribute("target", "_blank"); a.setAttribute("rel", "noopener noreferrer nofollow"); const href = a.getAttribute("href") ?? ""; if (/^\s*javascript:/i.test(href)) a.removeAttribute("href"); });
-  doc.querySelectorAll("[style]").forEach((el) => { const st = el.getAttribute("style") ?? ""; if (!opts.showImages && /url\(/i.test(st)) { el.setAttribute("style", st.replace(/background(-image)?\s*:[^;]*url\([^)]*\)[^;]*;?/gi, "")); } if (/position\s*:\s*fixed/i.test(st)) el.setAttribute("style", st.replace(/position\s*:\s*fixed/gi, "position:static")); });
+  doc.querySelectorAll<HTMLElement>("[style]").forEach((el) => {
+    // CSSOM normalizes escaped property names. Remove every image-bearing declaration, not just backgrounds.
+    for (const property of Array.from(el.style)) {
+      const value = el.style.getPropertyValue(property);
+      if (!opts.showImages && /url\s*\(|image-set\s*\(/i.test(value)) { el.style.removeProperty(property); blocked++; }
+    }
+    if (el.style.position === "fixed") el.style.position = "static";
+  });
   return { html: doc.getElementById("root")?.innerHTML ?? "", blockedImages: blocked };
 }
 
 /** For HTML that will be placed inside the compose editor: no scripts, forms, iframes or event handlers. */
 export const sanitiseForEditor = (html: string) => DOMPurify.sanitize(html, { FORBID_TAGS: ["script", "style", "iframe", "object", "embed", "form", "input", "button", "meta", "link", "base", "svg", "math"], FORBID_ATTR: ["onerror", "onload", "onclick", "srcset"], ALLOW_DATA_ATTR: false });
 
-export const textToHtml = (text: string) => `<div style="white-space:pre-wrap;font-family:inherit">${text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1">$1</a>')}</div>`;
+export const textToHtml = (text: string) => `<div style="white-space:pre-wrap;font-family:inherit">${text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;").replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1">$1</a>')}</div>`;
 
 /** Quoted history for replies and forwards, Gmail-style. */
 export function quoteHtml(opts: { from: string; date: number; to?: string; subject?: string; html: string; mode: "reply" | "forward" }): string {

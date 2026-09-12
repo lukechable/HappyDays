@@ -23,7 +23,7 @@ self.addEventListener("fetch", (event) => {
     return;
   }
   if (url.pathname.startsWith("/_next/static/") || /\.(png|ico|svg|woff2?)$/.test(url.pathname)) {
-    event.respondWith(caches.open(STATIC).then(async (c) => { const hit = await c.match(req); if (hit) return hit; const res = await fetch(req); if (res.ok) c.put(req, res.clone()); return res; }));
+    event.respondWith(caches.open(STATIC).then(async (c) => { const hit = await c.match(req); if (hit) return hit; const res = await fetch(req); if (res.ok) { await c.put(req, res.clone()); const keys = await c.keys(); for (const key of keys.slice(0, Math.max(0, keys.length - 200))) { if (new URL(key.url).pathname !== OFFLINE_URL) await c.delete(key); } } return res; }));
   }
 });
 
@@ -46,7 +46,8 @@ self.addEventListener("push", (event) => {
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const href = (event.notification.data && event.notification.data.href) || "/";
-  const target = new URL(href, self.location.origin).href;
+  let target = self.location.origin + "/";
+  try { const url = new URL(href, self.location.origin); if (url.origin === self.location.origin) target = url.href; } catch { /* open the app */ }
   event.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
     const same = list.find((c) => c.url === target) || list.find((c) => new URL(c.url).origin === self.location.origin);
     if (same) { if ("navigate" in same && same.url !== target) return same.navigate(target).then((c) => c && c.focus()); return same.focus(); }

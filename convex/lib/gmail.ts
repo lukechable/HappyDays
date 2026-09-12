@@ -51,7 +51,7 @@ async function call<T>(token: string, path: string, init: RequestInit = {}, atte
     let msg = text;
     try { msg = (JSON.parse(text) as { error?: { message?: string } }).error?.message ?? text; } catch { /* raw */ }
     if (isRateLimit(res.status, msg)) {
-      if (attempt < 3) { await sleep(800 * 2 ** attempt); return call<T>(token, path, init, attempt + 1); }
+      if (attempt < 4) { const retryAfter = res.headers.get("retry-after"); const seconds = Number(retryAfter); const retryMs = retryAfter ? (Number.isFinite(seconds) ? seconds * 1000 : Math.max(0, Date.parse(retryAfter) - Date.now())) : 0; await sleep(Math.min(30_000, Math.max(1000 * 2 ** attempt + Math.random() * 250, Number.isFinite(retryMs) ? retryMs : 0))); return call<T>(token, path, init, attempt + 1); }
       throw new GmailError("Gmail is rate-limiting requests for a moment. Wait a few seconds and try again.", 429);
     }
     throw new GmailError(msg || `Gmail returned ${res.status}`, res.status);
@@ -101,12 +101,12 @@ export function getMessage(token: string, id: string, format: "metadata" | "full
 export const getAttachment = (token: string, messageId: string, attachmentId: string) => call<{ size: number; data: string }>(token, `/messages/${messageId}/attachments/${encodeURIComponent(attachmentId)}`);
 
 /**
- * Thread reads in Gmail's multipart batch endpoint. Gmail allows 250 quota units per user per second and a thread
- * read costs 10, so a batch is 20 reads, and when a part comes back 429 only that part is retried (with a pause),
+ * Thread reads in Gmail's multipart batch endpoint. Current Gmail defaults allow 6,000 quota units per user per minute and a thread
+ * read costs 40, so a batch is 20 reads, and when a part comes back 429 only that part is retried (with a pause),
  * so a busy second (inbox prefetch, dashboard, background indexing) degrades to a short wait, not an error.
- * Whatever Gmail did return is kept; the call only fails when nothing at all came back.
+ * Never advance pagination with a partial page after exhausted retries: that would silently skip mail.
  */
-export async function batchGetThreads(token: string, ids: string[], format: "metadata" | "full" = "metadata"): Promise<GmailThread[]> {
+export async function batchGetThreads(token: string, ids: string[], format: "metadata" | "full" = "metadata", beforeBatch?: (cost: number) => Promise<void>): Promise<GmailThread[]> {
   if (!ids.length) return [];
   const p = new URLSearchParams({ format });
   if (format === "metadata") for (const h of METADATA_HEADERS) p.append("metadataHeaders", h);
@@ -116,14 +116,16 @@ export async function batchGetThreads(token: string, ids: string[], format: "met
     if (attempt > 0) await sleep(600 * 2 ** (attempt - 1));
     const limited: string[] = [];
     for (let i = 0; i < pending.length; i += 20) {
-      if (i > 0) await sleep(300);
-      const r = await batchOnce(token, pending.slice(i, i + 20), p);
+      const chunk = pending.slice(i, i + 20);
+      if (beforeBatch) await beforeBatch(chunk.length * 40);
+      else if (i > 0) await sleep(10_000);
+      const r = await batchOnce(token, chunk, p);
       for (const t of r.threads) got.set(t.id, t);
       limited.push(...r.rateLimited);
     }
     pending = limited;
   }
-  if (pending.length && got.size === 0) throw new GmailError("Gmail is rate-limiting requests for a moment. Wait a few seconds and try again.", 429);
+  if (pending.length) throw new GmailError("Gmail is rate-limiting requests for a moment. Wait a few seconds and try again.", 429);
   return ids.map((id) => got.get(id)).filter((t): t is GmailThread => !!t);
 }
 
@@ -164,6 +166,7 @@ export async function listHistory(token: string, startHistoryId: string, pageTok
 /* ------------------------------ writes ------------------------------ */
 
 export const modifyThread = (token: string, id: string, add: string[], remove: string[]) => call<GmailThread>(token, `/threads/${id}/modify`, { method: "POST", body: JSON.stringify({ addLabelIds: add, removeLabelIds: remove }) });
+export const batchModifyMessages = (token: string, ids: string[], add: string[], remove: string[]) => call<void>(token, "/messages/batchModify", { method: "POST", body: JSON.stringify({ ids, addLabelIds: add, removeLabelIds: remove }) });
 export const modifyMessage = (token: string, id: string, add: string[], remove: string[]) => call<GmailMessage>(token, `/messages/${id}/modify`, { method: "POST", body: JSON.stringify({ addLabelIds: add, removeLabelIds: remove }) });
 export const trashThread = (token: string, id: string) => call<GmailThread>(token, `/threads/${id}/trash`, { method: "POST" });
 export const untrashThread = (token: string, id: string) => call<GmailThread>(token, `/threads/${id}/untrash`, { method: "POST" });

@@ -14,7 +14,7 @@ import { NotificationsPopover } from "@/components/shell/notifications";
 import { SignOutButton } from "@/components/auth/auth-mode";
 import { Rail, useRailCollapsed } from "@/components/shell/rail";
 import { AuthDiagnostics } from "@/components/auth/auth-diagnostics";
-import { Prefetch } from "@/components/shell/prefetch";
+import { CacheScope } from "@/lib/hooks";
 import { PageEnter } from "@/components/shell/page-enter";
 import { PwaProvider } from "@/components/shell/pwa";
 
@@ -50,7 +50,8 @@ function Inner({ children }: { children: ReactNode }) {
   }, [isAuthenticated, ensure]);
   if (me === undefined) return <Holding>Opening Happy Days…</Holding>;
   if (me === null) return <NotOnList />;
-  return <Frame me={me}>{children}</Frame>;
+  const scope = `${me._id}:${me.google?.email ?? "disconnected"}`;
+  return <CacheScope.Provider value={scope}><Frame key={scope} me={me}>{children}</Frame></CacheScope.Provider>;
 }
 
 function NotOnList() {
@@ -97,7 +98,6 @@ function Frame({ me, children }: { me: Me; children: ReactNode }) {
         </main>
       </div>
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
-      <Prefetch me={me} />
       <PwaProvider />
     </div>
   );

@@ -1,3 +1,4 @@
+import { contentDisposition } from "@/lib/download-headers";
 import { api } from "../../../../../convex/_generated/api";
 import { convexForUser } from "@/lib/convex-server";
 
@@ -25,12 +26,11 @@ export async function GET(req: Request) {
   if (!res.ok) return new Response(`Gmail returned ${res.status}`, { status: res.status });
   const { data } = (await res.json()) as { data: string };
   const bytes = Buffer.from(data.replace(/-/g, "+").replace(/_/g, "/"), "base64");
-  const safeName = name;
   return new Response(bytes, {
     headers: {
       "Content-Type": mime,
       "Content-Length": String(bytes.length),
-      "Content-Disposition": `${disposition}; filename="${safeName}"; filename*=UTF-8''${encodeURIComponent(name)}`,
+      "Content-Disposition": contentDisposition(name, disposition),
       "Cache-Control": "private, no-store",
       "X-Content-Type-Options": "nosniff",
       "Content-Security-Policy": "sandbox; default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'",

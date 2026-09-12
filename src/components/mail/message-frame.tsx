@@ -21,11 +21,12 @@ const FRAME_CSS = `
 export function MessageFrame({ html, text, cidMap, showImagesDefault }: { html?: string; text?: string; cidMap: Record<string, string>; showImagesDefault: boolean }) {
   const [showImages, setShowImages] = useState(showImagesDefault);
   const ref = useRef<HTMLIFrameElement>(null);
+  const [nonce] = useState(() => crypto.randomUUID());
   const [height, setHeight] = useState(120);
   const { html: safe, blockedImages } = useMemo(() => sanitiseEmailHtml(html ?? textToHtml(text ?? ""), { showImages, cidMap }), [html, text, showImages, cidMap]);
-  const srcDoc = useMemo(() => `<!doctype html><html><head><meta charset="utf-8"><base target="_blank"><style>${FRAME_CSS}</style></head><body>${safe}<script>
+  const srcDoc = useMemo(() => `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: ${showImages ? "https: http:" : typeof window !== "undefined" ? window.location.origin + "/api/mail/attachment" : "'none'"}; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'; base-uri 'none'; form-action 'none'"><base target="_blank"><style>${FRAME_CSS}</style></head><body>${safe}<script nonce="${nonce}">
     (function(){ var send=function(){ parent.postMessage({hd:'h', h: document.documentElement.scrollHeight}, '*'); }; send(); new ResizeObserver(send).observe(document.body); Array.prototype.forEach.call(document.images, function(i){ i.addEventListener('load', send); }); })();
-  </script></body></html>`, [safe]);
+  </script></body></html>`, [safe, showImages, nonce]);
   useEffect(() => {
     const onMsg = (e: MessageEvent) => { if (e.source === ref.current?.contentWindow && e.data?.hd === "h") setHeight(Math.min(20000, Math.max(40, Number(e.data.h) + 8))); };
     window.addEventListener("message", onMsg);
