@@ -115,3 +115,16 @@ export const createInvoice = action({
     return { stripeId: final.id, hostedUrl: final.hosted_invoice_url ?? undefined };
   },
 });
+
+/** Verify the actual booking payment at claim time, including refunds/disputes. A deposit never reaches here. */
+export const verifyRebatePayment = internalAction({
+  args: { checkoutId: v.string(), bookingSessionId: v.id("bookingSessions"), requiredCents: v.number() },
+  handler: async (_ctx, a): Promise<boolean> => {
+    const session = await stripe().checkout.sessions.retrieve(a.checkoutId, { expand: ["payment_intent.latest_charge"] });
+    const payment = typeof session.payment_intent === "object" ? session.payment_intent : null;
+    const charge = payment && typeof payment.latest_charge === "object" ? payment.latest_charge : null;
+    return session.metadata?.bookingSessionId === a.bookingSessionId && session.payment_status === "paid" && session.currency === "aud"
+      && (session.amount_total ?? 0) >= a.requiredCents && payment?.status === "succeeded" && payment.amount_received >= a.requiredCents
+      && !!charge?.paid && !!charge.captured && !charge.refunded && charge.amount_refunded === 0 && !charge.disputed;
+  },
+});

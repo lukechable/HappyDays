@@ -132,12 +132,12 @@ export const patient = action({
       notes: p.notes,
       address: [p.address_1, p.address_2, p.city, p.state, p.post_code].filter(Boolean).join(", "),
       alerts: alerts.filter((a) => !a.archived_at).map((a) => a.name),
-      appointments: appointments.map((a) => ({ id: a.id, startsAt: a.starts_at, endsAt: a.ends_at, cancelledAt: a.cancelled_at ?? null, didNotArrive: !!a.did_not_arrive, typeName: typeById.get(cliniko.idFromLink(a.appointment_type) ?? "")?.name ?? "Appointment", practitionerName: (() => { const x = pracById.get(cliniko.idFromLink(a.practitioner) ?? ""); return x ? `${x.first_name} ${x.last_name}` : ""; })(), clinikoUrl: cliniko.clinikoWebUrl(`/appointments/${a.id}`) })),
+      appointments: appointments.map((a) => ({ id: a.id, startsAt: a.starts_at, endsAt: a.ends_at, cancelledAt: a.cancelled_at ?? null, didNotArrive: !!a.did_not_arrive, arrived: a.patient_arrived === true, typeName: typeById.get(cliniko.idFromLink(a.appointment_type) ?? "")?.name ?? "Appointment", practitionerName: (() => { const x = pracById.get(cliniko.idFromLink(a.practitioner) ?? ""); return x ? `${x.first_name} ${x.last_name}` : ""; })(), clinikoUrl: cliniko.clinikoWebUrl(`/appointments/${a.id}`) })),
       attachments: attachments.filter((a) => !a.archived_at).map((a) => ({ id: a.id, filename: a.filename ?? a.description ?? `Attachment ${a.id}`, description: a.description, contentType: a.content_type, createdAt: a.created_at, url: a.content_url })),
       invoices: invoices.map((i) => ({ id: i.id, number: i.number, status: i.status_description ?? String(i.status), issueDate: i.issue_date, closedAt: i.closed_at ?? null, total: Number(i.total_amount) || 0, clinikoUrl: cliniko.clinikoWebUrl(`/invoices/${i.id}`) })),
       // Titles and dates only. Note content never leaves Cliniko.
       treatmentNotes: notes.filter((n) => !n.deleted_at).map((n) => ({ id: n.id, title: n.title || "Treatment note", draft: n.draft, createdAt: n.created_at, finalizedAt: n.finalized_at ?? null, author: userName(n.author), clinikoUrl: cliniko.clinikoWebUrl(`/patients/${patientId}/treatment_notes/${n.id}`) })),
-      cases: cases.filter((c) => !c.deleted_at).map((c) => ({ id: c.id, name: c.name, closed: c.closed, issueDate: c.issue_date, expiryDate: c.expiry_date, notes: c.notes, clinikoUrl: cliniko.clinikoWebUrl(`/patients/${patientId}/cases/${c.id}`) })),
+      cases: cases.filter((c) => !c.deleted_at).map((c) => ({ id: c.id, name: c.name, closed: !!(c.closed_at || c.closed), issueDate: c.issue_date, expiryDate: c.expiry_date, notes: c.notes, clinikoUrl: cliniko.clinikoWebUrl(`/patients/${patientId}/cases/${c.id}`) })),
       forms: forms.filter((f) => !f.deleted_at).map((f) => ({ id: f.id, name: f.name ?? "Form", completed: f.completed, completedAt: f.completed_at ?? null, createdAt: f.created_at, url: f.url, clinikoUrl: cliniko.clinikoWebUrl(`/patients/${patientId}/patient_forms/${f.id}`) })),
       matters,
     };

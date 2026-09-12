@@ -586,7 +586,10 @@ export const syncHistory = internalAction({
       newInbound = newInbound.concat(await ctx.runMutation(internal.mail.indexHeaders, { accountId, threads: threads.map(toIndex) }));
     }
     await ctx.runMutation(internal.googleData.patchAccount, { accountId, patch: { historyId: newest, lastSyncAt: Date.now() } });
-    if (newInbound.length) await ctx.scheduler.runAfter(0, internal.autoReply.onNewInbound, { accountId, messages: newInbound });
+    if (newInbound.length) {
+      await ctx.scheduler.runAfter(0, internal.autoReply.onNewInbound, { accountId, messages: newInbound });
+      await ctx.scheduler.runAfter(0, internal.cases.onNewInbound, { accountId, messages: newInbound });
+    }
   },
 });
 

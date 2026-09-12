@@ -17,6 +17,7 @@ export const NAV: NavGroup[] = [
       { href: "/bookings", label: "Appointments", exact: true, blurb: "The Cliniko appointments calendar, read live. Drag to reschedule, click to book." },
       { href: "/bookings/patients", label: "Patients", blurb: "Search Cliniko patients; open a record, its appointments and files." },
       { href: "/bookings/appointment-types", label: "Appointment Types", blurb: "Every Cliniko appointment type with its colour, length and online price." },
+      { href: "/bookings/rebates", label: "Medicare Rebates", blurb: "Referral cases, attendance, payment and Medicare rebate claims." },
       { href: "/bookings/payments", label: "Payments", blurb: "Cliniko invoices and Stripe payments side by side." },
     ],
   },

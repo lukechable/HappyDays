@@ -15,4 +15,6 @@ crons.interval("recheck reschedule requests", { hours: 4 }, internal.bookings.re
 // Signature requests past their expiry stop accepting signatures.
 crons.daily("expire signature requests", { hourUTC: 16, minuteUTC: 0 }, internal.signatures.expireRequests, {});
 
+crons.interval("reconcile Medicare rebates", { minutes: 10 }, internal.rebates.poll, {});
+
 export default crons;
