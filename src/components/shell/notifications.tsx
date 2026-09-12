@@ -1,28 +1,30 @@
 "use client";
 
-import { type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useMutation } from "convex/react";
 import { useQuery } from "convex-helpers/react/cache/hooks";
 import { api } from "../../../convex/_generated/api";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ago } from "@/lib/format";
-import { cn } from "@/lib/utils";
+import { toast } from "sonner";
+import { cn, errorMessage } from "@/lib/utils";
 
 export function NotificationsPopover({ trigger, count }: { trigger: ReactNode; count: number }) {
+  const [open, setOpen] = useState(false);
   const rows = useQuery(api.notifications.list);
   const markRead = useMutation(api.notifications.markRead);
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger render={<button type="button" />}>{trigger}</PopoverTrigger>
       <PopoverContent align="end" className="w-[360px] p-0">
         <div className="flex items-center justify-between border-b border-border px-3 py-2">
           <span className="text-sm font-medium">Notifications</span>
-          {count > 0 && <button type="button" onClick={() => void markRead({})} className="text-xs text-fg-tertiary hover:text-foreground">Mark all read</button>}
+          {count > 0 && <button type="button" onClick={() => void markRead({}).catch(e => toast.error(errorMessage(e)))} className="text-xs text-fg-tertiary hover:text-foreground">Mark all read</button>}
         </div>
         <div className="max-h-[420px] overflow-y-auto">
           {rows === undefined ? <p className="px-3 py-6 text-center text-xs text-fg-tertiary">Loading…</p> : rows.length === 0 ? <p className="px-3 py-8 text-center text-sm text-fg-tertiary">Nothing yet. Assignments, downloads and signatures land here.</p> : rows.map((n) => (
-            <Link key={n._id} href={n.href ?? "/"} onClick={() => void markRead({ id: n._id })} className={cn("block border-b border-border/60 px-3 py-2.5 last:border-0 hover:bg-muted", !n.readAt && "bg-blue-soft/40")}>
+            <NotificationRow key={n._id} href={n.href} onClick={() => { if (n.href) setOpen(false); void markRead({ id: n._id }).catch(e => toast.error(errorMessage(e))); }} className={cn("block border-b border-border/60 px-3 py-2.5 last:border-0 hover:bg-muted", !n.readAt && "bg-blue-soft/40")}>
               <div className="flex items-start gap-2">
                 {!n.readAt && <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-blue" />}
                 <div className="min-w-0">
@@ -31,10 +33,14 @@ export function NotificationsPopover({ trigger, count }: { trigger: ReactNode; c
                   <p className="mt-0.5 text-[10.5px] text-fg-quaternary">{ago(n.createdAt)}</p>
                 </div>
               </div>
-            </Link>
+            </NotificationRow>
           ))}
         </div>
       </PopoverContent>
     </Popover>
   );
+}
+
+function NotificationRow({ href, children, ...props }: { href?: string; children: ReactNode; className: string; onClick: () => void }) {
+  return href ? <Link href={href} {...props}>{children}</Link> : <button type="button" {...props} className={`${props.className} w-full text-left`} aria-label="Mark notification read">{children}</button>;
 }

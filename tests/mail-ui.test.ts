@@ -17,7 +17,7 @@ vi.mock("../src/lib/shallow", () => ({ replaceSearch: state.navigate }));
 vi.mock("sonner", () => ({ toast: Object.assign(vi.fn(), { error: state.error, success: vi.fn() }) }));
 vi.mock("../src/components/ui/button", () => ({ Button: ({ children, disabled, onClick, ...props }: { children: React.ReactNode; disabled?: boolean; onClick?: React.MouseEventHandler; "aria-label"?: string }) => h("button", { disabled, onClick, "aria-label": props["aria-label"] }, children) }));
 vi.mock("../src/components/primitives", () => ({ Empty: () => null }));
-vi.mock("../src/components/mail/folder-list", () => ({ FolderList: () => null, SMART_TABS: [], DRAG_MIME: "text/plain" }));
+vi.mock("../src/components/mail/folder-list", () => ({ FolderList: () => null, VIEWS: [{ key: "inbox", label: "Inbox" }, { key: "overdue", label: "Overdue" }], SMART_TABS: [], DRAG_MIME: "text/plain" }));
 vi.mock("../src/components/mail/context-menu", () => ({ ContextMenu: () => null, MenuItem: () => null, MenuSeparator: () => null, MenuHeading: () => null }));
 vi.mock("../src/components/mail/thread-view", () => ({ ThreadView: () => null }));
 vi.mock("../src/components/mail/filter-dialog", () => ({ FilterDialog: () => null }));

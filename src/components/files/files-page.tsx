@@ -1,9 +1,9 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { Fragment, useRef, useState } from "react";
 import { PrefetchLink } from "@/components/prefetch-link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { replaceUrl } from "@/lib/shallow";
+import { replaceSearch } from "@/lib/shallow";
 import { useMutation } from "convex/react";
 import { useQuery } from "convex-helpers/react/cache/hooks";
 import { Upload, FileText, Download, KeyRound, Trash2, Eye, PenLine, RefreshCw, Copy, Mail, Ban, CalendarPlus, Lock, ExternalLink } from "lucide-react";
@@ -28,6 +28,7 @@ export function FilesPage() {
   const params = useSearchParams();
   const tab = params.get("tab") === "codes" ? "codes" : params.get("tab") === "sent" ? "sent" : "files";
   const matterFilter = params.get("matter") as Id<"matters"> | null;
+  const fileFilter = params.get("file") as Id<"files"> | null;
   const [q, setQ] = useState("");
   const files = useQuery(api.files.list, { matterId: matterFilter ?? undefined, q: q.trim().length >= 2 ? q : undefined });
   const matters = useQuery(api.matters.list, { includeClosed: true });
@@ -49,24 +50,27 @@ export function FilesPage() {
   const upload = async (list: FileList | File[], replaces?: Id<"files">) => {
     const arr = Array.from(list);
     setUploading(arr.length);
+    let succeeded = 0;
     for (const file of arr) {
       try {
         const url = await uploadUrl({});
         const res = await fetch(url, { method: "POST", headers: { "Content-Type": file.type || "application/octet-stream" }, body: file });
+        if (!res.ok) throw new Error("Upload failed. Please try again.");
         const { storageId } = (await res.json()) as { storageId: Id<"_storage"> };
         await register({ storageId, name: file.name, mime: file.type || "application/octet-stream", size: file.size, sha256: await sha256(file), matterId: matterFilter ?? undefined, replacesFileId: replaces });
+        succeeded++;
       } catch (e) { toast.error(`${file.name}: ${errorMessage(e)}`); }
       setUploading((n) => n - 1);
     }
-    toast.success(arr.length === 1 ? "Uploaded" : `${arr.length} files uploaded`);
+    if (succeeded) toast.success(`${succeeded} of ${arr.length} files uploaded`);
   };
 
   return (
     <div className="space-y-5" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); if (e.dataTransfer.files.length) setToSend({ files: Array.from(e.dataTransfer.files), matterId: matterFilter }); }}>
       <PageHeader title="Send documents" blurb="Drop documents here or click Send: they are zipped and encrypted in your browser, then emailed from your Gmail with a read receipt requested. The practice's stored reports and download codes live here too." actions={<><Button variant="outline" onClick={() => inputRef.current?.click()}><Upload className="size-3.5" />{uploading ? `Uploading ${uploading}…` : "Upload only"}</Button><input ref={inputRef} type="file" multiple hidden onChange={(e) => e.target.files && void upload(e.target.files)} /><input ref={sendRef} type="file" multiple hidden onChange={(e) => { if (e.target.files?.length) setToSend({ files: Array.from(e.target.files), matterId: matterFilter }); e.target.value = ""; }} />{selected.size > 0 && <Button variant="outline" onClick={() => setCodeFor(Array.from(selected))}><KeyRound className="size-3.5" />Code for {selected.size} file{selected.size === 1 ? "" : "s"}</Button>}<Button onClick={() => sendRef.current?.click()}><Lock className="size-3.5" />Send documents</Button></>} />
       <div className="flex flex-wrap items-center gap-2 border-b border-border">
-        {(["files", "sent", "codes"] as const).map((t) => <button key={t} type="button" onClick={() => replaceUrl(`/files${t === "files" ? "" : `?tab=${t}`}`)} className={cn("-mb-px border-b-2 px-3 py-2 text-sm capitalize", tab === t ? "border-foreground font-medium" : "border-transparent text-fg-tertiary hover:text-foreground")}>{t === "codes" ? "Download codes" : t === "sent" ? "Sent" : "Files"}</button>)}
-        {tab === "files" && <><Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search files" className="ml-auto h-8 w-56" /><select value={matterFilter ?? ""} onChange={(e) => replaceUrl(`/files${e.target.value ? `?matter=${e.target.value}` : ""}`)} className="h-8 rounded-lg border border-input bg-card px-2 text-xs"><option value="">All matters</option>{(matters ?? []).map((m) => <option key={m._id} value={m._id}>{m.name}</option>)}</select></>}
+        {(["files", "sent", "codes"] as const).map((t) => <button key={t} type="button" onClick={() => replaceSearch("/files", { tab: t === "files" ? undefined : t, file: undefined })} className={cn("-mb-px border-b-2 px-3 py-2 text-sm capitalize", tab === t ? "border-foreground font-medium" : "border-transparent text-fg-tertiary hover:text-foreground")}>{t === "codes" ? "Download codes" : t === "sent" ? "Sent" : "Files"}</button>)}
+        {tab === "files" && <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search files" className="ml-auto h-8 w-56" />}<select value={matterFilter ?? ""} onChange={(e) => replaceSearch("/files", { matter: e.target.value || undefined })} className="h-8 rounded-lg border border-input bg-card px-2 text-xs"><option value="">All matters</option>{(matters ?? []).map((m) => <option key={m._id} value={m._id}>{m.name}</option>)}</select>
       </div>
 
       {tab === "files" ? (
@@ -77,9 +81,9 @@ export function FilesPage() {
                 <tr key={f._id} className="group hover:bg-muted/50">
                   <td><input type="checkbox" className="size-3.5 accent-foreground" checked={selected.has(f._id)} onChange={(e) => setSelected((s) => { const n = new Set(s); if (e.target.checked) n.add(f._id); else n.delete(f._id); return n; })} aria-label="Select" /></td>
                   <td><div className="flex items-center gap-2"><FileText className="size-4 shrink-0 text-fg-tertiary" /><div className="min-w-0"><div className="flex items-center gap-1.5"><span className="truncate font-medium">{f.name}</span>{f.encrypted && <Pill title="AES-256 encrypted zip"><Lock className="mr-0.5 inline size-2.5" />encrypted</Pill>}{f.isReport && <Pill tone="info">report</Pill>}{f.version > 1 && <span className="text-[10px] text-fg-quaternary">v{f.version}</span>}</div><div className="truncate text-xs text-fg-tertiary">{bytes(f.size)} · {f.bundleNames?.length ? f.bundleNames.join(", ") : f.mime.split("/")[1] ?? f.mime}</div></div></div></td>
-                  <td><select value={f.matterId ?? ""} onChange={(e) => update({ id: f._id, matterId: (e.target.value || undefined) as Id<"matters"> | undefined })} className="h-7 max-w-[180px] rounded-md border border-transparent bg-transparent text-xs hover:border-input"><option value="">—</option>{(matters ?? []).map((m) => <option key={m._id} value={m._id}>{m.name}</option>)}</select></td>
+                  <td><select value={f.matterId ?? ""} onChange={(e) => update({ id: f._id, matterId: (e.target.value || null) as Id<"matters"> | null })} className="h-7 max-w-[180px] rounded-md border border-transparent bg-transparent text-xs hover:border-input"><option value="">—</option>{(matters ?? []).map((m) => <option key={m._id} value={m._id}>{m.name}</option>)}</select></td>
                   <td className="text-xs text-fg-tertiary">{day(f.createdAt)}<br />{f.uploadedByName}</td>
-                  <td className="num text-xs">{f.activeCodes.length ? f.activeCodes.join(", ") : <span className="text-fg-quaternary">—</span>}</td>
+                  <td className="num text-xs">{f.activeCodes.length ? <PrefetchLink href={`/files?tab=codes&file=${f._id}`} className="hover:underline">{f.activeCodes.join(", ")}</PrefetchLink> : <span className="text-fg-quaternary">—</span>}</td>
                   <td><div className="flex justify-end gap-0.5 opacity-60 group-hover:opacity-100">
                     <FileAction label="Preview / download" href={`/files/${f._id}`} icon={<Eye className="size-3.5" />} />
                     {f.mime === "application/pdf" && <FileAction label="Open in PDF tools" href={`/pdf?file=${f._id}`} icon={<PenLine className="size-3.5" />} />}
@@ -94,9 +98,9 @@ export function FilesPage() {
             </DataTable>
           )}
         </Panel>
-      ) : tab === "sent" ? <SentTab /> : <CodesTab onNew={() => setCodeFor([])} />}
+      ) : tab === "sent" ? <SentTab matterId={matterFilter} /> : <CodesTab matterId={matterFilter} fileId={fileFilter} onNew={() => setCodeFor(fileFilter ? [fileFilter] : [])} />}
       {codeFor && <CodeDialog preselected={codeFor} onClose={() => { setCodeFor(null); setSelected(new Set()); }} />}
-      {toSend && <SendDialog files={toSend.files} matterId={toSend.matterId} onClose={(sent) => { setToSend(null); if (sent && tab !== "sent") replaceUrl("/files?tab=sent"); }} />}
+      {toSend && <SendDialog files={toSend.files} matterId={toSend.matterId} onClose={(sent) => { setToSend(null); if (sent && tab !== "sent") replaceSearch("/files", { tab: "sent", file: undefined }); }} />}
     </div>
   );
 }
@@ -109,8 +113,8 @@ function FileAction({ label, onClick, href, icon }: { label: string; onClick?: (
 /* ------------------------------ sent ------------------------------ */
 
 /** Every encrypted bundle that has gone out, with the Gmail thread where a read receipt would land. */
-function SentTab() {
-  const sends = useQuery(api.files.sends);
+function SentTab({ matterId }: { matterId: Id<"matters"> | null }) {
+  const sends = useQuery(api.files.sends, { matterId: matterId ?? undefined });
   if (sends === undefined) return <Loading rows={4} />;
   return (
     <Panel>
@@ -124,7 +128,7 @@ function SentTab() {
               <td className="text-xs">{s.matterName ?? <span className="text-fg-quaternary">—</span>}</td>
               <td>{s.readReceiptRequested ? <Pill tone="info">requested</Pill> : <Pill>not asked</Pill>}</td>
               <td className="text-xs text-fg-tertiary">{s.sentByName}</td>
-              <td><div className="flex justify-end gap-0.5"><FileAction label="Open the email thread" href={`/mail?thread=${s.gmailThreadId}`} icon={<ExternalLink className="size-3.5" />} /></div></td>
+              <td><div className="flex justify-end gap-0.5">{s.gmailThreadId ? <FileAction label="Open the email thread" href={`/mail?thread=${s.gmailThreadId}`} icon={<ExternalLink className="size-3.5" />} /> : <span className="text-xs text-fg-tertiary">In the other mailbox</span>}</div></td>
             </tr>
           ))}
         </DataTable>
@@ -135,8 +139,8 @@ function SentTab() {
 
 /* ------------------------------ codes ------------------------------ */
 
-function CodesTab({ onNew }: { onNew: () => void }) {
-  const codes = useQuery(api.files.codes);
+function CodesTab({ onNew, matterId, fileId }: { onNew: () => void; matterId: Id<"matters"> | null; fileId: Id<"files"> | null }) {
+  const codes = useQuery(api.files.codes, { matterId: matterId ?? undefined, fileId: fileId ?? undefined });
   const revoke = useMutation(api.files.revokeCode);
   const extend = useMutation(api.files.extendCode);
   const router = useRouter();
@@ -145,11 +149,11 @@ function CodesTab({ onNew }: { onNew: () => void }) {
   if (codes === undefined) return <Loading rows={4} />;
   const message = (c: (typeof codes)[number]) => `Hello${c.recipientName ? ` ${c.recipientName.split(" ")[0]}` : ""},\n\nYour document${c.files.length > 1 ? "s are" : " is"} ready to download.\n\nGo to ${site}/d and enter the code ${c.code}${c.hasPin ? ". I will send the PIN separately." : "."}\n\nThe link works until ${day(c.expiresAt)}.\n\nKind regards`;
   return (
-    <Panel actions={<Button size="sm" onClick={onNew}>New code</Button>}>
+    <Panel actions={<><Button size="sm" onClick={onNew}>New code</Button>{(matterId || fileId) && <Button size="sm" variant="outline" onClick={() => replaceSearch("/files", { matter: undefined, file: undefined })}>Show all codes</Button>}</>}>
       {codes.length === 0 ? <Empty title="No download codes yet" body="Select a file and create a code. The client enters it at /d, we log every download, and a Report file flips its matter to delivered." /> : (
         <DataTable head={<><th>Code</th><th>Files</th><th>For</th><th>State</th><th>Expires</th><th>Downloads</th><th></th></>} minWidth={760}>
           {codes.map((c) => (
-            <>
+            <Fragment key={c._id}>
               <tr key={c._id} className="hover:bg-muted/50">
                 <td><span className="num text-base font-semibold tracking-wider">{c.code}</span>{c.hasPin && <Pill className="ml-1">PIN</Pill>}</td>
                 <td className="max-w-[240px]">{c.files.map((f) => <div key={f._id} className="truncate text-xs">{f.name}</div>)}</td>
@@ -165,7 +169,7 @@ function CodesTab({ onNew }: { onNew: () => void }) {
                 </div></td>
               </tr>
               {open === c._id && <tr key={`${c._id}-log`}><td colSpan={7} className="bg-muted/40"><div className="px-2 py-1 text-xs">{c.events.length === 0 ? <span className="text-fg-tertiary">No attempts yet.</span> : <ul className="space-y-0.5">{c.events.map((e) => <li key={e._id} className="flex gap-3"><span className="num text-fg-tertiary">{when(e.at)}</span><Pill tone={e.outcome === "ok" ? "good" : "bad"}>{e.outcome.replace("_", " ")}</Pill><span className="text-fg-tertiary">{e.ip ?? ""} {e.userAgent?.slice(0, 60) ?? ""}</span></li>)}</ul>}<div className="mt-1 text-fg-quaternary">Created {ago(c.createdAt)} by {c.createdByName}{c.note ? ` · note: ${c.note}` : ""}</div></div></td></tr>}
-            </>
+            </Fragment>
           ))}
         </DataTable>
       )}

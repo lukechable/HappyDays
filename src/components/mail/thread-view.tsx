@@ -131,7 +131,7 @@ export function ThreadView({ thread, meta, labels, loading, error, myFirst, show
                             <span className="text-fg-quaternary">{bytes(a.size)}</span>
                             {(a.mime.startsWith("image/") || a.mime === "application/pdf" || a.mime.startsWith("text/")) && <button type="button" onClick={() => setPreview({ url: attachmentUrl(m, a, true), name: a.filename, mime: a.mime })} className="rounded p-0.5 text-fg-tertiary hover:text-foreground" aria-label="Preview"><Eye className="size-3.5" /></button>}
                             <a href={attachmentUrl(m, a)} className="rounded p-0.5 text-fg-tertiary hover:text-foreground" aria-label="Download"><Download className="size-3.5" /></a>
-                            {a.mime === "application/pdf" && <Link href={`/pdf?sign=${encodeURIComponent(attachmentUrl(m, a, true))}&name=${encodeURIComponent(a.filename)}&reply=${encodeURIComponent(m.gmailMessageId)}`} className="rounded px-1 text-[11px] font-medium text-blue hover:underline">Sign</Link>}
+                            {a.mime === "application/pdf" && <Link href={`/pdf?tab=markup&sign=${encodeURIComponent(attachmentUrl(m, a, true))}&name=${encodeURIComponent(a.filename)}&reply=${encodeURIComponent(m.gmailMessageId)}`} className="rounded px-1 text-[11px] font-medium text-blue hover:underline">Sign</Link>}
                           </div>
                         ))}
                       </div>

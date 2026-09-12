@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useMutation } from "convex/react";
 import { useQuery } from "convex-helpers/react/cache/hooks";
 import { Plus, Pencil, Trash2, Gavel, FileSignature } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { replaceSearch } from "@/lib/shallow";
 import { toast } from "sonner";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
@@ -41,7 +43,11 @@ export function CourtPage({ kind }: { kind: CourtKind }) {
   const setStatus = useMutation(api.court.setStatus);
   const remove = useMutation(api.court.remove);
   const [draft, setDraft] = useState<Draft | null>(null);
-  const [showDone, setShowDone] = useState(false);
+  const params = useSearchParams();
+  const base = kind === "affidavit" ? "/court/affidavits" : "/court/appearances";
+  const filter = ["all", "soon", "overdue", "done"].find(f => f === params.get("filter")) ?? "open";
+  const showDone = filter === "all" || filter === "done";
+  const setFilter = (filter: string) => replaceSearch(base, { filter });
   const [q, setQ] = useState("");
 
   const now = useNow();
@@ -49,7 +55,7 @@ export function CourtPage({ kind }: { kind: CourtKind }) {
   const open = (rows ?? []).filter((r) => !r.done);
   const soon = open.filter((r) => r.at && r.at >= now && r.at <= week).length;
   const overdue = open.filter((r) => r.at && r.at < now).length;
-  const visible = useMemo(() => (rows ?? []).filter((r) => (showDone || !r.done) && (!q.trim() || [r.title, r.party, r.matter?.name, r.notes].some((v) => v?.toLowerCase().includes(q.trim().toLowerCase())))), [rows, showDone, q]);
+  const visible = useMemo(() => (rows ?? []).filter((r) => (filter === "done" ? r.done : filter === "soon" ? !r.done && !!r.at && r.at >= now && r.at <= week : filter === "overdue" ? !r.done && !!r.at && r.at < now : showDone || !r.done) && (!q.trim() || [r.title, r.party, r.matter?.name, r.notes].some((v) => v?.toLowerCase().includes(q.trim().toLowerCase())))), [rows, showDone, q, filter, now, week]);
   const exportTable = () => ({ title: copy.title, subtitle: `${visible.length} items${showDone ? " including finished" : ""}`, filename: `${kind}s-${new Date().toISOString().slice(0, 10)}`, columns: [{ key: "title", label: "Title" }, { key: "matter", label: "Matter" }, { key: "party", label: copy.party }, { key: "at", label: copy.at }, { key: "status", label: "Status" }, { key: "notes", label: "Notes" }], rows: visible.map((r) => ({ title: r.title, matter: r.matter?.name ?? "", party: r.party ?? "", at: r.at ? (withTime ? when(r.at) : day(r.at)) : "", status: r.status, notes: r.notes ?? "" })) });
 
   const edit = (r?: Row) => setDraft(r ? { id: r._id, title: r.title, matterId: r.matterId ?? "", party: r.party ?? "", at: toLocalInput(r.at, withTime), status: r.status, notes: r.notes ?? "" } : { title: "", matterId: "", party: "", at: "", status: STATUSES[kind][0], notes: "" });
@@ -64,15 +70,14 @@ export function CourtPage({ kind }: { kind: CourtKind }) {
     <div className="space-y-5">
       <PageHeader title={copy.title} blurb={copy.blurb} actions={<><ExportMenu table={exportTable} disabled={!visible.length} /><Button onClick={() => edit()}><Plus className="size-3.5" />{copy.new}</Button></>} />
       <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
-        <Kpi label="Open" value={rows ? open.length : "…"} sub={kind === "affidavit" ? "not yet sent" : "still to attend"} />
-        <Kpi label="Next 7 days" value={rows ? soon : "…"} tone={soon ? "warn" : undefined} sub={kind === "affidavit" ? "due this week" : "in court this week"} />
-        <Kpi label={kind === "affidavit" ? "Overdue" : "Date passed"} value={rows ? overdue : "…"} tone={overdue ? "bad" : undefined} sub={kind === "affidavit" ? "past their due date" : "not marked attended"} />
-        <Kpi label="Finished" value={rows ? rows.length - open.length : "…"} sub={kind === "affidavit" ? "sent or withdrawn" : "attended, adjourned, vacated"} />
+        <Kpi label="Open" value={rows ? open.length : "…"} sub={kind === "affidavit" ? "not yet sent" : "still to attend"} href={`${base}?filter=open`} />
+        <Kpi label="Next 7 days" value={rows ? soon : "…"} tone={soon ? "warn" : undefined} sub={kind === "affidavit" ? "due this week" : "in court this week"} href={`${base}?filter=soon`} />
+        <Kpi label={kind === "affidavit" ? "Overdue" : "Date passed"} value={rows ? overdue : "…"} tone={overdue ? "bad" : undefined} sub={kind === "affidavit" ? "past their due date" : "not marked attended"} href={`${base}?filter=overdue`} />
+        <Kpi label="Finished" value={rows ? rows.length - open.length : "…"} sub={kind === "affidavit" ? "sent or withdrawn" : "attended, adjourned, vacated"} href={`${base}?filter=done`} />
       </div>
       <Panel>
         <div className="mb-3 flex flex-wrap items-center gap-2">
-          <button type="button" onClick={() => setShowDone(false)} className={cn("rounded-full px-2.5 py-1 text-xs", !showDone ? "bg-foreground text-background" : "bg-muted text-fg-secondary hover:text-foreground")}>Open</button>
-          <button type="button" onClick={() => setShowDone(true)} className={cn("rounded-full px-2.5 py-1 text-xs", showDone ? "bg-foreground text-background" : "bg-muted text-fg-secondary hover:text-foreground")}>Everything</button>
+          {([["open", "Open"], ["soon", "Next 7 days"], ["overdue", kind === "affidavit" ? "Overdue" : "Date passed"], ["done", "Finished"], ["all", "Everything"]] as const).map(([key, label]) => <button key={key} type="button" onClick={() => setFilter(key)} aria-pressed={filter === key} className={cn("rounded-full px-2.5 py-1 text-xs", filter === key ? "bg-foreground text-background" : "bg-muted text-fg-secondary hover:text-foreground")}>{label}</button>)}
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={`Search title, ${copy.party.toLowerCase()}, matter`} className="ml-auto h-8 w-60" />
         </div>
         {rows === undefined ? <Loading rows={4} /> : visible.length === 0 ? <Empty title={rows.length ? (showDone ? "Nothing matches" : "Nothing open") : `No ${copy.title.toLowerCase()} yet`} body={rows.length ? "Try another filter." : copy.empty} action={!rows.length ? <Button size="sm" onClick={() => edit()}><Plus className="size-3.5" />{copy.new}</Button> : undefined} /> : (

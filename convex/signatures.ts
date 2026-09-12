@@ -24,10 +24,10 @@ export const create = mutation({
 });
 
 export const list = query({
-  args: {},
-  handler: async (ctx) => {
+  args: { matterId: v.optional(v.id("matters")) },
+  handler: async (ctx, { matterId }) => {
     await requireUser(ctx);
-    const rows = await ctx.db.query("signatureRequests").order("desc").take(200);
+    const rows = matterId ? await ctx.db.query("signatureRequests").withIndex("by_matter", q => q.eq("matterId", matterId)).order("desc").collect() : await ctx.db.query("signatureRequests").order("desc").collect();
     const users = new Map((await ctx.db.query("users").collect()).map((u) => [u._id, firstName(u)]));
     const out = [];
     for (const r of rows) { const f = await ctx.db.get(r.fileId); const m = r.matterId ? await ctx.db.get(r.matterId) : null; out.push({ ...r, fileName: f?.name ?? "(deleted)", matterName: m?.name, createdByName: users.get(r.createdBy) ?? "?" }); }

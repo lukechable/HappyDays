@@ -34,7 +34,7 @@ type Tab = "pages" | "markup" | "requests";
 export function PdfWorkbench() {
   const params = useSearchParams();
   const router = useRouter();
-  const tab = (params.get("tab") as Tab | null) ?? "pages";
+  const tab: Tab = params.get("tab") === "requests" ? "requests" : params.get("tab") === "markup" ? "markup" : "pages";
   const fileId = params.get("file") as Id<"files"> | null;
   const signUrl = params.get("sign");
   const signName = params.get("name") ?? "document.pdf";
@@ -53,11 +53,26 @@ export function PdfWorkbench() {
   const inputRef = useRef<HTMLInputElement>(null);
   const setTab = (t: Tab) => replaceSearch("/pdf", { tab: t });
 
-  const load = async (bytes: Uint8Array, n: string, src: Id<"files"> | null) => { try { setPdf(await openPdf(bytes)); setName(n); setSourceId(src); setError(null); } catch (e) { setError(errorMessage(e)); } };
+  const load = async (bytes: Uint8Array, n: string, src: Id<"files"> | null) => { try { setPdf(await openPdf(bytes)); setName(n); setSourceId(src); setError(null); setLoadingSource(false); } catch (e) { setError(errorMessage(e)); } };
+  const [loadingSource, setLoadingSource] = useState(false);
   useEffect(() => {
-    if (file?.url && file.mime === "application/pdf" && file._id !== sourceId) fetch(file.url).then((r) => r.arrayBuffer()).then((b) => load(new Uint8Array(b), file.name, file._id)).catch((e) => setError(errorMessage(e)));
-    else if (signUrl && !pdf) fetch(signUrl).then((r) => r.arrayBuffer()).then((b) => load(new Uint8Array(b), signName, null)).catch((e) => setError(errorMessage(e)));
-  }, [file?.url, file?.mime, file?.name, file?._id, signUrl, signName]); // eslint-disable-line react-hooks/exhaustive-deps
+    const url = file?.mime === "application/pdf" ? file.url : !fileId ? signUrl : null;
+    if (!url) return;
+    const controller = new AbortController();
+    // Reset the document while synchronizing with a newly selected external PDF URL.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLoadingSource(true); setError(null); setPdf(null);
+    void (async () => {
+      try {
+        const response = await fetch(url, { signal: controller.signal });
+        if (!response.ok) throw new Error("Couldn’t load this PDF. Open the file again to retry.");
+        const loaded = await openPdf(new Uint8Array(await response.arrayBuffer()));
+        if (!controller.signal.aborted) { setPdf(loaded); setName(file?.name ?? signName); setSourceId(file?._id ?? null); }
+      } catch (e) { if (!controller.signal.aborted) setError(errorMessage(e)); }
+      finally { if (!controller.signal.aborted) setLoadingSource(false); }
+    })();
+    return () => controller.abort();
+  }, [file?.url, file?.mime, file?.name, file?._id, fileId, signUrl, signName]);
 
   const saveBytes = async (bytes: Uint8Array, fileName: string, opts: { asVersion?: boolean; annotations?: unknown } = {}) => {
     setBusy("Saving");
@@ -65,6 +80,7 @@ export function PdfWorkbench() {
       const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
       const url = await uploadUrl({});
       const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/pdf" }, body: blob });
+      if (!res.ok) throw new Error("Couldn’t save the PDF. Please try again.");
       const { storageId } = (await res.json()) as { storageId: Id<"_storage"> };
       const id = await register({ storageId, name: fileName, mime: "application/pdf", size: bytes.length, sha256: await sha256(blob), replacesFileId: opts.asVersion && sourceId ? sourceId : undefined, matterId: file?.matterId });
       if (opts.annotations !== undefined) await updateFile({ id, annotations: opts.annotations });
@@ -80,11 +96,11 @@ export function PdfWorkbench() {
         <div className="flex gap-1 rounded-full bg-muted p-0.5 text-xs">{(["pages", "markup", "requests"] as const).map((t) => <button key={t} type="button" onClick={() => setTab(t)} className={cn("h-7 rounded-full px-3", tab === t ? "bg-card shadow-xs" : "text-fg-tertiary hover:text-foreground")}>{t === "pages" ? "Pages" : t === "markup" ? "Mark up & sign" : "Signature requests"}</button>)}</div>
         {pdf && tab !== "requests" && <span className="truncate text-sm font-medium">{name}<span className="num ml-2 text-xs text-fg-tertiary">{pdf.pageCount} pages</span></span>}
         <span className="ml-auto" />
-        {tab !== "requests" && <><Button size="sm" variant="outline" onClick={() => inputRef.current?.click()}><Upload className="size-3.5" />Open PDF</Button><input ref={inputRef} type="file" accept="application/pdf" hidden onChange={async (e) => { const f = e.target.files?.[0]; if (f) await load(new Uint8Array(await f.arrayBuffer()), f.name, null); e.target.value = ""; }} /><FilePicker onPick={(id) => replaceUrl(`/pdf?file=${id}&tab=${tab}`)} /></>}
+        {tab !== "requests" && <><Button size="sm" variant="outline" onClick={() => inputRef.current?.click()}><Upload className="size-3.5" />Open PDF</Button><input ref={inputRef} type="file" accept="application/pdf" hidden onChange={async (e) => { const f = e.target.files?.[0]; if (f) { replaceSearch("/pdf", { file: undefined, sign: undefined, name: undefined, reply: undefined }); await load(new Uint8Array(await f.arrayBuffer()), f.name, null); } e.target.value = ""; }} /><FilePicker onPick={(id) => replaceUrl(`/pdf?file=${id}&tab=${tab}`)} /></>}
         {busy && <span className="text-xs text-fg-tertiary">{busy}…</span>}
       </div>
       {error && <p className="px-4 py-2 text-sm text-error">{error}</p>}
-      {tab === "requests" ? <RequestsTab pdf={pdf} name={name} sourceId={sourceId} fileMatterId={file?.matterId} onSaveBytes={saveBytes} /> : !pdf ? (
+      {(fileId && file === undefined) || loadingSource ? <Loading rows={5} /> : fileId && file === null ? <Empty title="File not found" action={<Button render={<Link href="/files" />}>Open Files</Button>} /> : file && file.mime !== "application/pdf" ? <Empty title="This file is not a PDF" action={<Button render={<Link href={`/files/${file._id}`} />}>Open file</Button>} /> : tab === "requests" ? <RequestsTab pdf={pdf} name={name} sourceId={sourceId} fileMatterId={file?.matterId} onSaveBytes={saveBytes} /> : !pdf ? (
         <div className="p-8"><Empty title="Open a PDF to begin" body="Pick one from Files, upload from your computer, or click Sign on a PDF attachment in Mail." action={<div className="flex gap-2"><Button variant="outline" onClick={() => inputRef.current?.click()}>Upload</Button><Button variant="outline" render={<Link href="/files" />}>Files</Button></div>} /></div>
       ) : tab === "pages" ? <PagesTab pdf={pdf} name={name} onReplace={(bytes, n) => load(bytes, n, sourceId)} onSave={(bytes, n, asVersion) => saveBytes(bytes, n, { asVersion })} /> : (
         <MarkupTab pdf={pdf} name={name} me={me} savedSignature={me?.prefs.signatureImage} savedInitials={me?.prefs.initialsImage} onSaveSignature={(kind, url) => updatePrefs({ prefs: kind === "signature" ? { signatureImage: url } : { initialsImage: url } })} initialAnnotations={(file?.annotations as Annotation[] | undefined) ?? []} onSave={async (bytes, n, annotations, asVersion) => saveBytes(bytes, n, { asVersion, annotations })} replyTo={replyTo} />
@@ -218,7 +234,9 @@ function MarkupTab({ pdf, name, me, savedSignature, savedInitials, onSaveSignatu
 /* ------------------------------ signature requests ------------------------------ */
 
 function RequestsTab({ pdf, name, sourceId, fileMatterId, onSaveBytes }: { pdf: LoadedPdf | null; name: string; sourceId: Id<"files"> | null; fileMatterId?: Id<"matters">; onSaveBytes: (bytes: Uint8Array, name: string) => Promise<Id<"files"> | null> }) {
-  const requests = useQuery(api.signatures.list);
+  const params = useSearchParams();
+  const matterId = params.get("matter") as Id<"matters"> | null;
+  const requests = useQuery(api.signatures.list, { matterId: matterId ?? undefined });
   const create = useMutation(api.signatures.create);
   const cancel = useMutation(api.signatures.cancel);
   const router = useRouter();
@@ -252,13 +270,13 @@ function RequestsTab({ pdf, name, sourceId, fileMatterId, onSaveBytes }: { pdf: 
               <textarea value={signer.message} onChange={(e) => setSigner({ ...signer, message: e.target.value })} placeholder="Message (optional)" rows={3} className="w-full rounded-lg border border-input bg-card px-2 py-1" />
               <div><div className="text-xs text-fg-tertiary">Click a page to place a field</div><div className="mt-1 flex flex-wrap gap-1">{(["signature", "initials", "date", "text"] as const).map((k) => <button key={k} type="button" onClick={() => setFieldKind(k)} className={cn("rounded-full px-2.5 py-1 text-xs capitalize", fieldKind === k ? "bg-foreground text-background" : "bg-muted text-fg-secondary")}>{k}</button>)}</div></div>
               <ul className="space-y-1 text-xs">{fields.map((f, i) => <li key={f.id} className="flex items-center gap-2"><span className="capitalize">{f.kind}</span><span className="text-fg-tertiary">page {f.page + 1}</span><button type="button" onClick={() => setFields((x) => x.filter((y) => y.id !== f.id))} className="ml-auto text-fg-quaternary hover:text-error" aria-label="Remove field"><X className="size-3.5" /></button><span className="sr-only">{i}</span></li>)}</ul>
-              <div className="flex gap-2 pt-1"><Button size="sm" disabled={!fields.some((f) => f.kind === "signature")} onClick={send}><Send className="size-3.5" />Create and email link</Button><Button size="sm" variant="ghost" onClick={() => { setBuilding(false); setFields([]); }}>Cancel</Button></div>
+              <div className="flex gap-2 pt-1"><Button size="sm" disabled={!fields.some((f) => f.kind === "signature")} onClick={send}><Send className="size-3.5" />Create email draft</Button><Button size="sm" variant="ghost" onClick={() => { setBuilding(false); setFields([]); }}>Cancel</Button></div>
             </div>
           </Panel>
           <div className="min-h-0 overflow-auto rounded-2xl bg-surface-2/60 p-4"><div className="space-y-4">{Array.from({ length: pdf.pageCount }, (_, i) => <div key={i} onClickCapture={(e) => { const host = (e.currentTarget.firstElementChild as HTMLElement | null); if (!host || (e.target as HTMLElement).closest("[data-field]")) return; const r = host.getBoundingClientRect(); const x = (e.clientX - r.left) / r.width; const y = (e.clientY - r.top) / r.height; const w = fieldKind === "initials" ? 0.1 : fieldKind === "date" ? 0.16 : 0.28; const h = fieldKind === "initials" ? 0.05 : 0.06; setFields((f) => [...f, { id: crypto.randomUUID(), kind: fieldKind, page: i, x: Math.max(0, x - w / 2), y: Math.max(0, y - h / 2), w, h }]); }}><PdfPage pdf={pdf} pageNo={i + 1} scale={scale} tool="select" color="#0081f2" annotations={[]} fields={fields} readOnly onFieldClick={(f) => setFields((x) => x.filter((y) => y.id !== f.id))} /></div>)}</div></div>
         </div>
       ) : (
-        <Panel title="Signature requests" blurb="The signer gets a private link, signs in the browser, and you both receive the completed PDF with an audit page." actions={<Button size="sm" disabled={!pdf} onClick={() => setBuilding(true)}><Send className="size-3.5" />{pdf ? `Request a signature on ${name}` : "Open a PDF first"}</Button>}>
+        <Panel title={<>Signature requests{matterId && <Button size="xs" variant="ghost" onClick={() => replaceSearch("/pdf", { matter: undefined })}>Clear matter filter</Button>}</>} blurb="The signer gets a private link, signs in the browser, and you both receive the completed PDF with an audit page." actions={<Button size="sm" disabled={!pdf} onClick={() => setBuilding(true)}><Send className="size-3.5" />{pdf ? `Request a signature on ${name}` : "Open a PDF first"}</Button>}>
           {requests === undefined ? <Loading rows={3} /> : requests.length === 0 ? <Empty title="No signature requests yet" body="Open a PDF, place the fields, and send the link." /> : (
             <DataTable head={<><th>Document</th><th>Signer</th><th>Status</th><th>Sent</th><th></th></>} minWidth={620}>
               {requests.map((r) => <tr key={r._id}><td className="font-medium">{r.fileName}{r.matterName && <div className="text-xs text-fg-tertiary">{r.matterName}</div>}</td><td>{r.signerName}<div className="text-xs text-fg-tertiary">{r.signerEmail}</div></td><td><Pill tone={statusTone(r.status)}>{r.status}</Pill>{r.status === "signed" && r.audit.at(-1) && <div className="text-[11px] text-fg-tertiary">{day(r.audit.at(-1)!.at)}</div>}</td><td className="text-xs text-fg-tertiary">{ago(r.createdAt)} by {r.createdByName}</td><td><div className="flex justify-end gap-1">{r.signedFileId && <Button size="xs" variant="outline" render={<Link href={`/files/${r.signedFileId}`} />}>Signed PDF</Button>}{(r.status === "sent" || r.status === "viewed") && <><Button size="xs" variant="ghost" onClick={() => { void navigator.clipboard.writeText(`${site}/sign/${r.token}`); toast.success("Link copied"); }}>Copy link</Button><Button size="xs" variant="ghost" onClick={() => cancel({ id: r._id })}>Cancel</Button></>}</div></td></tr>)}

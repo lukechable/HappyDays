@@ -1,6 +1,9 @@
 "use client";
 
+import { practiceMonth } from "../../../convex/lib/taskViews";
 import { useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { replaceSearch } from "@/lib/shallow";
 import Link from "next/link";
 import { useQuery } from "convex-helpers/react/cache/hooks";
 import { useAction } from "convex/react";
@@ -33,38 +36,45 @@ export function TransactionsPage() {
   // A bank credit matches an invoice when the payer typed the invoice number as the reference, or the amount equals an open invoice.
   const invoices = data?.rows.filter((r) => r.kind === "invoice") ?? [];
   const matchFor = (t: { description: string; amountCents: number }) => invoices.find((i) => i.description && new RegExp(`\\b${(i.stripeId.split("_")[1] ?? "").slice(0, 8)}`, "i").test(t.description)) ?? invoices.find((i) => i.status === "open" && i.amountCents === t.amountCents);
-  const [days, setDays] = useState<number | null>(90);
-  const [kind, setKind] = useState<Kind>("all");
-  const [q, setQ] = useState("");
+  const params = useSearchParams();
+  const days = params.get("days") === "all" ? null : [30, 90, 365].find(d => String(d) === params.get("days")) ?? 90;
+  const setDays = (days: number | null) => replaceSearch("/money/transactions", { days: days === null ? "all" : String(days), period: undefined });
+  const kind: Kind = ["payment", "invoice", "booking", "bank"].find(k => k === params.get("kind")) as Kind ?? "all";
+  const setKind = (kind: Kind) => replaceSearch("/money/transactions", { kind: kind === "all" ? undefined : kind });
+  const q = params.get("q") ?? "";
+  const setQ = (q: string) => replaceSearch("/money/transactions", { q: q || undefined });
+  const period = params.get("period");
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "at", dir: -1 });
   // Declared after days and q: it reads both, and a const is not usable before its line (that ordering crashed the page once).
   const [creditsOnly, setCreditsOnly] = useState(true);
-  const bankRows = (bank.data?.rows ?? []).filter((t) => (!creditsOnly || t.direction === "credit") && (!days || Date.parse(t.postDate) >= Date.now() - days * 86_400_000) && (!q.trim() || t.description.toLowerCase().includes(q.trim().toLowerCase())));
+  const bankRows = (bank.data?.rows ?? []).filter((t) => (!creditsOnly || t.direction === "credit") && (period === "month" ? practiceMonth(Date.parse(t.postDate)) === practiceMonth(Date.now()) : !days || Date.parse(t.postDate) >= Date.now() - days * 86_400_000) && (!q.trim() || t.description.toLowerCase().includes(q.trim().toLowerCase())));
 
   const rows = useMemo(() => {
     let r = data?.rows ?? [];
-    if (days) { const since = Date.now() - days * 86_400_000; r = r.filter((x) => x.at >= since); }
+    if (period === "month") { const month = practiceMonth(Date.now()); r = r.filter(x => practiceMonth(x.at) === month); }
+    if (days && period !== "month") { const since = Date.now() - days * 86_400_000; r = r.filter((x) => x.at >= since); }
     if (kind === "booking") r = r.filter((x) => x.booking);
     else if (kind !== "all" && kind !== "bank") r = r.filter((x) => x.kind === kind);
     if (q.trim()) { const n = q.trim().toLowerCase(); r = r.filter((x) => [x.description, x.who, x.matter?.name, x.stripeId, x.status].some((v) => v?.toLowerCase().includes(n))); }
     const val = (x: (typeof r)[number]) => sort.key === "who" ? (x.who ?? "").toLowerCase() : x[sort.key] ?? "";
     return [...r].sort((a, b) => (val(a) > val(b) ? 1 : val(a) < val(b) ? -1 : 0) * sort.dir);
-  }, [data, days, kind, q, sort]);
-  const received = rows.filter((r) => r.status === "succeeded" || r.status === "paid").reduce((s, r) => s + r.amountCents, 0);
-  const filtered = kind !== "all" || !!q.trim() || days !== 90;
+  }, [data, days, kind, q, sort, period]);
+  const received = kind === "bank" ? bankRows.filter(t => t.direction === "credit").reduce((sum, t) => sum + t.amountCents, 0) : rows.filter((r) => r.status === "succeeded" || r.status === "paid").reduce((s, r) => s + r.amountCents, 0);
+  const filtered = kind !== "all" || !!q.trim() || days !== 90 || period === "month";
   const th = (label: string, key: SortKey, right = false) => <th className={right ? "text-right" : ""}><button type="button" onClick={() => setSort((s) => ({ key, dir: s.key === key ? (s.dir === 1 ? -1 : 1) : -1 }))} className={cn("uppercase", sort.key === key && "text-foreground")}>{label}{sort.key === key ? (sort.dir === 1 ? " ↑" : " ↓") : ""}</button></th>;
-  const exportTable = () => ({ title: "Transactions", subtitle: [days ? `Last ${days} days` : "All time", kind !== "all" ? kind : "", q ? `search “${q}”` : "", `${rows.length} rows, ${aud(received)} received`].filter(Boolean).join(" · "), filename: `transactions-${new Date().toISOString().slice(0, 10)}`, columns: [{ key: "date", label: "Date" }, { key: "description", label: "Description" }, { key: "who", label: "Who" }, { key: "matter", label: "Matter" }, { key: "type", label: "Type" }, { key: "amount", label: "Amount", align: "right" as const }, { key: "status", label: "Status" }, { key: "stripeId", label: "Stripe id" }], rows: rows.map((r) => ({ date: day(r.at), description: r.description, who: r.who ?? "", matter: r.matter?.name ?? "", type: r.booking ? "booking" : r.kind, amount: (r.amountCents / 100).toFixed(2), status: r.status, stripeId: r.stripeId })) });
+  const exportTable = () => kind === "bank" ? ({ title: "Bank transactions", filename: "bank-transactions", subtitle: `${bankRows.length} transactions · ${aud(received)} received`, columns: [{ key: "date", label: "Posted" }, { key: "description", label: "Description" }, { key: "account", label: "Account" }, { key: "amount", label: "Amount" }, { key: "id", label: "Bank transaction id" }], rows: bankRows.map(t => ({ date: day(t.postDate), description: t.description, account: t.accountName ?? "", amount: ((t.direction === "credit" ? 1 : -1) * t.amountCents / 100).toFixed(2), id: t.id })) }) : ({ title: "Transactions", subtitle: [period === "month" ? "This month" : days ? `Last ${days} days` : "Available history", kind !== "all" ? kind : "", q ? `search “${q}”` : "", `${rows.length} rows, ${aud(received)} received`].filter(Boolean).join(" · "), filename: `transactions-${new Date().toISOString().slice(0, 10)}`, columns: [{ key: "date", label: "Date" }, { key: "description", label: "Description" }, { key: "who", label: "Who" }, { key: "matter", label: "Matter" }, { key: "type", label: "Type" }, { key: "amount", label: "Amount", align: "right" as const }, { key: "status", label: "Status" }, { key: "stripeId", label: "Stripe id" }], rows: rows.map((r) => ({ date: day(r.at), description: r.description, who: r.who ?? "", matter: r.matter?.name ?? "", type: r.booking ? "booking" : r.kind, amount: (r.amountCents / 100).toFixed(2), status: r.status, stripeId: r.stripeId })) });
 
   return (
     <div className="space-y-5">
-      <PageHeader title="Transactions" blurb="Every payment Stripe has taken for the practice, in one list: online bookings, card payments and report invoices on the day they were paid." actions={<><div className="flex gap-0.5 rounded-full bg-muted p-0.5 text-xs">{([30, 90, 365, null] as const).map((d) => <button key={d ?? "all"} type="button" onClick={() => setDays(d)} className={cn("h-7 rounded-full px-2.5", days === d ? "bg-card shadow-xs" : "text-fg-tertiary hover:text-foreground")}>{d ? `${d} days` : "All"}</button>)}</div><ExportMenu table={exportTable} disabled={!rows.length} /></>} />
+      <PageHeader title="Transactions" blurb="Every payment Stripe has taken for the practice, in one list: online bookings, card payments and report invoices on the day they were paid." actions={<><div className="flex gap-0.5 rounded-full bg-muted p-0.5 text-xs">{([30, 90, 365, null] as const).map((d) => <button key={d ?? "all"} type="button" onClick={() => setDays(d)} className={cn("h-7 rounded-full px-2.5", days === d ? "bg-card shadow-xs" : "text-fg-tertiary hover:text-foreground")}>{d ? `${d} days` : "All"}</button>)}</div><ExportMenu table={exportTable} disabled={kind === "bank" ? !bankRows.length : !rows.length} /></>} />
       {setup && !setup.stripe && <p className="rounded-2xl bg-warning-soft px-4 py-3 text-sm">Stripe isn’t connected. Set STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET on the Convex deployment, then Sync from the Invoices page.</p>}
       <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
-        <Kpi label={filtered ? "Received (filtered)" : "Received, 90 days"} value={data ? aud(received, { whole: true }) : "…"} sub={`${rows.length} transaction${rows.length === 1 ? "" : "s"}`} />
-        <Kpi label="This month" value={data ? aud(data.totals.monthCents, { whole: true }) : "…"} sub="paid since the 1st" />
-        <Kpi label="All time" value={data ? aud(data.totals.receivedCents, { whole: true }) : "…"} sub="mirrored from Stripe" />
-        <Kpi label="Open invoices" value={data ? aud(data.totals.openCents, { whole: true }) : "…"} tone={(data?.totals.openCents ?? 0) > 0 ? "warn" : undefined} sub="not yet paid" href="/money" />
+        <Kpi label={filtered ? "Received (filtered)" : "Received, 90 days"} value={(kind === "bank" ? bank.data : data) ? aud(received, { whole: true }) : "…"} sub={`${kind === "bank" ? bankRows.length : rows.length} transactions`} href="#transactions" />
+        <Kpi label="This month" value={data ? aud(data.totals.monthCents, { whole: true }) : "…"} sub="paid since the 1st" href="/money/transactions?period=month" />
+        <Kpi label="All time" value={data ? aud(data.totals.receivedCents, { whole: true }) : "…"} sub="mirrored from Stripe" href="/money/transactions?days=all" />
+        <Kpi label="Open invoices" value={data ? aud(data.totals.openCents, { whole: true }) : "…"} tone={(data?.totals.openCents ?? 0) > 0 ? "warn" : undefined} sub="not yet paid" href="/money?flag=open" />
       </div>
+      <div id="transactions" />
       <Panel>
         <div className="mb-3 flex flex-wrap items-center gap-2">
           {([["all", "All"], ["payment", "Payments"], ["invoice", "Invoices"], ["booking", "Bookings"], ["bank", "Bank"]] as const).map(([k, l]) => <button key={k} type="button" onClick={() => setKind(k)} className={cn("rounded-full px-2.5 py-1 text-xs", kind === k ? "bg-foreground text-background" : "bg-muted text-fg-secondary hover:text-foreground")}>{l}</button>)}
@@ -75,14 +85,14 @@ export function TransactionsPage() {
           !bankStatus ? <Loading rows={4} /> : !bankStatus.configured ? <Empty title="Bank feed not set up" body="Direct deposits show here once Basiq is connected. Set BASIQ_API_KEY on the Convex deployment (a Basiq account, basiq.io), then link the practice's Bendigo Bank account." /> : !bankStatus.linked ? <Empty title="Link the practice's bank account" body="Basiq opens Bendigo Bank's consent page; you sign in there and choose the account. We only ever read transactions, never move money." action={<Button onClick={link} disabled={linking}><Link2 className="size-3.5" />{linking ? "Opening…" : "Link bank account"}</Button>} /> : bank.error ? <Empty title="Couldn’t read the bank feed" body={bank.error} action={<Button variant="outline" onClick={bank.reload}>Try again</Button>} /> : !bank.data ? <Loading rows={6} /> : bank.data.rows.length === 0 ? <Empty title="No bank transactions yet" body="Basiq may still be fetching history for a newly linked account." action={<Button variant="outline" onClick={bank.reload}>Refresh</Button>} /> : (
             <>
               <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-fg-tertiary"><Landmark className="size-3.5" />{bank.data.accounts.map((a) => a.name).join(", ")}<label className="ml-2 flex items-center gap-1.5"><input type="checkbox" className="size-3.5 accent-foreground" checked={creditsOnly} onChange={(e) => setCreditsOnly(e.target.checked)} />money in only</label><span className="num">{bankRows.length} of {bank.data.rows.length}</span><Button size="xs" variant="ghost" className="ml-auto" onClick={bank.reload}>{bank.refreshing ? "Refreshing…" : "Refresh"}</Button><Button size="xs" variant="ghost" onClick={link}>Relink</Button></div>
-              <DataTable head={<><th>Date</th><th>Reference / description</th><th>Account</th><th className="text-right">Amount</th><th>Matches</th></>} minWidth={720}>
+              <DataTable head={<><th>Date</th><th>Reference / description</th><th>Account</th><th className="text-right">Amount</th><th>Invoice candidates (unconfirmed)</th></>} minWidth={720}>
                 {bankRows.map((t) => { const m = t.direction === "credit" ? matchFor(t) : undefined; return (
                   <tr key={t.id} className={cn("hover:bg-muted/50", t.direction === "credit" && "bg-success-soft/20")}>
                     <td className="text-xs text-fg-tertiary">{day(t.postDate)}</td>
                     <td className="max-w-[360px] truncate font-medium" title={t.description}>{t.description || "—"}</td>
                     <td className="text-xs text-fg-tertiary">{t.accountName ?? "—"}</td>
                     <td className={cn("num text-right", t.direction === "credit" ? "text-success" : "")}>{t.direction === "credit" ? "+" : "−"}{aud(t.amountCents)}</td>
-                    <td className="text-xs">{m ? <Link href="/money" className="hover:underline">{m.description} · {m.status}</Link> : t.direction === "credit" ? <span className="text-fg-quaternary">no invoice matched</span> : ""}</td>
+                    <td className="text-xs">{m ? <Link href={`/money?q=${encodeURIComponent(m.stripeId)}`} className="hover:underline">{m.description} · {m.status}</Link> : t.direction === "credit" ? <span className="text-fg-quaternary">no invoice candidate</span> : ""}</td>
                   </tr>
                 ); })}
               </DataTable>

@@ -1,5 +1,7 @@
 "use client";
 
+import { taskOverdue, taskDueBy } from "../../../convex/lib/taskViews";
+
 import Link from "next/link";
 import { PrefetchLink } from "@/components/prefetch-link";
 import { useQuery } from "convex-helpers/react/cache/hooks";
@@ -10,7 +12,7 @@ import { aud, dueLabel, mailDate, time, weekday } from "@/lib/format";
 import { useLive, useNow } from "@/lib/hooks";
 
 type Appt = { id: string; startsAt: string; endsAt: string; patientName: string; typeName: string; color?: string; cancelledAt: string | null; didNotArrive: boolean; practitionerName: string; clinikoUrl: string; patientId?: string; telehealthUrl?: string };
-type OverdueItem = { gmailThreadId: string; subject: string; senders: Array<{ name: string }>; lastAt: number };
+
 
 /** Today at a glance: appointments from Cliniko, overdue mail, tasks due, and the money table's two red flags. */
 export function Dashboard() {
@@ -25,12 +27,11 @@ export function Dashboard() {
   const live = useLive(api.bookings.calendar, setup?.cliniko ? { fromIso: dayStart.toISOString(), toIso: dayEnd.toISOString() } : "skip");
   const appts: Appt[] | null | undefined = !setup ? undefined : !setup.cliniko || live.error ? null : live.data?.appointments;
   const apptError = live.error ?? null;
-  const overdueLive = useLive(api.mail.listThreads, me?.google?.status === "connected" ? { view: "overdue" } : "skip");
-  const overdue: OverdueItem[] | undefined = me === undefined ? undefined : !me?.google || me.google.status !== "connected" ? [] : overdueLive.error ? [] : overdueLive.data?.items.slice(0, 6);
+  const overdue = useQuery(api.mail.overdueSummary);
 
   const today = new Date(now);
-  const dueToday = (tasks ?? []).filter((t) => t.dueAt !== undefined && new Date(t.dueAt).toDateString() === today.toDateString());
-  const overdueTasks = (tasks ?? []).filter((t) => t.dueAt !== undefined && t.dueAt < now && t.status !== "done");
+  const dueToday = (tasks ?? []).filter((t) => taskDueBy(t, now));
+  const overdueTasks = (tasks ?? []).filter((t) => taskOverdue(t, now));
   const reportDue = (matters ?? []).filter((m) => m.status === "report_due");
 
   return (
@@ -46,14 +47,14 @@ export function Dashboard() {
 
       <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
         <Kpi label="Appointments today" value={appts === undefined ? "…" : appts === null ? "—" : appts.filter((a) => !a.cancelledAt).length} sub={appts === null ? (apptError ? "Cliniko error" : "Cliniko not connected") : "from Cliniko"} href="/bookings" />
-        <Kpi label="Overdue mail" value={me?.badges.overdue ?? 0} tone={(me?.badges.overdue ?? 0) > 0 ? "bad" : undefined} sub="both of you on it, nobody replied" href="/mail?view=overdue" />
-        <Kpi label="Tasks due today" value={dueToday.length} tone={overdueTasks.length ? "warn" : undefined} sub={overdueTasks.length ? `${overdueTasks.length} overdue` : "nothing overdue"} href="/tasks?view=today" />
-        <Kpi label="Paid, report not delivered" value={money?.counts.paidNotDelivered ?? 0} tone={(money?.counts.paidNotDelivered ?? 0) > 0 ? "warn" : undefined} sub={money ? `${aud(money.counts.outstandingCents, { whole: true })} outstanding` : "…"} href="/money" />
+        <Kpi label="Overdue mail" value={overdue?.total ?? "…"} tone={(me?.badges.overdue ?? 0) > 0 ? "bad" : undefined} sub="both of you on it, nobody replied" href="/mail?view=overdue" />
+        <Kpi label="Tasks due by today" value={tasks === undefined ? "…" : dueToday.length} tone={overdueTasks.length ? "warn" : undefined} sub={overdueTasks.length ? `${overdueTasks.length} overdue tasks` : "no overdue tasks"} href="/tasks?view=today" />
+        <Kpi label="Paid, report not delivered" value={money?.counts.paidNotDelivered ?? 0} tone={(money?.counts.paidNotDelivered ?? 0) > 0 ? "warn" : undefined} sub={money ? `${aud(money.counts.outstandingCents, { whole: true })} outstanding` : "…"} href="/money?flag=paid_not_delivered" />
       </div>
 
       <div className="grid grid-cols-[minmax(0,1fr)] gap-3 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <Panel title="Today's appointments" blurb="Live from Cliniko. Click one to open it there." actions={<Button variant="ghost" size="sm" render={<Link href="/bookings" />}>Calendar</Button>}>
-          {appts === undefined ? <Loading rows={3} /> : apptError ? <ErrorBox title="Couldn't reach Cliniko" message={apptError} /> : appts === null ? <Empty title="Cliniko isn’t connected" body="Add the API key in Settings and today's list appears here." action={<Button size="sm" variant="outline" render={<Link href="/settings#cliniko" />}>Settings</Button>} /> : appts.length === 0 ? <Empty title="No appointments today" /> : (
+          {appts === undefined ? <Loading rows={3} /> : apptError ? <ErrorBox title="Couldn't reach Cliniko" message={apptError} /> : appts === null ? <Empty title="Cliniko isn’t connected" body="Add the API key in Settings and today's list appears here." action={<Button size="sm" variant="outline" render={<Link href="/settings?tab=cliniko" />}>Settings</Button>} /> : appts.length === 0 ? <Empty title="No appointments today" /> : (
             <ul className="divide-y divide-border/70">
               {appts.map((a) => (
                 <li key={a.id} className="flex items-center gap-3 py-1.5">
@@ -72,19 +73,21 @@ export function Dashboard() {
 
         <div className="space-y-3">
           <Panel title="Overdue mail" blurb="Threads both of you were on, last message inbound, no reply." dense>
-            {overdue === undefined ? <Loading rows={2} /> : overdue.length === 0 ? <p className="py-3 text-center text-sm text-fg-tertiary">Nothing overdue.</p> : (
+            {overdue === undefined ? <Loading rows={2} /> : overdue.total === 0 ? <p className="py-3 text-center text-sm text-fg-tertiary">Nothing overdue.</p> : (
               <ul className="divide-y divide-border/70">
-                {overdue.map((t) => (
-                  <li key={t.gmailThreadId}><Link href={`/mail?view=overdue&thread=${t.gmailThreadId}`} className="flex items-baseline gap-2 py-2 hover:underline"><span className="min-w-0 flex-1 truncate text-sm">{t.subject}</span><span className="shrink-0 text-xs text-fg-tertiary">{t.senders[0]?.name}</span><span className="num shrink-0 text-[11px] text-fg-quaternary">{mailDate(t.lastAt)}</span></Link></li>
+                {overdue.items.map((t) => (
+                  <li key={t.gmailThreadId}><Link href={`/mail?view=overdue&thread=${t.gmailThreadId}`} className="flex items-baseline gap-2 py-2 hover:underline"><span className="min-w-0 flex-1 truncate text-sm">{t.subject}</span><span className="num shrink-0 text-[11px] text-fg-quaternary">{mailDate(t.lastAt)}</span></Link></li>
                 ))}
               </ul>
             )}
+            {!!overdue?.missing && <p className="mt-2 text-xs text-fg-secondary">{overdue.missing} overdue conversation{overdue.missing === 1 ? " is" : "s are"} in the other mailbox and cannot be opened from this account.</p>}
+            {!!overdue?.total && <Link href="/mail?view=overdue" className="mt-2 inline-block text-sm underline">View all {overdue.total} overdue conversations</Link>}
           </Panel>
           <Panel title="Tasks this week" dense actions={<Button variant="ghost" size="sm" render={<Link href="/tasks?view=week" />}>All</Button>}>
             {tasks === undefined ? <Loading rows={2} /> : tasks.length === 0 ? <p className="py-3 text-center text-sm text-fg-tertiary">Nothing due this week.</p> : (
               <ul className="divide-y divide-border/70">
                 {tasks.slice(0, 6).map((t) => (
-                  <li key={t._id}><Link href={`/tasks?task=${t._id}`} className="flex items-center gap-2 py-2"><span className={`size-1.5 shrink-0 rounded-full ${t.priority === "high" ? "bg-error" : t.priority === "medium" ? "bg-warning" : "bg-fg-quaternary"}`} /><span className="min-w-0 flex-1 truncate text-sm">{t.title}</span>{t.assignee && <span className="text-xs text-fg-tertiary">{t.assignee}</span>}<span className={`shrink-0 text-[11px] ${t.dueAt && t.dueAt < now ? "text-error" : "text-fg-quaternary"}`}>{dueLabel(t.dueAt)}</span></Link></li>
+                  <li key={t._id}><Link href={`/tasks?task=${t._id}`} className="flex items-center gap-2 py-2"><span className={`size-1.5 shrink-0 rounded-full ${t.priority === "high" ? "bg-error" : t.priority === "medium" ? "bg-warning" : "bg-fg-quaternary"}`} /><span className="min-w-0 flex-1 truncate text-sm">{t.title}</span>{t.assignee && <span className="text-xs text-fg-tertiary">{t.assignee}</span>}<span className={`shrink-0 text-[11px] ${taskOverdue(t, now) ? "text-error" : "text-fg-quaternary"}`}>{dueLabel(t.dueAt)}</span></Link></li>
                 ))}
               </ul>
             )}
@@ -100,7 +103,7 @@ export function Dashboard() {
           </Panel>
         </div>
       </div>
-      <p className="text-xs text-fg-quaternary">{weekday(now)} · Cliniko and Gmail are read live; nothing on this page is stored by Happy Days.</p>
+      <p className="text-xs text-fg-quaternary">{weekday(now)} · Appointments are read from Cliniko; mail follow-up, tasks and delivery status use HappyDays records.</p>
     </div>
   );
 }

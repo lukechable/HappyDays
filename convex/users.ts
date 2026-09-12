@@ -1,3 +1,5 @@
+import { invoiceFlag } from "./lib/invoiceFlags";
+import { overdueThreads } from "./lib/mailViews";
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { allowedEmails, currentUser, firstName, requireUser } from "./lib/auth";
@@ -11,18 +13,17 @@ export const me = query({
     const google = await ctx.db.query("googleAccounts").withIndex("by_user", (q) => q.eq("userId", user._id)).first();
     const [assigned, tasks, unreadNotifications] = await Promise.all([
       ctx.db.query("threads").withIndex("by_assignee", (q) => q.eq("assignedTo", user._id).eq("assignmentDoneAt", undefined)).collect(),
-      ctx.db.query("tasks").withIndex("by_assignee", (q) => q.eq("assigneeId", user._id).eq("status", "open")).collect(),
+      Promise.all(["open", "doing"].map(status => ctx.db.query("tasks").withIndex("by_due", q => q.eq("status", status as "open" | "doing")).collect())).then(groups => groups.flat()),
       ctx.db.query("notifications").withIndex("by_user", (q) => q.eq("userId", user._id).eq("readAt", undefined)).collect(),
     ]);
     const now = Date.now();
-    const tasksDue = tasks.filter((t) => t.dueAt !== undefined && t.dueAt <= now + 86_400_000).length;
-    const overdueHours = user.prefs?.overdueHours ?? 48;
-    const overdue = await ctx.db.query("threads").withIndex("by_overdue", (q) => q.eq("bothIncluded", true).eq("lastDirection", "in").lt("lastInboundAt", now - overdueHours * 3_600_000)).collect();
+    const tasksDue = tasks.filter(t => !t.parentId).length;
+    const overdue = await overdueThreads(ctx, user, now);
     const signatures = await ctx.db.query("signatures").withIndex("by_user", (q) => q.eq("userId", user._id)).collect();
-    const paidInvoices = (await ctx.db.query("stripeInvoices").withIndex("by_created").order("desc").take(300)).filter((i) => i.status === "paid" && i.matterId);
+    const paidInvoices = (await ctx.db.query("stripeInvoices").withIndex("by_created").order("desc").collect()).filter((i) => i.status === "paid" && i.matterId);
     const matterIds = Array.from(new Set(paidInvoices.map((i) => i.matterId!)));
     const matters = new Map((await Promise.all(matterIds.map((id) => ctx.db.get(id)))).filter((m): m is NonNullable<typeof m> => !!m).map((m) => [m._id, m]));
-    const paidNotDelivered = paidInvoices.filter((i) => { const m = matters.get(i.matterId!); return m && !m.reportDeliveredAt && m.status !== "closed"; }).length;
+    const paidNotDelivered = paidInvoices.filter((i) => { const m = matters.get(i.matterId!); return invoiceFlag(i.status, m) === "paid_not_delivered"; }).length;
     return {
       _id: user._id,
       email: user.email,
@@ -32,7 +33,7 @@ export const me = query({
       prefs: user.prefs ?? {},
       google: google ? { _id: google._id, email: google.email, status: google.status, lastSyncAt: google.lastSyncAt, watchExpiresAt: google.watchExpiresAt } : null,
       signatureCount: signatures.length,
-      badges: { assigned: assigned.length, tasks: tasksDue, overdue: overdue.filter((t) => !t.repliedBy.length && !(t.repliedByEmails ?? []).length && !t.autoRepliedAt).length, notifications: unreadNotifications.length, paidNotDelivered },
+      badges: { assigned: assigned.length, tasks: tasksDue, overdue: overdue.length, notifications: unreadNotifications.length, paidNotDelivered },
     };
   },
 });

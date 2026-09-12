@@ -1,3 +1,5 @@
+import { practiceMonth } from "./lib/taskViews";
+import { invoiceFlag } from "./lib/invoiceFlags";
 import { internalMutation, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { requireUser } from "./lib/auth";
@@ -28,22 +30,21 @@ export const table = query({
   args: {},
   handler: async (ctx) => {
     await requireUser(ctx);
-    const invoices = await ctx.db.query("stripeInvoices").withIndex("by_created").order("desc").take(300);
+    const invoices = await ctx.db.query("stripeInvoices").withIndex("by_created").order("desc").collect();
     const matters = new Map((await ctx.db.query("matters").collect()).map((m) => [m._id, m]));
     const rows = invoices.map((i) => {
       const m = i.matterId ? matters.get(i.matterId) : undefined;
-      const paid = i.status === "paid";
       const delivered = !!m?.reportDeliveredAt;
       return {
         _id: i._id, stripeId: i.stripeId, number: i.number, customerName: i.customerName, customerEmail: i.customerEmail, description: i.description,
         amountCents: i.amountDueCents, currency: i.currency, status: i.status, hostedUrl: i.hostedUrl, pdfUrl: i.pdfUrl, dueAt: i.dueAt, paidAt: i.paidAt, createdAt: i.createdAt,
         matter: m ? { _id: m._id, name: m.name, status: m.status } : undefined,
         delivered, deliveredAt: m?.reportDeliveredAt, deliveredVia: m?.reportDeliveredVia,
-        flag: paid && !delivered ? "paid_not_delivered" : !paid && delivered ? "delivered_unpaid" : paid && delivered ? "complete" : "open",
+        flag: invoiceFlag(i.status, m),
         daysInvoiceToDelivery: m?.reportDeliveredAt ? Math.round((m.reportDeliveredAt - i.createdAt) / 86_400_000) : undefined,
       };
     });
-    const payments = await ctx.db.query("stripePayments").withIndex("by_created").order("desc").take(100);
+    const payments = await ctx.db.query("stripePayments").withIndex("by_created").order("desc").collect();
     return { rows, payments, counts: { paidNotDelivered: rows.filter((r) => r.flag === "paid_not_delivered").length, deliveredUnpaid: rows.filter((r) => r.flag === "delivered_unpaid").length, outstandingCents: invoices.filter((i) => i.status === "open" || i.status === "uncollectible").reduce((s, i) => s + Math.max(0, i.amountDueCents - i.amountPaidCents), 0) } };
   },
 });
@@ -56,16 +57,16 @@ export const transactions = query({
   args: {},
   handler: async (ctx) => {
     await requireUser(ctx);
-    const payments = await ctx.db.query("stripePayments").withIndex("by_created").order("desc").take(500);
-    const invoices = await ctx.db.query("stripeInvoices").withIndex("by_created").order("desc").take(500);
+    const payments = await ctx.db.query("stripePayments").withIndex("by_created").order("desc").collect();
+    const invoices = await ctx.db.query("stripeInvoices").withIndex("by_created").order("desc").collect();
     const matters = new Map((await ctx.db.query("matters").collect()).map((m) => [m._id, m.name]));
     const rows = [
       ...payments.map((p) => ({ _id: p._id as string, at: p.createdAt, kind: "payment" as const, source: p.kind, description: p.description ?? (p.bookingSessionId ? "Online booking" : p.kind.replace("_", " ")), who: p.customerEmail, amountCents: p.amountCents, currency: p.currency, status: p.status, stripeId: p.stripeId, hostedUrl: undefined as string | undefined, matter: undefined as { _id: string; name: string } | undefined, booking: !!p.bookingSessionId })),
       ...invoices.filter((i) => i.status === "paid" || i.status === "open" || i.status === "uncollectible" || i.status === "void").map((i) => ({ _id: i._id as string, at: i.paidAt ?? i.createdAt, kind: "invoice" as const, source: "invoice" as const, description: i.description ?? `Invoice ${i.number ?? i.stripeId}`, who: i.customerName ?? i.customerEmail, amountCents: i.status === "paid" ? i.amountPaidCents || i.amountDueCents : i.amountDueCents, currency: i.currency, status: i.status, stripeId: i.stripeId, hostedUrl: i.hostedUrl, matter: i.matterId && matters.get(i.matterId) ? { _id: i.matterId as string, name: matters.get(i.matterId)! } : undefined, booking: false })),
     ].sort((a, b) => b.at - a.at);
     const received = (r: (typeof rows)[number]) => r.status === "succeeded" || r.status === "paid";
-    const month = new Date(); month.setDate(1); month.setHours(0, 0, 0, 0);
-    return { rows, totals: { receivedCents: rows.filter(received).reduce((s, r) => s + r.amountCents, 0), monthCents: rows.filter((r) => received(r) && r.at >= month.getTime()).reduce((s, r) => s + r.amountCents, 0), count: rows.length, openCents: rows.filter((r) => r.kind === "invoice" && (r.status === "open" || r.status === "uncollectible")).reduce((s, r) => s + r.amountCents, 0) } };
+    const month = practiceMonth(Date.now());
+    return { rows, totals: { receivedCents: rows.filter(received).reduce((s, r) => s + r.amountCents, 0), monthCents: rows.filter((r) => received(r) && practiceMonth(r.at) === month).reduce((s, r) => s + r.amountCents, 0), count: rows.length, openCents: rows.filter((r) => r.kind === "invoice" && (r.status === "open" || r.status === "uncollectible")).reduce((s, r) => s + r.amountCents, 0) } };
   },
 });
 

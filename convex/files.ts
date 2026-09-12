@@ -33,7 +33,7 @@ export const list = query({
   handler: async (ctx, { matterId, q }) => {
     await requireUser(ctx);
     let rows = q && q.trim().length >= 2 ? await ctx.db.query("files").withSearchIndex("search_name", (s) => s.search("name", q)).take(100) : matterId ? await ctx.db.query("files").withIndex("by_matter", (x) => x.eq("matterId", matterId)).collect() : await ctx.db.query("files").withIndex("by_created").order("desc").take(200);
-    rows = rows.sort((a, b) => b.createdAt - a.createdAt);
+    rows = rows.filter(f => !matterId || f.matterId === matterId).sort((a, b) => b.createdAt - a.createdAt);
     const users = new Map((await ctx.db.query("users").collect()).map((u) => [u._id, firstName(u)]));
     const matters = new Map((await ctx.db.query("matters").collect()).map((m) => [m._id, m.name]));
     const latestOnly = rows.filter((f) => !rows.some((g) => g.previousVersionId === f._id));
@@ -64,8 +64,8 @@ export const get = query({
 export const url = query({ args: { id: v.id("files") }, handler: async (ctx, { id }) => { await requireUser(ctx); const f = await ctx.db.get(id); return f ? await ctx.storage.getUrl(f.storageId) : null; } });
 
 export const update = mutation({
-  args: { id: v.id("files"), name: v.optional(v.string()), matterId: v.optional(v.id("matters")), isReport: v.optional(v.boolean()), reportKind: v.optional(reportKindV), tagIds: v.optional(v.array(v.id("tags"))), annotations: v.optional(v.any()) },
-  handler: async (ctx, { id, ...patch }) => { const user = await requireUser(ctx); await ctx.db.patch(id, patch); await audit(ctx, { userId: user._id, action: "file.update", subjectKind: "file", subjectId: id }); },
+  args: { id: v.id("files"), name: v.optional(v.string()), matterId: v.optional(v.union(v.id("matters"), v.null())), isReport: v.optional(v.boolean()), reportKind: v.optional(reportKindV), tagIds: v.optional(v.array(v.id("tags"))), annotations: v.optional(v.any()) },
+  handler: async (ctx, { id, ...patch }) => { const user = await requireUser(ctx); const { matterId, ...fields } = patch; await ctx.db.patch(id, { ...fields, ...("matterId" in patch ? { matterId: matterId ?? undefined } : {}) }); await audit(ctx, { userId: user._id, action: "file.update", subjectKind: "file", subjectId: id }); },
 });
 
 export const remove = mutation({
@@ -127,13 +127,21 @@ export const recordSend = internalMutation({
 
 /** The Sent tab on Send Documents: newest first, with who sent it and where the Gmail thread is. */
 export const sends = query({
-  args: {},
-  handler: async (ctx) => {
-    await requireUser(ctx);
-    const rows = await ctx.db.query("documentSends").withIndex("by_sent").order("desc").take(200);
-    const users = new Map((await ctx.db.query("users").collect()).map((u) => [u._id, firstName(u)]));
-    const matters = new Map((await ctx.db.query("matters").collect()).map((m) => [m._id, m.name]));
-    return rows.map((r) => ({ ...r, sentByName: users.get(r.sentBy) ?? "?", matterName: r.matterId ? matters.get(r.matterId) : undefined }));
+  args: { matterId: v.optional(v.id("matters")) },
+  handler: async (ctx, { matterId }) => {
+    const me = await requireUser(ctx);
+    const rows = (await ctx.db.query("documentSends").withIndex("by_sent").order("desc").collect()).filter(r => !matterId || r.matterId === matterId).slice(0, 200);
+    const users = new Map((await ctx.db.query("users").collect()).map(u => [u._id, firstName(u)]));
+    const matters = new Map((await ctx.db.query("matters").collect()).map(m => [m._id, m.name]));
+    const accounts = await ctx.db.query("googleAccounts").collect();
+    const mine = accounts.find(a => a.userId === me._id);
+    return await Promise.all(rows.map(async r => {
+      const sender = accounts.find(a => a.userId === r.sentBy);
+      const indexed = sender ? await ctx.db.query("messageIndex").withIndex("by_account_gmailId", q => q.eq("accountId", sender._id).eq("gmailMessageId", r.gmailMessageId)).first() : null;
+      const thread = indexed ? await ctx.db.get(indexed.threadId) : null;
+      const gmailThreadId = r.sentBy === me._id ? r.gmailThreadId : thread?.mailboxes.find(m => m.accountId === mine?._id)?.gmailThreadId;
+      return { ...r, gmailThreadId, sentByName: users.get(r.sentBy) ?? "?", matterName: r.matterId ? matters.get(r.matterId) : undefined };
+    }));
   },
 });
 
@@ -159,10 +167,10 @@ export const createCode = mutation({
 });
 
 export const codes = query({
-  args: {},
-  handler: async (ctx) => {
+  args: { matterId: v.optional(v.id("matters")), fileId: v.optional(v.id("files")) },
+  handler: async (ctx, { matterId, fileId }) => {
     await requireUser(ctx);
-    const rows = await ctx.db.query("downloadCodes").withIndex("by_created").order("desc").take(200);
+    const rows = (await ctx.db.query("downloadCodes").withIndex("by_created").order("desc").collect()).filter(c => (!matterId || c.matterId === matterId) && (!fileId || c.fileIds.includes(fileId))).slice(0, 200);
     const users = new Map((await ctx.db.query("users").collect()).map((u) => [u._id, firstName(u)]));
     const fileIds = Array.from(new Set(rows.flatMap((c) => c.fileIds)));
     const fileById = new Map((await Promise.all(fileIds.map((id) => ctx.db.get(id)))).filter((f): f is NonNullable<typeof f> => !!f).map((f) => [f._id, f]));

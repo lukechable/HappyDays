@@ -24,7 +24,7 @@ export function PatientSearch({ onPick, inline }: { onPick: (p: P) => void; inli
           {live.loading && <li className="px-2 py-1.5 text-xs text-fg-tertiary">Searching Cliniko…</li>}
           {live.error && <li className="px-2 py-1.5 text-xs text-error">{live.error}</li>}
           {!live.loading && !live.error && results.length === 0 && <li className="px-2 py-1.5 text-xs text-fg-tertiary">No patients found.</li>}
-          {results.map((p) => <li key={p.id}><button type="button" onMouseDown={(e) => { e.preventDefault(); onPick(p); setQ(""); setDebounced(""); }} className="block w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted"><div className="font-medium">{p.name}</div><div className="truncate text-xs text-fg-tertiary">{[p.email, p.phone, p.dob ? `DOB ${p.dob}` : ""].filter(Boolean).join(" · ")}</div></button></li>)}
+          {results.map((p) => <li key={p.id}><button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => { onPick(p); setQ(""); setDebounced(""); }} className="block w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted"><div className="font-medium">{p.name}</div><div className="truncate text-xs text-fg-tertiary">{[p.email, p.phone, p.dob ? `DOB ${p.dob}` : ""].filter(Boolean).join(" · ")}</div></button></li>)}
         </ul>
       )}
     </div>

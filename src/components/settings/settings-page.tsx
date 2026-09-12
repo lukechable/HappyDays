@@ -28,7 +28,8 @@ type Tab = (typeof TABS)[number][0];
 
 export function SettingsPage() {
   const params = useSearchParams();
-  const tab = (params.get("tab") as Tab | null) ?? (params.get("google") ? "google" : "setup");
+  const requestedTab = params.get("tab");
+  const tab: Tab = TABS.some(([key]) => key === requestedTab) ? requestedTab as Tab : params.get("google") ? "google" : "setup";
   useEffect(() => {
     const g = params.get("google");
     if (g === "connected") toast.success(`Google connected as ${params.get("email")}`);
@@ -70,7 +71,7 @@ function SetupTab() {
     ["Clerk JWT template (CLERK_JWT_ISSUER_DOMAIN)", s.clerkJwt, "Create a JWT template named “convex” in Clerk and copy its issuer."],
     ["Google OAuth app (GOOGLE_CLIENT_ID / SECRET)", s.googleOAuth, `Internal app on the barbarafraser.net Workspace. Redirect URI: ${s.appUrl ?? here}/api/google/callback`],
     ["Token encryption key (TOKEN_ENCRYPTION_KEY)", s.tokenKey, "32 random bytes, base64. Encrypts Google refresh tokens at rest."],
-    ["Gmail push (GOOGLE_PUBSUB_TOPIC / VERIFICATION_TOKEN)", s.pubsub, `Optional. Without it mail syncs every 10 minutes. Push endpoint: ${site}/gmail/push?token=…`],
+    ["Gmail push (GOOGLE_PUBSUB_TOPIC / VERIFICATION_TOKEN)", s.pubsub, `Optional. Without active push, mail is checked hourly. Push endpoint: ${site}/gmail/push?token=…`],
     ["Cliniko API key (CLINIKO_API_KEY)", s.cliniko, `Shard ${s.clinikoShard}, subdomain ${s.clinikoSubdomain ?? "not set"}.`],
     ["Stripe secret key (STRIPE_SECRET_KEY)", s.stripe, "Live or test key from the Stripe dashboard."],
     ["Stripe webhook (STRIPE_WEBHOOK_SECRET)", s.stripeWebhook, `Endpoint: ${site}/stripe/webhook — events: invoice.*, checkout.session.*, payment_intent.*`],

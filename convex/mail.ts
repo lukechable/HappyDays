@@ -1,3 +1,4 @@
+import { isOverdue, overdueThreads } from "./lib/mailViews";
 import { action, internalAction, internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
@@ -155,8 +156,8 @@ export const listThreads = action({
       case "label": if (!labelId) throw new Error("Pick a folder."); await page({ labelIds: [labelId], q: q || undefined }); break;
       case "search": if (!q) return { items: [], estimate: 0 }; await page({ q }); break;
       case "overdue": case "assigned": case "matter": {
-        const rows = await ctx.runQuery(internal.mail.threadIdsForView, { view, accountId: account._id, userId: me._id, matterId: view === "matter" ? (labelId as Id<"matters"> | undefined) : undefined });
-        ids = rows.gmailThreadIds; missing = rows.missing; estimate = ids.length;
+        const rows = await ctx.runQuery(internal.mail.threadIdsForView, { view, accountId: account._id, userId: me._id, matterId: view === "matter" ? (labelId as Id<"matters"> | undefined) : undefined, pageToken });
+        ids = rows.gmailThreadIds; missing = rows.missing; estimate = rows.total; nextPageToken = rows.nextPageToken;
         break;
       }
       default: throw new Error(`Unknown view ${view}`);
@@ -169,19 +170,30 @@ export const listThreads = action({
   },
 });
 
+/** Dashboard headers use exactly the same records as the badge, without a Gmail body fetch. */
+export const overdueSummary = query({ args: {}, handler: async (ctx) => {
+  const user = await requireUser(ctx);
+  const account = await ctx.db.query("googleAccounts").withIndex("by_user", q => q.eq("userId", user._id)).first();
+  const rows = await overdueThreads(ctx, user);
+  const mapped = rows.map(t => ({ threadId: t._id, subject: t.subject, lastAt: t.lastMessageAt,
+    gmailThreadId: t.mailboxes.find(m => m.accountId === account?._id)?.gmailThreadId }));
+  return { total: rows.length, missing: mapped.filter(t => !t.gmailThreadId).length,
+    items: mapped.filter(t => t.gmailThreadId).slice(0, 6) };
+} });
+
 /** Threads that live in Convex first (overdue, assigned, matter), mapped to this account's Gmail thread ids. */
 export const threadIdsForView = internalQuery({
-  args: { view: v.string(), accountId: v.id("googleAccounts"), userId: v.id("users"), matterId: v.optional(v.id("matters")) },
-  handler: async (ctx, { view, accountId, userId, matterId }) => {
+  args: { view: v.string(), accountId: v.id("googleAccounts"), userId: v.id("users"), matterId: v.optional(v.id("matters")), pageToken: v.optional(v.string()) },
+  handler: async (ctx, { view, accountId, userId, matterId, pageToken }) => {
     const user = await ctx.db.get(userId);
-    const hours = user?.prefs?.overdueHours ?? 48;
+    if (!user) throw new Error("User not found.");
     let threads: Doc<"threads">[] = [];
     if (view === "overdue") {
-      threads = (await ctx.db.query("threads").withIndex("by_overdue", (q) => q.eq("bothIncluded", true).eq("lastDirection", "in").lt("lastInboundAt", Date.now() - hours * 3_600_000)).order("desc").take(100)).filter((t) => !(t.repliedByEmails ?? []).length && !t.repliedBy.length && !t.autoRepliedAt && !(t.snoozedUntil && t.snoozedUntil > Date.now()));
+      threads = await overdueThreads(ctx, user);
     } else if (view === "assigned") {
-      threads = await ctx.db.query("threads").withIndex("by_assignee", (q) => q.eq("assignedTo", userId).eq("assignmentDoneAt", undefined)).order("desc").take(100);
+      threads = await ctx.db.query("threads").withIndex("by_assignee", (q) => q.eq("assignedTo", userId).eq("assignmentDoneAt", undefined)).collect();
     } else if (view === "matter" && matterId) {
-      threads = await ctx.db.query("threads").withIndex("by_matter", (q) => q.eq("matterId", matterId)).order("desc").take(200);
+      threads = await ctx.db.query("threads").withIndex("by_matter", (q) => q.eq("matterId", matterId)).collect();
     }
     threads.sort((a, b) => b.lastMessageAt - a.lastMessageAt);
     const gmailThreadIds: string[] = [];
@@ -190,7 +202,10 @@ export const threadIdsForView = internalQuery({
       const mine = t.mailboxes.find((m) => m.accountId === accountId);
       if (mine) gmailThreadIds.push(mine.gmailThreadId); else missing++;
     }
-    return { gmailThreadIds: gmailThreadIds.slice(0, 50), missing };
+    const offset = pageToken ? Number(pageToken) : 0;
+    if (!Number.isSafeInteger(offset) || offset < 0) throw new Error("Invalid mail page.");
+    return { gmailThreadIds: gmailThreadIds.slice(offset, offset + 20), missing, total: gmailThreadIds.length,
+      nextPageToken: offset + 20 < gmailThreadIds.length ? String(offset + 20) : undefined };
   },
 });
 
@@ -701,7 +716,7 @@ export const meta = query({
         matter: matter ? { _id: matter._id, name: matter.name } : undefined,
         aiSummary: t.aiSummary,
         bothIncluded: t.bothIncluded,
-        overdue: t.bothIncluded && t.lastDirection === "in" && !t.repliedBy.length && !!t.lastInboundAt && t.lastInboundAt < Date.now() - hours * 3_600_000,
+        overdue: isOverdue(t, hours, Date.now()),
         taskCount: tasks.filter((x) => x.status !== "done").length,
         otherMailboxHasIt: t.mailboxes.some((m) => m.accountId !== account._id),
       };

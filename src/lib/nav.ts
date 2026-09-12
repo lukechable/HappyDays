@@ -68,12 +68,22 @@ export const NAV: NavGroup[] = [
 ];
 export const NAV_ITEMS = NAV.flatMap((g) => g.items);
 const pathOf = (href: string) => href.split("?")[0];
+function queryMatches(href: string, search: string) {
+  const expected = new URLSearchParams(href.split("?")[1]);
+  const actual = new URLSearchParams(search);
+  return [...expected].every(([key, value]) => actual.get(key) === value);
+}
 export function navItemFor(pathname: string, search: string): NavItem {
-  const full = `${pathname}${search}`;
-  return NAV_ITEMS.find((i) => i.href === full) ?? NAV_ITEMS.filter((i) => !i.exact && pathname.startsWith(pathOf(i.href)) && !i.href.includes("?")).sort((a, b) => b.href.length - a.href.length)[0] ?? NAV_ITEMS.find((i) => pathOf(i.href) === pathname) ?? NAV_ITEMS[0];
+  const specific = NAV_ITEMS.find(i => pathOf(i.href) === pathname && i.href.includes("?") && queryMatches(i.href, search));
+  if (specific) return specific;
+  if (pathname === "/mail") {
+    const view = new URLSearchParams(search).get("view");
+    if (view && view !== "inbox") return { href: `${pathname}${search}`, label: view === "label" ? "Mail folder" : view === "search" ? "Mail search" : view.startsWith("smart:") ? "Smart inbox" : view[0].toUpperCase() + view.slice(1), blurb: "Mail" };
+  }
+  return NAV_ITEMS.filter(i => !i.href.includes("?") && (pathname === i.href || (!i.exact && pathname.startsWith(i.href + "/")))).sort((a, b) => b.href.length - a.href.length)[0] ?? NAV_ITEMS[0];
 }
 export function isActive(item: NavItem, pathname: string, search: string): boolean {
-  if (item.exact) return pathname === pathOf(item.href) && (item.href.includes("?") || !search.includes("view="));
-  if (item.href.includes("?")) return `${pathname}${search}` === item.href || (`${pathname}${search}`).startsWith(item.href);
-  return pathname === item.href || pathname.startsWith(item.href + "/");
+  if (item.href.includes("?")) return pathname === pathOf(item.href) && queryMatches(item.href, search);
+  if (item.href === "/mail") return pathname === "/mail" && [null, "inbox"].includes(new URLSearchParams(search).get("view"));
+  return pathname === item.href || (!item.exact && pathname.startsWith(item.href + "/"));
 }
