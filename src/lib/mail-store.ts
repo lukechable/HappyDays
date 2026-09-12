@@ -31,6 +31,9 @@ export const threadText = (t: { subject: string; messages: Array<{ from: { name:
 
 export const mailStore = {
   async getList<T>(key: string): Promise<{ items: T[]; nextToken?: string; missing: number; fetchedAt: number } | undefined> { try { const r = await tx<ListRecord | undefined>("lists", "readonly", (s) => s.get(key) as IDBRequest<ListRecord | undefined>); return r ? { items: r.items as T[], nextToken: r.nextToken, missing: r.missing, fetchedAt: r.fetchedAt } : undefined; } catch { return undefined; } },
+  async getLists(prefix: string): Promise<ListRecord[]> {
+    try { return await tx<ListRecord[]>("lists", "readonly", s => s.getAll(IDBKeyRange.bound(prefix, prefix + "\uffff"))); } catch { return []; }
+  },
   async putList(key: string, v: { items: unknown[]; nextToken?: string; missing: number; fetchedAt: number }) { try { await tx("lists", "readwrite", (s) => s.put({ key, ...v })); } catch { /* storage full or blocked */ } },
   async getThread<T>(id: string): Promise<{ data: T; fetchedAt: number } | undefined> { try { const r = await tx<ThreadRecord | undefined>("threads", "readonly", (s) => s.get(id) as IDBRequest<ThreadRecord | undefined>); return r ? { data: r.data as T, fetchedAt: r.fetchedAt } : undefined; } catch { return undefined; } },
   async putThread(id: string, data: unknown, text: string) { try { await tx("threads", "readwrite", (s) => s.put({ id, data, text: text.slice(0, 20_000), fetchedAt: Date.now() })); } catch { /* ignore */ } },
@@ -61,15 +64,18 @@ export const mailStore = {
 export function scopedMailStore(scope: string) {
   const prefix = `${scope}::`;
   return {
+    getLists: async () => (await mailStore.getLists(prefix)).map(r => ({ ...r, key: r.key.slice(prefix.length) })),
     getList: <T,>(key: string) => mailStore.getList<T>(prefix + key),
     putList: (key: string, value: Parameters<typeof mailStore.putList>[1]) => mailStore.putList(prefix + key, value),
     getThread: <T,>(id: string) => mailStore.getThread<T>(prefix + id),
     putThread: (id: string, data: unknown, text: string) => mailStore.putThread(prefix + id, data, text),
     search: (q: string, limit?: number) => mailStore.search(q, limit, prefix),
-    async invalidate(completed: string[], removeBodies: boolean) {
+    async invalidate(completed: string[], removeBodies: boolean, update?: (key: string, items: unknown[]) => unknown[]) {
       try {
-        const keys = await tx<IDBValidKey[]>("lists", "readonly", s => s.getAllKeys());
-        await Promise.all(keys.filter(k => String(k).startsWith(prefix)).map(k => tx("lists", "readwrite", s => s.delete(k))));
+        const lists = await mailStore.getLists(prefix);
+        await Promise.all(lists.map(r => update
+          ? tx("lists", "readwrite", s => s.put({ ...r, items: update(r.key.slice(prefix.length), r.items), fetchedAt: 0 }))
+          : tx("lists", "readwrite", s => s.delete(r.key))));
         if (removeBodies) await Promise.all(completed.map(id => mailStore.deleteThread(prefix + id)));
       } catch { /* local cache unavailable */ }
     },

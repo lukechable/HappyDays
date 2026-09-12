@@ -20,10 +20,11 @@ import type { ComposeDraft } from "./compose";
 import { quoteHtml, textToHtml, sanitiseForEditor } from "@/lib/sanitise";
 import { Button } from "@/components/ui/button";
 import { Empty } from "@/components/primitives";
-import { useLive, useMediaQuery, useStored, useCacheScope, useNow } from "@/lib/hooks";
+import { useLive, useMediaQuery, useStored, useCacheScope } from "@/lib/hooks";
 import { dropLive, readLive, subscribeLive, writeLive } from "@/lib/live-cache";
 import { applyMailChange, type MailChange } from "@/lib/mail-change";
 import { gmailRead } from "@/lib/gmail-budget";
+import { ensureMailbox, mailboxKey, updateMailboxCaches, type MailboxData } from "@/lib/mailbox-cache";
 import { scopedMailStore, threadText } from "@/lib/mail-store";
 import { replaceSearch } from "@/lib/shallow";
 import { cn, errorMessage } from "@/lib/utils";
@@ -34,14 +35,13 @@ const Compose = dynamic(() => import("./compose").then((m) => m.Compose), { ssr:
 const EMPTY_TEXT: Record<string, string> = { inbox: "Inbox zero.", unread: "Nothing unread.", overdue: "Nothing overdue. Every shared thread has a reply.", assigned: "Nothing assigned to you.", starred: "No starred conversations.", drafts: "No drafts.", search: "No matches in Gmail.", trash: "Trash is empty.", spam: "No spam." };
 
 /**
- * The mail client. Three panes: folders, conversations, reader. Everything shown comes from Gmail at the moment
- * you look; the only thing Happy Days adds is the metadata layer (tags, assignment, replied, matter).
+ * The mail client. Three panes: folders, conversations, reader. Mail renders from
+ * the device cache immediately; Gmail refreshes and metadata arrive in the background.
  */
 export function MailPage() {
   const params = useSearchParams();
   const me = useQuery(api.users.me);
   const scope = useCacheScope();
-  const now = useNow();
   const mailStore = useMemo(() => scopedMailStore(scope), [scope]);
   const view = (params.get("view") as ViewKey | null) ?? "inbox";
   const labelId = params.get("label") ?? undefined;
@@ -68,8 +68,8 @@ export function MailPage() {
   const dismissed = useRef<string | null>(null);
 
   const connected = me?.google?.status === "connected";
-  const listKey = JSON.stringify({ cacheVersion: 3, view, labelId, q, connected, scope, ...(view.startsWith("smart:") ? { smartVersion: 2 } : {}) });
-  const [list, setList] = useState<{ key: string; items: ListItem[]; nextToken?: string; error?: string; missing: number; tick: number }>({ key: "", items: [], missing: 0, tick: 0 });
+  const listCacheKey = mailboxKey(scope, { view, labelId, q }, connected);
+  const listKey = listCacheKey.slice("mail:list:".length);
   const [tick, setTick] = useState(0);
   const [appending, setAppending] = useState(false);
   const labels = labelsLive.data as Label[] | undefined;
@@ -87,22 +87,20 @@ export function MailPage() {
   const [compose, setCompose] = useState<ComposeDraft | null>(null);
   const [searchText, setSearchText] = useState(q ?? "");
   const lastChecked = useRef<string | null>(null);
-  const listCacheKey = `mail:list:${listKey}`;
-  const cachedList = useSyncExternalStore(subscribeLive, () => readLive<{ items: ListItem[]; nextToken?: string; missing: number }>(listCacheKey), () => readLive<{ items: ListItem[]; nextToken?: string; missing: number }>(""));
-  const listFresh = list.key === listKey && list.tick === tick;
-  const items = list.key === listKey ? list.items : cachedList.data?.items ?? [];
-  const nextToken = listFresh ? list.nextToken : cachedList.data?.nextToken;
-  const cacheFresh = !!cachedList.data && !cachedList.error && !!cachedList.fetchedAt && now - cachedList.fetchedAt < 60_000;
-  const listLoading = connected && !listFresh && !cacheFresh && items.length === 0;
-  const listError = listFresh ? list.error : cachedList.error;
-  const missing = listFresh ? list.missing : cachedList.data?.missing ?? 0;
-  const thread = threadState.id === selectedId ? threadState.thread : undefined;
+  const cachedList = useSyncExternalStore(subscribeLive, () => readLive<MailboxData>(listCacheKey), () => readLive<MailboxData>(""));
+  const items = cachedList.data?.items ?? [];
+  const nextToken = cachedList.data?.nextToken;
+  const listLoading = connected && !cachedList.data && (!cachedList.error || !!cachedList.inflight);
+  const listError = cachedList.error;
+  const missing = cachedList.data?.missing ?? 0;
+  const cachedThread = useSyncExternalStore(subscribeLive, () => readLive<ThreadData>(`mail:thread:${scope}:${selectedId}`), () => readLive<ThreadData>(""));
+  const thread = threadState.id === selectedId ? threadState.thread ?? cachedThread.data : cachedThread.data;
   const threadError = threadState.id === selectedId ? threadState.error : undefined;
-  const threadLoading = !!selectedId && threadState.id !== selectedId;
-  const setItems = (fn: (cur: ListItem[]) => ListItem[]) => setList(cur => ({ key: listKey, tick, missing: cur.key === listKey ? cur.missing : missing, nextToken: cur.key === listKey ? cur.nextToken : nextToken, items: fn(cur.key === listKey ? cur.items : items) }));
-  useEffect(() => {
-    if (list.key === listKey && list.tick === tick && !list.error) writeLive(listCacheKey, { data: { items: list.items, nextToken: list.nextToken, missing: list.missing } });
-  }, [list, listKey, listCacheKey, tick]);
+  const threadLoading = !!selectedId && !thread && !threadError;
+  const setItems = (fn: (cur: ListItem[]) => ListItem[]) => {
+    const current = readLive<MailboxData>(listCacheKey).data ?? { items: [], missing: 0 };
+    writeLive(listCacheKey, { data: { ...current, items: fn(current.items) } });
+  };
   const setThread = (t: ThreadData | undefined) => setThreadState((cur) => ({ ...cur, thread: t }));
 
   const meta = useQuery(api.mail.meta, connected && items.length ? { gmailThreadIds: items.map((i) => i.gmailThreadId) } : "skip") ?? {};
@@ -121,7 +119,6 @@ export function MailPage() {
       const data = { items: [...new Map([...items, ...r.items].map(i => [i.gmailThreadId, i])).values()], nextToken: r.nextPageToken, missing: r.missing ?? missing };
       writeLive(listCacheKey, { data, fetchedAt: Date.now(), error: undefined });
       if (view !== "search") void mailStore.putList(listCacheKey, { ...data, fetchedAt: Date.now() });
-      setList({ key: listKey, ...data, tick });
     }
     catch (e) { toast.error(errorMessage(e)); }
     finally { setAppending(false); }
@@ -129,46 +126,23 @@ export function MailPage() {
 
   const refreshLabels = labelsLive.reload;
 
-  // Device copy → memory: the list appears instantly even after a browser restart.
-  useEffect(() => {
-    if (!connected || readLive(listCacheKey).data) return;
-    let live = true;
-    void mailStore.getList<ListItem>(listCacheKey).then((r) => { if (live && r && !readLive(listCacheKey).data) writeLive(listCacheKey, { data: { items: r.items, nextToken: r.nextToken, missing: r.missing }, fetchedAt: 0 }); });
-    return () => { live = false; };
-  }, [connected, listCacheKey, mailStore]);
-
   // Gmail push landed (the account's last sync moved): refresh the list we are looking at, quietly.
   const lastSyncAt = me?.google?.lastSyncAt;
   const lastSeenSync = useRef(lastSyncAt);
   useEffect(() => { if (lastSyncAt && lastSeenSync.current && lastSyncAt !== lastSeenSync.current) setTick((t) => t + 1); lastSeenSync.current = lastSyncAt; }, [lastSyncAt]);
 
+  const lastRefresh = useRef(0);
   useEffect(() => {
     if (!connected) return;
-    // A list seen in the last minute is shown as is; older ones show instantly and refresh behind the scenes.
-    const cached = readLive<{ items: ListItem[] }>(listCacheKey);
-    if (tick === 0 && cached.data && !cached.error && cached.fetchedAt && Date.now() - cached.fetchedAt < 60_000) return; // shown from the cache already
-    // The shell may already be fetching this list (Prefetch); show its result rather than asking Gmail twice.
-    if (tick === 0 && cached.inflight) { let live = true; void cached.inflight.then(() => { if (live && !readLive(listCacheKey).fetchedAt) setTick((t) => t + 1); }); return () => { live = false; }; }
-    let live = true;
-    const request = pageRequest.current;
-    const controller = new AbortController();
-    const args = JSON.parse(listKey) as { view: ViewKey; labelId?: string; q?: string };
-    gmailRead(() => listThreads({ view: args.view, labelId: args.labelId, q: args.q }), { signal: controller.signal }).then((r) => {
-      if (!live || request !== pageRequest.current) return;
-      const data = { items: r.items, nextToken: r.nextPageToken, missing: r.missing ?? 0 };
-      writeLive(listCacheKey, { data, fetchedAt: Date.now(), error: undefined });
-      if (args.view !== "search") void mailStore.putList(listCacheKey, { ...data, fetchedAt: Date.now() });
-      setList({ key: listKey, items: r.items, nextToken: r.nextPageToken, missing: r.missing ?? 0, tick }); setFocused(f => Math.min(f, Math.max(0, r.items.length - 1)));
-    }).catch((e: unknown) => {
-      if (!live || request !== pageRequest.current) return;
-      const error = errorMessage(e);
-      // Failed reads are not successful empty mailboxes. Keep the last good rows and retry on return.
-      writeLive(listCacheKey, { error, fetchedAt: undefined });
-      setList({ key: listKey, items: cached.data?.items ?? [], error, missing: 0, tick });
-    });
-    return () => { live = false; controller.abort(); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [listKey, tick, connected, listThreads]);
+    const force = lastRefresh.current !== tick;
+    lastRefresh.current = tick;
+    // The cache owns this read, so changing folders cannot throw its result away.
+    void ensureMailbox(scope, { view, labelId, q }, listThreads, { force });
+  }, [scope, listKey, tick, connected, listThreads, view, labelId, q]);
+
+  const prepareFolder = (view: ViewKey, labelId?: string) => {
+    if (connected) void ensureMailbox(scope, { view, labelId }, listThreads);
+  };
 
   // Fetch the editor chunk in the background so Compose and Reply open without a wait.
   useEffect(() => { const t = setTimeout(() => { void import("./compose"); }, 2000); return () => clearTimeout(t); }, []);
@@ -195,10 +169,14 @@ export function MailPage() {
       if (!useCached) writeLive(`mail:thread:${scope}:${selectedId}`, { data: t, fetchedAt: Date.now() });
       setThreadState({ id: selectedId, thread: t });
       const unread = t.messages.filter((m) => m.unread).map((m) => m.gmailMessageId);
-      if (unread.length) { void markRead({ gmailMessageIds: unread, read: true }).then(() => { if (live) setList((cur) => ({ ...cur, items: cur.items.map((i) => (i.gmailThreadId === selectedId ? { ...i, unread: false } : i)) })); }).catch(e => { if (live) toast.error(errorMessage(e)); }); }
+      if (unread.length) { void markRead({ gmailMessageIds: unread, read: true }).then(() => { if (live) {
+        const key = mailboxKey(scope, { view, labelId, q });
+        const cached = readLive<MailboxData>(key);
+        if (cached.data) writeLive(key, { data: { ...cached.data, items: cached.data.items.map(i => i.gmailThreadId === selectedId ? { ...i, unread: false } : i) } });
+      } }).catch(e => { if (live) toast.error(errorMessage(e)); }); }
     }).catch((e: unknown) => { if (live) setThreadState({ id: selectedId, error: errorMessage(e) }); });
     return () => { live = false; controller.abort(); };
-  }, [selectedId, connected, getThread, markRead, scope, mailStore]);
+  }, [selectedId, connected, getThread, markRead, scope, mailStore, view, labelId, q]);
 
   const toggleCheck = (id: string, shift: boolean) => {
     if (changeLock.current) return;
@@ -230,9 +208,8 @@ export function MailPage() {
       if (result.completedIds.length) {
         // Invalidate pending list requests before they can restore deleted rows.
         if (activeListKey.current === requestKey) pageRequest.current++;
-        dropLive("mail:list:");
+        void updateMailboxCaches(scope, result.completedIds, op, payload);
         for (const id of result.completedIds) dropLive(`mail:thread:${scope}:${id}`);
-        void mailStore.invalidate(result.completedIds, op === "trash" || op === "spam");
         if (activeListKey.current === requestKey) {
           setItems(cur => applyMailChange(cur, result.completedIds, op, view, labelId, payload));
           setChecked(cur => new Set([...cur].filter(id => !result.completedIds.includes(id))));
@@ -394,7 +371,7 @@ export function MailPage() {
 
       {/* The folder column joins at lg; the list and reading pane split from md, since without the rail there is room. */}
       <div className={cn("grid min-h-0 flex-1 grid-cols-1", pane === "right" ? "md:grid-cols-[var(--hd-list-w)_6px_minmax(0,1fr)] lg:grid-cols-[200px_var(--hd-list-w)_6px_minmax(0,1fr)]" : "md:grid-cols-[minmax(0,1fr)] lg:grid-cols-[200px_minmax(0,1fr)]")} style={splitStyle}>
-        <aside className="hidden min-h-0 border-r border-border bg-surface-2/60 lg:block"><FolderList view={view} labelId={labelId} labels={labels} badges={{ overdue: me?.badges.overdue ?? 0, assigned: me?.badges.assigned ?? 0 }} onSelect={(v, l) => { setParams({ view: v === "inbox" ? undefined : v, label: l, q: undefined, thread: undefined }); }} onLabelsChanged={refreshLabels} onDropThreads={onDropThreads} /></aside>
+        <aside className="hidden min-h-0 border-r border-border bg-surface-2/60 lg:block"><FolderList view={view} labelId={labelId} labels={labels} badges={{ overdue: me?.badges.overdue ?? 0, assigned: me?.badges.assigned ?? 0 }} onSelect={(v, l) => { setParams({ view: v === "inbox" ? undefined : v, label: l, q: undefined, thread: undefined }); }} onPrepare={prepareFolder} onLabelsChanged={refreshLabels} onDropThreads={onDropThreads} /></aside>
         {/* min-w-0 and an explicit minmax(0,1fr) column: without them the implicit grid column sizes to the longest row and the whole thing runs off the right of the screen. */}
         <div className={cn("contents", pane === "below" && "md:grid md:min-h-0 md:min-w-0 md:grid-cols-[minmax(0,1fr)] md:grid-rows-[var(--hd-list-h)_6px_var(--hd-pane-h)]")}>
 
@@ -406,7 +383,7 @@ export function MailPage() {
           </div>
           {view.startsWith("smart:") && (
             <div className="flex shrink-0 flex-wrap gap-1 border-b border-border px-2 py-1" aria-label="Gmail categories">
-              {SMART_TABS.map((t) => <button key={t.key} type="button" onClick={() => setParams({ view: t.key, label: undefined, q: undefined, thread: undefined })} aria-pressed={view === t.key} className={cn("rounded-full px-2.5 py-0.5 text-xs", view === t.key ? "bg-foreground text-background" : "text-fg-secondary hover:bg-muted")}>{t.label}</button>)}
+              {SMART_TABS.map((t) => <button key={t.key} type="button" onPointerEnter={() => prepareFolder(t.key)} onFocus={() => prepareFolder(t.key)} onClick={() => setParams({ view: t.key, label: undefined, q: undefined, thread: undefined })} aria-pressed={view === t.key} className={cn("rounded-full px-2.5 py-0.5 text-xs", view === t.key ? "bg-foreground text-background" : "text-fg-secondary hover:bg-muted")}>{t.label}</button>)}
             </div>
           )}
           <div className="min-h-0 flex-1">

@@ -17,6 +17,7 @@ import { AuthDiagnostics } from "@/components/auth/auth-diagnostics";
 import { CacheScope } from "@/lib/hooks";
 import { PageEnter } from "@/components/shell/page-enter";
 import { PwaProvider } from "@/components/shell/pwa";
+import { MailboxPreloader } from "@/components/mail/mailbox-preloader";
 
 export type Me = NonNullable<ReturnType<typeof useQuery<typeof api.users.me>>>;
 
@@ -99,6 +100,7 @@ function Frame({ me, children }: { me: Me; children: ReactNode }) {
       </div>
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
       <PwaProvider />
+      <MailboxPreloader connected={me.google?.status === "connected"} />
     </div>
   );
 }

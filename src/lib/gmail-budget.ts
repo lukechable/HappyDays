@@ -5,7 +5,12 @@
  */
 const MAX_ACTIVE = 2;
 let active = 0;
-const waiting: Array<{ background: boolean; go: () => void }> = [];
+const waiting: Array<{ background: boolean; key?: string; go: () => void }> = [];
+/** A click takes precedence over folders being prepared in the background. */
+export function promoteGmailRead(key: string) {
+  const entry = waiting.find(w => w.key === key);
+  if (entry) { entry.background = false; pump(); }
+}
 function pump() {
   while (active < MAX_ACTIVE) {
     const index = waiting.findIndex(w => !w.background);
@@ -17,7 +22,7 @@ function pump() {
     entry.go();
   }
 }
-export function gmailRead<T>(fn: () => Promise<T>, opts: { background?: boolean; signal?: AbortSignal } = {}): Promise<T> {
+export function gmailRead<T>(fn: () => Promise<T>, opts: { background?: boolean; signal?: AbortSignal; key?: string } = {}): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     if (opts.signal?.aborted) { reject(new DOMException("Cancelled", "AbortError")); return; }
     const cancel = () => {
@@ -26,7 +31,7 @@ export function gmailRead<T>(fn: () => Promise<T>, opts: { background?: boolean;
       reject(new DOMException("Cancelled", "AbortError"));
       pump();
     };
-    const entry = { background: !!opts.background, go: () => {
+    const entry = { background: !!opts.background, key: opts.key, go: () => {
       opts.signal?.removeEventListener("abort", cancel);
       void Promise.resolve().then(fn).then(resolve, reject).finally(() => { active--; pump(); });
     } };
